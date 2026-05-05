@@ -216,7 +216,7 @@ API_KEY = CONFIG.get("API_KEY", "")
 
 print("CONFIG PATH:", CONFIG_PATH)
 print("API KEY:", API_KEY)
-print("VERSAO_CARREGADA: OCR_CLIENTE_V71_PERFORMANCE")
+print("VERSAO_CARREGADA: OCR_CLIENTE_V72_INSTANT")
 
 if os.name == "nt":
     tess_path = r"C:\Program Files\Tesseract-OCR\tesseract.exe"
@@ -4727,7 +4727,7 @@ def criar_aposta_manual_payload(form):
         "saldo_debitado": False,
         "saldo_creditado_estado": "",
         "saldo_creditado_valor": 0.0,
-        "publica": aposta_publica_padrao_usuario()
+        "publica": False if form.get("copiada_comunidade") == "1" else aposta_publica_padrao_usuario()
     }
 
     # Usa o mesmo motor visual/universal das múltiplas OCR também no manual/cópia.
@@ -5118,16 +5118,22 @@ def admin_promover(uid):
 def adicionar_ajax():
     try:
         bet = criar_aposta_manual_payload(request.form)
+        bet["user_id"] = usuario_id_atual() if "usuario_id_atual" in globals() else session.get("user_id")
+        if request.form.get("copiada_comunidade") == "1":
+            bet["publica"] = False
+
         registrar_nova_aposta_saldo(bet)
         dados["bets"].append(bet)
         salvar()
-        recalcular()
 
-        return jsonify({"ok": True, "bet": limpar_aposta_display_v39(bet), "metricas": metricas()})
-
+        return jsonify({
+            "ok": True,
+            "bet": limpar_aposta_display_v39(bet) if "limpar_aposta_display_v39" in globals() else bet,
+            "metricas": metricas()
+        })
     except Exception as e:
-        print("ERRO /adicionar_ajax:", e)
-        return jsonify({"ok": False, "erro": str(e)}), 400
+        print("ERRO adicionar_ajax:", repr(e))
+        return jsonify({"ok": False, "erro": str(e)}), 500
 
 
 @app.route("/", methods=["GET", "POST"])
@@ -5195,7 +5201,7 @@ def banca():
 @login_required
 @assinatura_required
 def resultado(bet_id, estado):
-    b = buscar_aposta_segura_v61(bet_id)
+    b = buscar_aposta(bet_id)
 
     if b:
         atualizar_resultado_saldo(b, estado)
@@ -5218,10 +5224,18 @@ def resultado(bet_id, estado):
 @login_required
 @assinatura_required
 def remover(bet_id):
-    b = buscar_aposta_segura_v61(bet_id)
+    b = buscar_aposta(bet_id)
+
     if b:
         dados["bets"] = [x for x in dados.get("bets", []) if x.get("id") != bet_id]
         salvar()
+
+        if request.args.get("ajax") == "1":
+            return jsonify({"ok": True, "metricas": metricas()})
+
+    if request.args.get("ajax") == "1":
+        return jsonify({"ok": False}), 404
+
     return redirect("/")
 
 
@@ -5376,7 +5390,7 @@ def salvar_preview():
             "saldo_debitado": False,
             "saldo_creditado_estado": "",
             "saldo_creditado_valor": 0.0,
-            "publica": aposta_publica_padrao_usuario()
+            "publica": False if form.get("copiada_comunidade") == "1" else aposta_publica_padrao_usuario()
         }
 
         registrar_nova_aposta_saldo(bet_preview)
@@ -8218,11 +8232,14 @@ def salvar_saldo_casa():
         set_saldo_casa(casa, saldo)
         salvar()
 
+    if request.args.get("ajax") == "1":
+        return jsonify({"ok": True, "total_saldos": total_saldos_casas(), "casa": casa, "saldo": saldo})
+
     return redirect("/saldos")
 
 
-
 @app.route("/saldos/movimento", methods=["POST"])
+@login_required
 @assinatura_required
 def saldo_movimento():
     casa = request.form.get("casa", "")
@@ -8232,6 +8249,9 @@ def saldo_movimento():
 
     aplicar_movimento_manual_casa(casa, tipo, valor, destino)
     salvar()
+
+    if request.args.get("ajax") == "1":
+        return jsonify({"ok": True, "total_saldos": total_saldos_casas()})
 
     return redirect("/saldos")
 

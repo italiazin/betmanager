@@ -69,4 +69,14 @@ document.addEventListener("click", function(e){
 })
 </script>
 
+
+<script id="v72-global-scroll-js">
+function v72SaveScroll(){sessionStorage.setItem("restoreScrollY", String(window.scrollY || 0))}
+function v72RestoreScroll(){const y=sessionStorage.getItem("restoreScrollY"); if(y!==null){sessionStorage.removeItem("restoreScrollY"); setTimeout(()=>window.scrollTo(0, Number(y||0)),0)}}
+document.addEventListener("DOMContentLoaded", v72RestoreScroll)
+window.addEventListener("beforeunload", v72SaveScroll)
+document.addEventListener("click", e=>{if(e.target.closest("a,button")) v72SaveScroll()}, true)
+document.addEventListener("submit", e=>v72SaveScroll(), true)
+</script>
+
 </body></html>
