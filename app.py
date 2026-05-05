@@ -4768,6 +4768,28 @@ def carregar_usuarios():
             }
         ]
     }
+    def garantir_admin():
+    usuarios = carregar_usuarios()
+
+    existe_admin = any(u.get("is_admin") for u in usuarios.get("users", []))
+
+    if not existe_admin:
+        novo_admin = {
+            "id": str(uuid.uuid4()),
+            "nome": "Admin",
+            "email": "admin@betmanager.com",
+            "senha_hash": generate_password_hash("Admin@123"),
+            "is_admin": True,
+            "ativo": True,
+            "assinatura_ativa": True,
+            "plano": "admin",
+            "apostas_publicas_padrao": False
+        }
+
+        usuarios["users"].append(novo_admin)
+        salvar_usuarios(usuarios)
+
+        print("ADMIN CRIADO AUTOMATICAMENTE")
 
     if banco_ativo():
         migrar_json_para_banco_se_vazio()
@@ -8336,7 +8358,7 @@ def ultimas_apostas_comunidade_base(limit=10):
             "valor": bd.get("valor", "")
         })
     return saida
-
+garantir_admin()
 
 if __name__ == "__main__":
     app.run(debug=True)
