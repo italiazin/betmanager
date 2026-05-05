@@ -16,4 +16,4 @@ COPY . .
 ENV TESSERACT_CMD=/usr/bin/tesseract
 ENV PYTHONUNBUFFERED=1
 
-CMD gunicorn app:app --bind 0.0.0.0:$PORT --workers 1 --threads 2 --timeout 180 --log-level debug
+CMD gunicorn app:app --bind 0.0.0.0:$PORT --workers 1 --threads 4 --timeout 180 --preload --log-level info

@@ -1,5 +1,7 @@
 from flask import Flask, render_template, request, redirect, jsonify, session, url_for
 import json
+import time
+from copy import deepcopy
 import uuid
 import os
 import re
@@ -36,6 +38,10 @@ USUARIOS_PATH = os.path.join(BASE_DIR, "usuarios.json")
 
 DATABASE_URL = os.environ.get("DATABASE_URL", "").strip()
 DB_ENGINE = None
+
+# V71: cache curto de leitura do app_store para reduzir latência.
+APP_STORE_CACHE = {}
+APP_STORE_CACHE_TTL = float(os.environ.get("APP_STORE_CACHE_TTL", "3"))
 
 def _normalizar_database_url(url):
     if url.startswith("postgres://"):
@@ -93,6 +99,12 @@ def db_get_json(chave, default):
     if not banco_ativo():
         return default
 
+    agora = time.time()
+    cache_item = APP_STORE_CACHE.get(chave)
+
+    if cache_item and (agora - cache_item["ts"]) <= APP_STORE_CACHE_TTL:
+        return deepcopy(cache_item["valor"])
+
     try:
         engine = get_db_engine()
 
@@ -104,20 +116,21 @@ def db_get_json(chave, default):
 
             if not row:
                 db_set_json(chave, default)
-                return default
+                APP_STORE_CACHE[chave] = {"ts": agora, "valor": deepcopy(default)}
+                return deepcopy(default)
 
             valor = row[0]
 
             if valor is None:
-                return default
-
-            if isinstance(valor, str):
+                valor = default
+            elif isinstance(valor, str):
                 try:
-                    return json.loads(valor)
+                    valor = json.loads(valor)
                 except:
-                    return default
+                    valor = default
 
-            return valor
+            APP_STORE_CACHE[chave] = {"ts": agora, "valor": deepcopy(valor)}
+            return deepcopy(valor)
 
     except Exception as e:
         print("ERRO db_get_json:", chave, repr(e))
@@ -142,6 +155,7 @@ def db_set_json(chave, valor):
                 {"chave": chave, "valor": json.dumps(valor, ensure_ascii=False)}
             )
 
+        APP_STORE_CACHE[chave] = {"ts": time.time(), "valor": deepcopy(valor)}
         return True
 
     except Exception as e:
@@ -202,7 +216,7 @@ API_KEY = CONFIG.get("API_KEY", "")
 
 print("CONFIG PATH:", CONFIG_PATH)
 print("API KEY:", API_KEY)
-print("VERSAO_CARREGADA: OCR_CLIENTE_V70_ADMIN_LOGIN_FORCE")
+print("VERSAO_CARREGADA: OCR_CLIENTE_V71_PERFORMANCE")
 
 if os.name == "nt":
     tess_path = r"C:\Program Files\Tesseract-OCR\tesseract.exe"
@@ -396,16 +410,6 @@ def movimentacoes_usuario_v61():
 
 def total_saldos_casas_v61():
     return round(sum(float(v or 0) for v in saldo_casas_usuario_v61().values()), 2)
-
-
-@app.context_processor
-def inject_usuario():
-    return {
-        "usuario": usuario_logado(),
-        "usuario_inicial": ((usuario_logado() or {}).get("nome", "U")[:1].upper()),
-        "assinatura_ativa_usuario": assinatura_ativa_usuario if "assinatura_ativa_usuario" in globals() else (lambda: False),
-        "aposta_publica_padrao_usuario": aposta_publica_padrao_usuario if "aposta_publica_padrao_usuario" in globals() else (lambda: False)
-    }
 
 
 
@@ -4913,6 +4917,18 @@ try:
     garantir_admin()
 except Exception as e:
     print('BOOT ADMIN ERROR:', repr(e))
+
+
+
+@app.context_processor
+def inject_usuario():
+    u = usuario_logado()
+    return {
+        "usuario": u,
+        "usuario_inicial": ((u or {}).get("nome", "U")[:1].upper()),
+        "assinatura_ativa_usuario": (lambda: bool(u and (u.get("is_admin") or u.get("assinatura_ativa")))),
+        "aposta_publica_padrao_usuario": (lambda: bool(u and u.get("apostas_publicas_padrao", False)))
+    }
 
 
 @app.route("/bloqueado")
