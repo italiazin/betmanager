@@ -9,8 +9,11 @@ import base64
 import unicodedata
 import calendar
 import difflib
+from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
-from datetime import timedelta
+
+def agora_brasil():
+    return datetime.now(ZoneInfo("America/Sao_Paulo"))
 import requests
 from sqlalchemy import create_engine, text
 from sqlalchemy.exc import SQLAlchemyError
