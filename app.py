@@ -9,8 +9,8 @@ import base64
 import unicodedata
 import calendar
 import difflib
-from datetime import datetime
-from zoneinfo import ZoneInfo, timedelta
+from zoneinfo import ZoneInfo
+from datetime import timedelta
 import requests
 from sqlalchemy import create_engine, text
 from sqlalchemy.exc import SQLAlchemyError
