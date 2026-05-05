@@ -2696,3 +2696,5 @@ button:disabled {
 .table-panel tr {
     transition: background .15s ease, opacity .18s ease, transform .18s ease;
 }
+
+/* V73 - salvar preview OCR corrigido */

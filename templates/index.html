@@ -1762,5 +1762,61 @@ window.copiarApostaComunidade = function(btn){
 }
 </script>
 
+
+<script id="v73-preview-save-fix">
+document.addEventListener("DOMContentLoaded", ()=>{
+    const salvar = document.getElementById("salvar-preview")
+    if(!salvar) return
+
+    salvar.onclick = ()=>{
+        const dados = (window.apostasPreview || []).map((a, i)=>({
+            aposta: document.getElementById(`a${i}`)?.value || "",
+            casa: document.getElementById(`c${i}`)?.value || "",
+            esporte: document.getElementById(`e${i}`)?.value || "",
+            jogo: document.getElementById(`j${i}`)?.value || "",
+            mercado: document.getElementById(`m${i}`)?.value || "",
+            selecao: document.getElementById(`s${i}`)?.value || "",
+            linha: document.getElementById(`l${i}`)?.value || "",
+            periodo: document.getElementById(`p${i}`)?.value || "",
+            odd: document.getElementById(`o${i}`)?.value || "",
+            valor: document.getElementById(`v${i}`)?.value || "",
+            texto_bruto: a.texto_bruto || "",
+            texto_interpretado: a.texto_interpretado || "",
+            itens_multipla: a.itens_multipla || {},
+            itens_multipla_detalhados: a.itens_multipla_detalhados || []
+        }))
+
+        salvar.disabled = true
+        salvar.innerText = "Salvando..."
+
+        fetch("/salvar_preview", {
+            method: "POST",
+            headers: {"Content-Type":"application/json"},
+            body: JSON.stringify({apostas:dados})
+        })
+        .then(async r=>{
+            const txt = await r.text()
+            let data = {}
+            try { data = JSON.parse(txt) } catch(e) { throw new Error(txt || "Resposta inválida") }
+            if(!r.ok || data.ok === false) throw new Error(data.erro || "Erro ao salvar preview")
+            return data
+        })
+        .then(d=>{
+            salvar.innerText = "Salvo ✓"
+            if(typeof v72Toast === "function"){
+                v72Toast(`${d.salvas || 0} aposta(s) salva(s)`)
+            }
+            setTimeout(()=>location.reload(), 450)
+        })
+        .catch(err=>{
+            console.error("ERRO salvar_preview:", err)
+            alert("Erro ao salvar preview: " + (err.message || err))
+            salvar.disabled = false
+            salvar.innerText = "Salvar Apostas do Preview"
+        })
+    }
+})
+</script>
+
 </body>
 </html>
