@@ -1,0 +1,27 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head><meta charset="UTF-8"><title>Criar Conta</title><link rel="stylesheet" href="/static/style.css"></head>
+<body class="auth-page">
+<div class="auth-card">
+    <h1>Criar conta</h1>
+    <p>Crie seu acesso ao Bet Manager.</p>
+    {% if erro %}<div class="auth-error">{{ erro }}</div>{% endif %}
+    <form method="POST" class="auth-form">
+        <input name="nome" placeholder="Nome" required>
+        <input name="email" type="email" placeholder="E-mail" required>
+        <input name="senha" type="password" placeholder="Senha" required>
+        <button type="submit">Criar conta</button>
+    </form>
+    <p style="margin-top:16px;">Já tem conta? <a class="auth-link" href="/login">Entrar</a></p>
+</div>
+
+<script id="v72-global-scroll-js">
+function v72SaveScroll(){sessionStorage.setItem("restoreScrollY", String(window.scrollY || 0))}
+function v72RestoreScroll(){const y=sessionStorage.getItem("restoreScrollY"); if(y!==null){sessionStorage.removeItem("restoreScrollY"); setTimeout(()=>window.scrollTo(0, Number(y||0)),0)}}
+document.addEventListener("DOMContentLoaded", v72RestoreScroll)
+window.addEventListener("beforeunload", v72SaveScroll)
+document.addEventListener("click", e=>{if(e.target.closest("a,button")) v72SaveScroll()}, true)
+document.addEventListener("submit", e=>v72SaveScroll(), true)
+</script>
+
+</body></html>

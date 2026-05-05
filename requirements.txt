@@ -1,8 +1,6 @@
-Flask
-gunicorn
-pytesseract
-Pillow
-requests
-Werkzeug
-SQLAlchemy
-psycopg2-binary
+services:
+  - type: web
+    name: betmanager
+    env: docker
+    plan: starter
+    autoDeploy: true
