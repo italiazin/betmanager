@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <title>Perfil e Configurações</title>
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+
+<aside class="sidebar">
+    <div class="sidebar-top">
+        <div class="logo">
+            <span class="logo-icon">🎯</span>
+            <span class="logo-text">Bet Manager</span>
+        </div>
+        <button type="button" class="sidebar-toggle" onclick="toggleSidebar()">‹</button>
+    </div>
+
+    <nav>
+        <a href="/" data-title="Dashboard"><span class="nav-icon">⌂</span><span class="nav-text">Dashboard</span></a>
+        <a href="/calculadora" data-title="Calculadora"><span class="nav-icon">🧮</span><span class="nav-text">Calculadora</span></a>
+        <a href="/estatisticas" data-title="Estatísticas"><span class="nav-icon">▥</span><span class="nav-text">Estatísticas</span></a>
+        <a href="/saldos" data-title="Saldos"><span class="nav-icon">💰</span><span class="nav-text">Saldos</span></a>
+        {% if usuario and usuario.is_admin %}
+        <a href="/admin" data-title="Admin"><span class="nav-icon">⚙</span><span class="nav-text">Admin</span></a>
+        {% endif %}
+        <a class="active" href="/configuracoes" data-title="Configurações"><span class="nav-icon">⚙</span><span class="nav-text">Configurações</span></a>
+        <a href="/logout" data-title="Sair"><span class="nav-icon">↪</span><span class="nav-text">Sair</span></a>
+    </nav>
+
+    <div class="sidebar-user-wrap">
+        <div class="sidebar-user-card" onclick="toggleUserMenu(event)">
+            <div class="sidebar-user-avatar">{{ usuario_inicial if usuario_inicial else "U" }}</div>
+            <div class="sidebar-user-info">
+                <strong>{{ usuario.nome if usuario else "Usuário" }}</strong>
+                <span>{{ usuario.email if usuario else "" }}</span>
+            </div>
+            <span class="sidebar-user-arrow">⌄</span>
+        </div>
+
+        <div id="sidebarUserMenu" class="sidebar-user-menu">
+            <a href="/configuracoes">👤 Perfil / Configurações</a>
+            <a href="/saldos">💰 Saldos</a>
+            {% if usuario and usuario.is_admin %}
+            <a href="/admin">⚙ Admin</a>
+            {% endif %}
+            <a href="/logout" class="logout-link">🚪 Sair</a>
+        </div>
+    </div>
+</aside>
+
+<main class="app">
+    <header class="topbar">
+        <div>
+            <h1>Perfil e Configurações</h1>
+            <p>Gerencie seu nome, senha e privacidade das apostas.</p>
+        </div>
+        <a href="/" class="api-button">Voltar ao Dashboard</a>
+    </header>
+
+    {% if ok %}
+    <div class="config-ok">{{ ok }}</div>
+    {% endif %}
+
+    {% if erro %}
+    <div class="auth-error">{{ erro }}</div>
+    {% endif %}
+
+    <section class="profile-grid">
+        <div class="panel config-panel">
+            <h2>Perfil</h2>
+            <form method="POST" class="config-form">
+                <input type="hidden" name="acao" value="perfil">
+
+                <label>Nome de usuário</label>
+                <input name="nome" value="{{ user.nome }}" required>
+
+                <label>E-mail</label>
+                <input value="{{ user.email }}" disabled>
+
+                <button type="submit">Salvar Perfil</button>
+            </form>
+        </div>
+
+        <div class="panel config-panel">
+            <h2>Segurança</h2>
+            <form method="POST" class="config-form">
+                <input type="hidden" name="acao" value="senha">
+
+                <label>Senha atual</label>
+                <input name="senha_atual" type="password" required>
+
+                <label>Nova senha</label>
+                <input name="nova_senha" type="password" required>
+
+                <label>Confirmar nova senha</label>
+                <input name="confirmar_senha" type="password" required>
+
+                <button type="submit">Alterar Senha</button>
+                <p class="saldo-help">A senha precisa ter pelo menos 6 caracteres.</p>
+            </form>
+        </div>
+
+        <div class="panel config-panel">
+            <h2>Privacidade das apostas</h2>
+            <form method="POST" class="config-form">
+                <input type="hidden" name="acao" value="preferencias">
+
+                <label class="config-toggle">
+                    <input type="checkbox" name="apostas_publicas_padrao" {% if user.apostas_publicas_padrao %}checked{% endif %}>
+                    <div>
+                        <strong>Mostrar minhas apostas no feed da comunidade</strong>
+                        <span>Quando ativado, novas apostas aparecerão em “Últimas Apostas” para outros usuários copiarem.</span>
+                    </div>
+                </label>
+
+                <button type="submit">Salvar Privacidade</button>
+            </form>
+        </div>
+    </section>
+</main>
+
+<script>
+function toggleSidebar(){
+    document.body.classList.toggle("sidebar-collapsed")
+    const collapsed = document.body.classList.contains("sidebar-collapsed")
+    localStorage.setItem("sidebarCollapsed", collapsed ? "1" : "0")
+    const btn = document.querySelector(".sidebar-toggle")
+    if(btn) btn.innerText = collapsed ? "›" : "‹"
+}
+
+function toggleUserMenu(ev){
+    if(ev) ev.stopPropagation()
+    const menu = document.getElementById("sidebarUserMenu")
+    if(menu) menu.classList.toggle("open")
+}
+
+document.addEventListener("click", function(e){
+    const menu = document.getElementById("sidebarUserMenu")
+    const card = document.querySelector(".sidebar-user-card")
+    if(menu && card && !menu.contains(e.target) && !card.contains(e.target)){
+        menu.classList.remove("open")
+    }
+})
+
+document.addEventListener("DOMContentLoaded", ()=>{
+    const collapsed = localStorage.getItem("sidebarCollapsed") === "1"
+    if(collapsed){
+        document.body.classList.add("sidebar-collapsed")
+        const btn = document.querySelector(".sidebar-toggle")
+        if(btn) btn.innerText = "›"
+    }
+})
+</script>
+
+</body>
+</html>

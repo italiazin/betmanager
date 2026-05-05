@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head><meta charset="UTF-8"><title>Admin</title><link rel="stylesheet" href="/static/style.css"></head>
+<body>
+<aside class="sidebar">
+    <div class="sidebar-top"><div class="logo"><span class="logo-icon">🎯</span><span class="logo-text">Bet Manager</span></div></div>
+    <nav>
+        <a href="/" data-title="Dashboard"><span class="nav-icon">⌂</span><span class="nav-text">Dashboard</span></a>
+        <a href="/saldos" data-title="Saldos"><span class="nav-icon">💰</span><span class="nav-text">Saldos</span></a>
+        <a class="active" href="/admin" data-title="Admin"><span class="nav-icon">⚙</span><span class="nav-text">Admin</span></a>
+        <a href="/logout" data-title="Sair"><span class="nav-icon">↪</span><span class="nav-text">Sair</span></a>
+    </nav>
+
+    <div class="sidebar-user-wrap">
+        <div class="sidebar-user-card" onclick="toggleUserMenu(event)">
+            <div class="sidebar-user-avatar">{{ usuario_inicial if usuario_inicial else "U" }}</div>
+            <div class="sidebar-user-info">
+                <strong>{{ usuario.nome if usuario else "Usuário" }}</strong>
+                <span>{{ usuario.email if usuario else "" }}</span>
+            </div>
+            <span class="sidebar-user-arrow">⌄</span>
+        </div>
+
+        <div id="sidebarUserMenu" class="sidebar-user-menu">
+            <a href="/configuracoes">👤 Perfil / Configurações</a>
+            <a href="/saldos">💰 Saldos</a>
+            {% if usuario and usuario.is_admin %}
+            <a href="/admin">⚙ Admin</a>
+            {% endif %}
+            <a href="/logout" class="logout-link">🚪 Sair</a>
+        </div>
+    </div>
+
+</aside>
+<main class="app">
+<header class="topbar"><div><h1>Painel Admin</h1><p>Usuários cadastrados em usuarios.json</p></div></header>
+<section class="panel">
+    <h2>Usuários</h2>
+    <div class="admin-grid">
+        {% for u in usuarios %}
+        <div class="admin-row">
+            <strong>{{ u.nome }}</strong>
+            <span>{{ u.email }}</span>
+            <span class="badge {{ 'green' if u.ativo else 'red' }}">{{ 'Ativo' if u.ativo else 'Bloqueado' }}</span>
+            <span class="badge {{ 'green' if u.assinatura_ativa else 'yellow' }}">{{ 'Assinatura ON' if u.assinatura_ativa else 'Sem assinatura' }}</span>
+            <span class="badge blue plan-badge">{{ u.plano }}</span>
+            <a href="/admin/toggle/{{ u.id }}"><button class="dark">{{ 'Bloquear' if u.ativo else 'Ativar' }}</button></a>
+            <a href="/admin/assinatura/{{ u.id }}"><button class="blue">{{ 'Desativar assinatura' if u.assinatura_ativa else 'Ativar assinatura' }}</button></a>
+            <a href="/admin/promover/{{ u.id }}"><button class="blue">{{ 'Remover admin' if u.is_admin else 'Tornar admin' }}</button></a>
+        </div>
+        {% endfor %}
+    </div>
+</section>
+</main>
+
+<script id="v62-userbox-js">
+function toggleUserMenu(ev){
+    if(ev) ev.stopPropagation()
+    const menu = document.getElementById("sidebarUserMenu")
+    if(menu) menu.classList.toggle("open")
+}
+
+document.addEventListener("click", function(e){
+    const menu = document.getElementById("sidebarUserMenu")
+    const card = document.querySelector(".sidebar-user-card")
+    if(menu && card && !menu.contains(e.target) && !card.contains(e.target)){
+        menu.classList.remove("open")
+    }
+})
+</script>
+
+</body></html>

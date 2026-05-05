@@ -1,0 +1,250 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <title>Saldos por Casa</title>
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+
+<body>
+
+<aside class="sidebar">
+    <div class="sidebar-top">
+        <div class="logo">
+            <span class="logo-icon">🎯</span>
+            <span class="logo-text">Bet Manager</span>
+        </div>
+        <button type="button" class="sidebar-toggle" onclick="toggleSidebar()" title="Recolher menu">‹</button>
+    </div>
+
+    <nav>
+        <a href="/" data-title="Dashboard"><span class="nav-icon">⌂</span><span class="nav-text">Dashboard</span></a>
+        <a href="/calculadora" data-title="Calculadora"><span class="nav-icon">🧮</span><span class="nav-text">Calculadora</span></a>
+        <a href="/estatisticas" data-title="Estatísticas"><span class="nav-icon">▥</span><span class="nav-text">Estatísticas</span></a>
+        <a class="active" href="/saldos" data-title="Saldos"><span class="nav-icon">💰</span><span class="nav-text">Saldos</span></a>
+    {% if usuario and usuario.is_admin %}
+        <a href="/admin" data-title="Admin"><span class="nav-icon">⚙</span><span class="nav-text">Admin</span></a>
+        {% endif %}
+        <a href="/configuracoes" data-title="Configurações"><span class="nav-icon">⚙</span><span class="nav-text">Configurações</span></a>
+        <a href="/logout" data-title="Sair"><span class="nav-icon">↪</span><span class="nav-text">Sair</span></a>
+</nav>
+
+    <div class="sidebar-user-wrap">
+        <div class="sidebar-user-card" onclick="toggleUserMenu(event)">
+            <div class="sidebar-user-avatar">{{ usuario_inicial if usuario_inicial else "U" }}</div>
+            <div class="sidebar-user-info">
+                <strong>{{ usuario.nome if usuario else "Usuário" }}</strong>
+                <span>{{ usuario.email if usuario else "" }}</span>
+            </div>
+            <span class="sidebar-user-arrow">⌄</span>
+        </div>
+
+        <div id="sidebarUserMenu" class="sidebar-user-menu">
+            <a href="/configuracoes">👤 Perfil / Configurações</a>
+            <a href="/saldos">💰 Saldos</a>
+            {% if usuario and usuario.is_admin %}
+            <a href="/admin">⚙ Admin</a>
+            {% endif %}
+            <a href="/logout" class="logout-link">🚪 Sair</a>
+        </div>
+    </div>
+
+</aside>
+
+<main class="app">
+
+<header class="topbar">
+    <div>
+        <h1>Saldos por Casa</h1>
+        <p>Controle quanto dinheiro existe em cada casa de aposta.</p>
+    </div>
+
+    <a href="/" class="api-button">Voltar ao Dashboard</a>
+</header>
+
+<section class="cards">
+    <div class="metric-card banca-card">
+        <span>Total nas Casas</span>
+        <strong>R$ {{ "%.2f"|format(total_saldos) }}</strong>
+    </div>
+</section>
+
+<section class="saldos-grid">
+    <div class="panel">
+        <h2>Adicionar / Atualizar Saldo</h2>
+
+        <form method="POST" action="/saldos/salvar" class="saldo-form">
+            <input name="casa" list="casas-list" placeholder="Casa. Ex: Superbet" required>
+            <datalist id="casas-list">
+                {% for casa in casas %}
+                    <option value="{{ casa }}">
+                {% endfor %}
+            </datalist>
+
+            <input name="saldo" type="number" step="0.01" placeholder="Definir saldo exato. Ex: 300" required>
+            <button type="submit">Salvar Saldo Exato</button>
+        </form>
+
+        <h2 style="margin-top:22px;">Movimentar Carteira</h2>
+
+        <form method="POST" action="/saldos/movimento" class="saldo-form">
+            <input name="casa" list="casas-list" placeholder="Casa origem" required>
+
+            <select name="tipo">
+                <option value="deposito">Depósito</option>
+                <option value="saque">Saque</option>
+                <option value="bonus">Bônus</option>
+                <option value="transferencia">Transferência</option>
+            </select>
+
+            <input name="destino" list="casas-list" placeholder="Casa destino (só transferência)">
+            <input name="valor" type="number" step="0.01" placeholder="Valor" required>
+
+            <button type="submit">Registrar Movimento</button>
+        </form>
+    </div>
+
+    <div class="panel">
+        <h2>Casas cadastradas</h2>
+
+        {% if saldos %}
+            {% for item in saldos %}
+                <div class="saldo-row">
+                    <strong>{{ item.casa }}</strong>
+                    <span>R$ {{ "%.2f"|format(item.saldo) }}</span>
+                    <button type="button" class="blue" onclick="editarSaldoCasa('{{ item.casa }}', '{{ "%.2f"|format(item.saldo) }}')">Editar</button>
+                    <a href="/saldos/remover/{{ item.casa }}"><button class="dark">Remover</button></a>
+                </div>
+            {% endfor %}
+        {% else %}
+            <p class="saldo-help">Nenhuma casa cadastrada ainda.</p>
+        {% endif %}
+    </div>
+
+<section class="panel" style="margin-top:20px;">
+    <h2>Histórico de Movimentações</h2>
+
+    <table class="mov-table">
+        <thead>
+            <tr>
+                <th>Data</th>
+                <th>Casa</th>
+                <th>Tipo</th>
+                <th>Valor</th>
+                <th>Descrição</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for mov in movimentacoes %}
+            <tr>
+                <td>{{ mov.data }}</td>
+                <td>{{ mov.casa }}</td>
+                <td>{{ mov.tipo }}</td>
+                <td class="{{ 'green-text' if mov.valor > 0 else 'red-text' }}">R$ {{ "%.2f"|format(mov.valor) }}</td>
+                <td>{{ mov.descricao }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</section>
+
+</main>
+
+<div id="saldoEditModal" class="modal">
+    <div class="modal-content saldo-edit-modal">
+        <div class="modal-head">
+            <h2>Editar saldo da casa</h2>
+            <button type="button" onclick="fecharEditarSaldo()">×</button>
+        </div>
+
+        <form method="POST" action="/saldos/salvar" class="saldo-form">
+            <label>Casa</label>
+            <input id="editSaldoCasa" name="casa" readonly>
+
+            <label>Novo saldo</label>
+            <input id="editSaldoValor" name="saldo" type="number" step="0.01" required>
+
+            <button type="submit">Salvar novo saldo</button>
+        </form>
+    </div>
+</div>
+
+
+<script>
+function toggleSidebar(){
+    document.body.classList.toggle("sidebar-collapsed")
+    const collapsed = document.body.classList.contains("sidebar-collapsed")
+    localStorage.setItem("sidebarCollapsed", collapsed ? "1" : "0")
+    const btn = document.querySelector(".sidebar-toggle")
+    if(btn) btn.innerText = collapsed ? "›" : "‹"
+}
+
+document.addEventListener("DOMContentLoaded", ()=>{
+    const collapsed = localStorage.getItem("sidebarCollapsed") === "1"
+    if(collapsed){
+        document.body.classList.add("sidebar-collapsed")
+        const btn = document.querySelector(".sidebar-toggle")
+        if(btn) btn.innerText = "›"
+    }
+})
+
+// V45 - preservar posição em qualquer ação que ainda faça reload
+document.addEventListener("click", function(e){
+    const action = e.target.closest('a[href^="/resultado/"], a[href^="/remover/"], a[href^="/admin/"], a[href^="/saldos/remover/"]')
+    if(action){
+        sessionStorage.setItem("restoreScrollY", String(window.scrollY || 0))
+    }
+}, true)
+
+window.addEventListener("beforeunload", function(){
+    sessionStorage.setItem("restoreScrollY", String(window.scrollY || 0))
+})
+
+document.addEventListener("DOMContentLoaded", function(){
+    const y = sessionStorage.getItem("restoreScrollY")
+    if(y !== null){
+        sessionStorage.removeItem("restoreScrollY")
+        setTimeout(()=>window.scrollTo(0, parseInt(y || "0")), 0)
+    }
+})
+
+</script>
+
+
+<script id="v62-userbox-js">
+function toggleUserMenu(ev){
+    if(ev) ev.stopPropagation()
+    const menu = document.getElementById("sidebarUserMenu")
+    if(menu) menu.classList.toggle("open")
+}
+
+document.addEventListener("click", function(e){
+    const menu = document.getElementById("sidebarUserMenu")
+    const card = document.querySelector(".sidebar-user-card")
+    if(menu && card && !menu.contains(e.target) && !card.contains(e.target)){
+        menu.classList.remove("open")
+    }
+})
+</script>
+
+
+<script>
+function editarSaldoCasa(casa, saldo){
+    const modal = document.getElementById("saldoEditModal")
+    const casaInput = document.getElementById("editSaldoCasa")
+    const valorInput = document.getElementById("editSaldoValor")
+
+    if(casaInput) casaInput.value = casa
+    if(valorInput) valorInput.value = String(saldo || "0").replace(",", ".")
+
+    if(modal) modal.classList.add("show")
+}
+
+function fecharEditarSaldo(){
+    const modal = document.getElementById("saldoEditModal")
+    if(modal) modal.classList.remove("show")
+}
+</script>
+
+</body>
+</html>

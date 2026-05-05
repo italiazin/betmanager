@@ -1,0 +1,8 @@
+Flask
+gunicorn
+pytesseract
+Pillow
+requests
+Werkzeug
+SQLAlchemy
+psycopg2-binary

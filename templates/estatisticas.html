@@ -1,0 +1,243 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <title>Estatísticas</title>
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+
+<body>
+
+<aside class="sidebar">
+    <div class="sidebar-top">
+        <div class="logo">
+            <span class="logo-icon">🎯</span>
+            <span class="logo-text">Bet Manager</span>
+        </div>
+        <button type="button" class="sidebar-toggle" onclick="toggleSidebar()">‹</button>
+    </div>
+
+    <nav>
+        <a href="/" data-title="Dashboard"><span class="nav-icon">⌂</span><span class="nav-text">Dashboard</span></a>
+        <a href="/calculadora" data-title="Calculadora"><span class="nav-icon">🧮</span><span class="nav-text">Calculadora</span></a>
+        <a class="active" href="/estatisticas" data-title="Estatísticas"><span class="nav-icon">▥</span><span class="nav-text">Estatísticas</span></a>
+        <a href="/saldos" data-title="Saldos"><span class="nav-icon">💰</span><span class="nav-text">Saldos</span></a>
+        {% if usuario and usuario.is_admin %}
+        <a href="/admin" data-title="Admin"><span class="nav-icon">⚙</span><span class="nav-text">Admin</span></a>
+        {% endif %}
+        <a href="/configuracoes" data-title="Configurações"><span class="nav-icon">⚙</span><span class="nav-text">Configurações</span></a>
+        <a href="/logout" data-title="Sair"><span class="nav-icon">↪</span><span class="nav-text">Sair</span></a>
+    </nav>
+
+    <div class="sidebar-user-wrap">
+        <div class="sidebar-user-card" onclick="toggleUserMenu(event)">
+            <div class="sidebar-user-avatar">{{ usuario_inicial if usuario_inicial else "U" }}</div>
+            <div class="sidebar-user-info">
+                <strong>{{ usuario.nome if usuario else "Usuário" }}</strong>
+                <span>{{ usuario.email if usuario else "" }}</span>
+            </div>
+            <span class="sidebar-user-arrow">⌄</span>
+        </div>
+
+        <div id="sidebarUserMenu" class="sidebar-user-menu">
+            <a href="/configuracoes">👤 Perfil / Configurações</a>
+            <a href="/saldos">💰 Saldos</a>
+            {% if usuario and usuario.is_admin %}
+            <a href="/admin">⚙ Admin</a>
+            {% endif %}
+            <a href="/logout" class="logout-link">🚪 Sair</a>
+        </div>
+    </div>
+
+</aside>
+
+<main class="app">
+
+<header class="topbar">
+    <div>
+        <h1>Estatísticas</h1>
+        <p>Histórico, calendário e rankings da sua performance</p>
+    </div>
+
+    <a href="/" class="api-button">Voltar ao Dashboard</a>
+</header>
+
+<section class="cards">
+    <div class="metric-card banca-card">
+        <span>Banca Atual</span>
+        <strong>R$ {{ "%.2f"|format(m.banca_atual) }}</strong>
+    </div>
+
+    <div class="metric-card">
+        <span>Lucro Total</span>
+        <strong class="{{ 'green-text' if m.lucro_total >= 0 else 'red-text' }}">
+            R$ {{ "%.2f"|format(m.lucro_total) }}
+        </strong>
+    </div>
+
+    <div class="metric-card">
+        <span>ROI</span>
+        <strong>{{ "%.2f"|format(m.roi) }}%</strong>
+    </div>
+
+    <div class="metric-card">
+        <span>Taxa de Acerto</span>
+        <strong>{{ "%.2f"|format(m.taxa) }}%</strong>
+    </div>
+
+    <div class="metric-card">
+        <span>Total Apostas</span>
+        <strong>{{ m.total }}</strong>
+    </div>
+
+    <div class="metric-card pending-card">
+        <span>Pendentes</span>
+        <strong>{{ m.pendentes }}</strong>
+    </div>
+</section>
+
+<section class="history-grid">
+    <div class="panel">
+        <div class="calendar-title-row">
+            <a class="calendar-nav" href="/estatisticas?mes={{ calendario.prev_mes }}&ano={{ calendario.prev_ano }}">‹</a>
+            <h2>Calendário - {{ calendario.mes_nome }} {{ calendario.ano }}</h2>
+            <a class="calendar-nav" href="/estatisticas?mes={{ calendario.next_mes }}&ano={{ calendario.next_ano }}">›</a>
+        </div>
+
+        <div class="calendar-weekdays">
+            <span>Dom</span>
+            <span>Seg</span>
+            <span>Ter</span>
+            <span>Qua</span>
+            <span>Qui</span>
+            <span>Sex</span>
+            <span>Sáb</span>
+        </div>
+
+        <div class="calendar">
+            {% for semana in calendario.semanas %}
+                {% for dia in semana %}
+                    <div class="calendar-day {{ dia.classe }}">
+                        <span class="day-number">{{ dia.dia }}</span>
+
+                        {% if dia.dia %}
+                            <strong class="{{ 'green-text' if dia.lucro > 0 else 'red-text' if dia.lucro < 0 else '' }}">
+                                R$ {{ "%.2f"|format(dia.lucro) }}
+                            </strong>
+                            <small>{{ dia.apostas }} aposta(s)</small>
+                        {% endif %}
+                    </div>
+                {% endfor %}
+            {% endfor %}
+        </div>
+    </div>
+
+    <div class="panel stats-panel">
+        <h2>Resumo avançado</h2>
+
+        <div class="extra-stat">
+            <span>Ticket Médio</span>
+            <strong>R$ {{ "%.2f"|format(extras.ticket_medio) }}</strong>
+        </div>
+
+        <div class="extra-stat">
+            <span>Maior Green</span>
+            <strong class="green-text">R$ {{ "%.2f"|format(extras.maior_green) }}</strong>
+        </div>
+
+        <div class="extra-stat">
+            <span>Maior Red</span>
+            <strong class="red-text">R$ {{ "%.2f"|format(extras.maior_red) }}</strong>
+        </div>
+
+        <div class="extra-stat">
+            <span>Sequência Atual</span>
+            <strong>{{ extras.sequencia }} {{ extras.tipo_seq }}</strong>
+        </div>
+    </div>
+</section>
+
+<section class="ranking-grid">
+    <div class="panel">
+        <h2>Ranking por Casa</h2>
+
+        {% for item in extras.ranking_casas[:8] %}
+        <div class="ranking-row">
+            <span>{{ item.nome }}</span>
+            <small>{{ item.apostas }} aposta(s)</small>
+            <strong class="{{ 'green-text' if item.lucro >= 0 else 'red-text' }}">
+                R$ {{ "%.2f"|format(item.lucro) }}
+            </strong>
+        </div>
+        {% endfor %}
+    </div>
+
+    <div class="panel">
+        <h2>Ranking por Esporte</h2>
+
+        {% for item in extras.ranking_esportes[:8] %}
+        <div class="ranking-row">
+            <span>{{ item.nome }}</span>
+            <small>{{ item.apostas }} aposta(s)</small>
+            <strong class="{{ 'green-text' if item.lucro >= 0 else 'red-text' }}">
+                R$ {{ "%.2f"|format(item.lucro) }}
+            </strong>
+        </div>
+        {% endfor %}
+    </div>
+
+    <div class="panel">
+        <h2>Ranking por Mercado</h2>
+
+        {% for item in extras.ranking_mercados[:8] %}
+        <div class="ranking-row">
+            <span>{{ item.nome }}</span>
+            <small>{{ item.apostas }} aposta(s)</small>
+            <strong class="{{ 'green-text' if item.lucro >= 0 else 'red-text' }}">
+                R$ {{ "%.2f"|format(item.lucro) }}
+            </strong>
+        </div>
+        {% endfor %}
+    </div>
+</section>
+
+</main>
+
+<script>
+function toggleSidebar(){
+    document.body.classList.toggle("sidebar-collapsed")
+    const collapsed = document.body.classList.contains("sidebar-collapsed")
+    localStorage.setItem("sidebarCollapsed", collapsed ? "1" : "0")
+    const btn = document.querySelector(".sidebar-toggle")
+    if(btn) btn.innerText = collapsed ? "›" : "‹"
+}
+
+document.addEventListener("DOMContentLoaded", ()=>{
+    const collapsed = localStorage.getItem("sidebarCollapsed") === "1"
+    if(collapsed){
+        document.body.classList.add("sidebar-collapsed")
+        const btn = document.querySelector(".sidebar-toggle")
+        if(btn) btn.innerText = "›"
+    }
+})
+</script>
+
+
+<script id="v62-userbox-js">
+function toggleUserMenu(ev){
+    if(ev) ev.stopPropagation()
+    const menu = document.getElementById("sidebarUserMenu")
+    if(menu) menu.classList.toggle("open")
+}
+
+document.addEventListener("click", function(e){
+    const menu = document.getElementById("sidebarUserMenu")
+    const card = document.querySelector(".sidebar-user-card")
+    if(menu && card && !menu.contains(e.target) && !card.contains(e.target)){
+        menu.classList.remove("open")
+    }
+})
+</script>
+
+</body>
+</html>
