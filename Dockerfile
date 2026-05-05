@@ -14,5 +14,6 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY . .
 
 ENV TESSERACT_CMD=/usr/bin/tesseract
+ENV PYTHONUNBUFFERED=1
 
-CMD gunicorn app:app --bind 0.0.0.0:$PORT
+CMD gunicorn app:app --bind 0.0.0.0:$PORT --workers 2 --threads 4 --timeout 120

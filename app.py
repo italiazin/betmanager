@@ -23,6 +23,7 @@ app.secret_key = os.environ.get("SECRET_KEY", "troque-essa-chave-em-producao")
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 CONFIG_PATH = os.path.join(BASE_DIR, "config.json")
 ARQUIVO = os.path.join(BASE_DIR, "dados.json")
+DADOS_PATH = ARQUIVO
 CACHE_API = os.path.join(BASE_DIR, "api_cache.json")
 USUARIOS_PATH = os.path.join(BASE_DIR, "usuarios.json")
 
@@ -58,7 +59,10 @@ def get_db_engine():
         DB_ENGINE = create_engine(
             _normalizar_database_url(DATABASE_URL),
             pool_pre_ping=True,
-            pool_recycle=280
+            pool_recycle=280,
+            pool_size=5,
+            max_overflow=10,
+            connect_args={"connect_timeout": 10}
         )
         inicializar_banco()
 
@@ -72,7 +76,10 @@ def inicializar_banco():
     engine = DB_ENGINE or create_engine(
         _normalizar_database_url(DATABASE_URL),
         pool_pre_ping=True,
-        pool_recycle=280
+        pool_recycle=280,
+        pool_size=5,
+        max_overflow=10,
+        connect_args={"connect_timeout": 10}
     )
 
     with engine.begin() as conn:
@@ -83,6 +90,9 @@ def inicializar_banco():
                 atualizado_em TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         """))
+
+        conn.execute(text("CREATE INDEX IF NOT EXISTS idx_app_store_chave ON app_store (chave)"))
+        conn.execute(text("CREATE INDEX IF NOT EXISTS idx_app_store_atualizado ON app_store (atualizado_em)"))
 
 
 def db_get_json(chave, default):
@@ -102,7 +112,18 @@ def db_get_json(chave, default):
                 db_set_json(chave, default)
                 return default
 
-            return row[0]
+            valor = row[0]
+
+            if valor is None:
+                return default
+
+            if isinstance(valor, str):
+                try:
+                    return json.loads(valor)
+                except:
+                    return default
+
+            return valor
 
     except Exception as e:
         print("ERRO db_get_json:", chave, repr(e))
@@ -139,6 +160,24 @@ def migrar_json_para_banco_se_vazio():
         return
 
     try:
+        engine = get_db_engine()
+
+        with engine.begin() as conn:
+            row_dados = conn.execute(text("SELECT 1 FROM app_store WHERE chave = 'dados'")).fetchone()
+            row_usuarios = conn.execute(text("SELECT 1 FROM app_store WHERE chave = 'usuarios'")).fetchone()
+
+        if not row_dados and os.path.exists(DADOS_PATH):
+            with open(DADOS_PATH, "r", encoding="utf-8") as f:
+                db_set_json("dados", json.load(f))
+
+        if not row_usuarios and os.path.exists(USUARIOS_PATH):
+            with open(USUARIOS_PATH, "r", encoding="utf-8") as f:
+                db_set_json("usuarios", json.load(f))
+
+    except Exception as e:
+        print("ERRO migrar_json_para_banco:", repr(e))
+
+    try:
         # Se banco ainda não tem dados, importa dos JSONs locais.
         dados_db = db_get_json("dados", None)
         usuarios_db = db_get_json("usuarios", None)
@@ -169,7 +208,7 @@ API_KEY = CONFIG.get("API_KEY", "")
 
 print("CONFIG PATH:", CONFIG_PATH)
 print("API KEY:", API_KEY)
-print("VERSAO_CARREGADA: OCR_CLIENTE_V66_BANCO")
+print("VERSAO_CARREGADA: OCR_CLIENTE_V68_RENDER_FINAL")
 
 if os.name == "nt":
     tess_path = r"C:\Program Files\Tesseract-OCR\tesseract.exe"
@@ -4718,8 +4757,8 @@ def carregar_usuarios():
             {
                 "id": str(uuid.uuid4()),
                 "nome": "Admin",
-                "email": "admin@admin.com",
-                "senha_hash": generate_password_hash("admin123"),
+                "email": "admin@betmanager.com",
+                "senha_hash": generate_password_hash("Admin@123"),
                 "is_admin": True,
                 "ativo": True,
                 "assinatura_ativa": True,
@@ -4820,6 +4859,15 @@ def assinatura_required(fn):
 
 
 
+
+@app.after_request
+def aplicar_headers_seguranca(response):
+    response.headers["X-Frame-Options"] = "SAMEORIGIN"
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+    return response
+
+
 @app.route("/bloqueado")
 @login_required
 def bloqueado():
@@ -4833,13 +4881,30 @@ def login():
         email = request.form.get("email", "").strip().lower()
         senha = request.form.get("senha", "")
 
-        u = buscar_usuario_email(email)
+        print("LOGIN TENTATIVA:", email)
 
-        if not u or not u.get("ativo", True) or not check_password_hash(u.get("senha_hash", ""), senha):
-            erro = "E-mail ou senha inválidos."
-        else:
-            session["user_id"] = u["id"]
-            return redirect("/")
+        try:
+            u = buscar_usuario_email(email)
+
+            if not u:
+                erro = "E-mail ou senha inválidos."
+                print("LOGIN FALHOU: usuário não encontrado")
+            elif not u.get("ativo", True):
+                erro = "Conta bloqueada. Fale com o administrador."
+                print("LOGIN FALHOU: usuário bloqueado")
+            elif not check_password_hash(u.get("senha_hash", ""), senha):
+                erro = "E-mail ou senha inválidos."
+                print("LOGIN FALHOU: senha incorreta")
+            else:
+                session.clear()
+                session["user_id"] = u["id"]
+                session.permanent = True
+                print("LOGIN OK:", email)
+                return redirect("/")
+
+        except Exception as e:
+            print("ERRO LOGIN:", repr(e))
+            erro = "Erro ao entrar. Veja os logs do servidor."
 
     return render_template("login.html", erro=erro)
 
