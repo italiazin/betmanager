@@ -15,4 +15,4 @@ COPY . .
 
 ENV TESSERACT_CMD=/usr/bin/tesseract
 
-CMD ["gunicorn", "app:app", "--bind", "0.0.0.0:$PORT"]
+CMD gunicorn app:app --bind 0.0.0.0:$PORT
