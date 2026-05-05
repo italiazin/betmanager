@@ -202,7 +202,7 @@ API_KEY = CONFIG.get("API_KEY", "")
 
 print("CONFIG PATH:", CONFIG_PATH)
 print("API KEY:", API_KEY)
-print("VERSAO_CARREGADA: OCR_CLIENTE_V69_ADMIN_BOOT_FIX")
+print("VERSAO_CARREGADA: OCR_CLIENTE_V70_ADMIN_LOGIN_FORCE")
 
 if os.name == "nt":
     tess_path = r"C:\Program Files\Tesseract-OCR\tesseract.exe"
@@ -4851,15 +4851,10 @@ def buscar_usuario_email(email):
     usuarios = carregar_usuarios()
 
     for u in usuarios.get("users", []):
-        if u.get("email", "").lower() == email:
+        if u.get("email", "").strip().lower() == email:
             return u
 
     return None
-
-
-
-
-
 
 
 def login_required(fn):
@@ -4925,6 +4920,55 @@ except Exception as e:
 def bloqueado():
     return render_template("bloqueado.html")
 
+
+
+# ============================================================
+# V70 - ADMIN EMERGENCIAL PELO LOGIN
+# ============================================================
+
+def criar_ou_atualizar_admin_emergencial(email=None, senha=None):
+    admin_email = (email or os.environ.get("ADMIN_EMAIL", "admin@betmanager.com")).strip().lower()
+    admin_password = senha or os.environ.get("ADMIN_PASSWORD", "Admin@123")
+
+    usuarios = carregar_usuarios()
+    usuarios.setdefault("users", [])
+
+    admin = None
+
+    for u in usuarios.get("users", []):
+        if u.get("email", "").strip().lower() == admin_email:
+            admin = u
+            break
+
+    if not admin:
+        admin = {
+            "id": str(uuid.uuid4()),
+            "nome": "Admin",
+            "email": admin_email,
+            "senha_hash": generate_password_hash(admin_password),
+            "is_admin": True,
+            "ativo": True,
+            "assinatura_ativa": True,
+            "plano": "admin",
+            "apostas_publicas_padrao": False,
+            "criado_em": datetime.now().strftime("%d/%m/%Y %H:%M")
+        }
+        usuarios["users"].append(admin)
+    else:
+        admin["nome"] = admin.get("nome") or "Admin"
+        admin["email"] = admin_email
+        admin["senha_hash"] = generate_password_hash(admin_password)
+        admin["is_admin"] = True
+        admin["ativo"] = True
+        admin["assinatura_ativa"] = True
+        admin["plano"] = "admin"
+        admin.setdefault("apostas_publicas_padrao", False)
+
+    salvar_usuarios(usuarios)
+    print("ADMIN EMERGENCIAL GARANTIDO:", admin_email)
+
+    return admin
+
 @app.route("/login", methods=["GET", "POST"])
 def login():
     erro = ""
@@ -4936,6 +4980,18 @@ def login():
         print("LOGIN TENTATIVA:", email)
 
         try:
+            admin_email = os.environ.get("ADMIN_EMAIL", "admin@betmanager.com").strip().lower()
+            admin_password = os.environ.get("ADMIN_PASSWORD", "Admin@123")
+
+            # Login emergencial: se for o admin padrão/env, cria/atualiza no banco e entra.
+            if email == admin_email and senha == admin_password:
+                u = criar_ou_atualizar_admin_emergencial(admin_email, admin_password)
+                session.clear()
+                session["user_id"] = u["id"]
+                session.permanent = True
+                print("LOGIN ADMIN EMERGENCIAL OK:", email)
+                return redirect("/")
+
             u = buscar_usuario_email(email)
 
             if not u:
