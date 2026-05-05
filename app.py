@@ -216,7 +216,7 @@ API_KEY = CONFIG.get("API_KEY", "")
 
 print("CONFIG PATH:", CONFIG_PATH)
 print("API KEY:", API_KEY)
-print("VERSAO_CARREGADA: OCR_CLIENTE_V74_FEED_OCR_PUBLIC_FIX")
+print("VERSAO_CARREGADA: OCR_CLIENTE_V75_FINAL_OCR_PREVIEW")
 
 if os.name == "nt":
     tess_path = r"C:\Program Files\Tesseract-OCR\tesseract.exe"
@@ -4949,6 +4949,53 @@ def normalizar_float(v):
         return 0.0
 
 
+
+# ============================================================
+# V75 - Correção stake/valor OCR
+# ============================================================
+
+def corrigir_valor_ocr_se_confundiu_com_odd(aposta):
+    """
+    Se o OCR colocou a odd também no campo valor, limpa o valor.
+    Valor/stake costuma vir com R$, RS, limite/aposta etc.
+    Odd normalmente é decimal puro.
+    """
+    try:
+        if not isinstance(aposta, dict):
+            return aposta
+
+        odd = str(aposta.get("odd", "") or "").strip().replace(",", ".")
+        valor = str(aposta.get("valor", "") or "").strip().replace(",", ".")
+
+        if not odd or not valor:
+            return aposta
+
+        odd_num = normalizar_float(odd) if "normalizar_float" in globals() else float(odd)
+        valor_num = normalizar_float(valor) if "normalizar_float" in globals() else float(valor)
+
+        # Se valor igual odd, é quase sempre erro de OCR/parsing.
+        if odd_num > 1 and abs(odd_num - valor_num) < 0.0001:
+            bruto = str(aposta.get("texto_bruto", "") or "")
+
+            # Tenta achar valor real em linhas com R$/RS.
+            candidatos = re.findall(r'(?:R\$|RS)\s*([0-9]+(?:[.,][0-9]{1,2})?)', bruto, flags=re.I)
+            if candidatos:
+                nums = [normalizar_float(c) for c in candidatos if normalizar_float(c) > 0]
+                # Evita pegar limite se tiver mais de um; pega o último valor monetário visível.
+                if nums:
+                    aposta["valor"] = nums[-1]
+                    return aposta
+
+            # Não achou stake real: deixa vazio/0 para usuário preencher, não duplica odd.
+            aposta["valor"] = ""
+            return aposta
+
+    except Exception as e:
+        print("ERRO corrigir_valor_ocr:", repr(e))
+
+    return aposta
+
+
 @app.route("/bloqueado")
 @login_required
 def bloqueado():
@@ -5320,6 +5367,7 @@ def colar():
                 print("===== FIM OCR DEBUG /colar =====")
 
                 aposta_extraida = extrair(texto)
+                aposta_extraida = corrigir_valor_ocr_se_confundiu_com_odd(aposta_extraida)
 
                 if not isinstance(aposta_extraida, dict):
                     aposta_extraida = {"aposta": str(aposta_extraida or "")}
@@ -5389,6 +5437,8 @@ def salvar_preview():
                 jogo = limpar_linha(a.get("jogo", ""))
                 odd = normalizar_float(a.get("odd", 0))
                 valor = normalizar_float(a.get("valor", 0))
+                if odd > 1 and valor > 0 and abs(odd - valor) < 0.0001:
+                    valor = 0.0
 
                 if not aposta_texto and not jogo:
                     continue

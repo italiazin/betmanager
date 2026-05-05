@@ -2698,3 +2698,11 @@ button:disabled {
 }
 
 /* V73 - salvar preview OCR corrigido */
+
+
+/* V75 - preview sem reset */
+.preview-success {
+    border-color: rgba(34,197,94,.45) !important;
+    color: #bbf7d0 !important;
+    background: rgba(34,197,94,.08);
+}

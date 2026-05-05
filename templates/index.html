@@ -1333,105 +1333,7 @@ function salvarEdicao(){
 </main>
 
 
-<script id="v60-preview-fix">
-window.apostasPreview = window.apostasPreview || [];
 
-window.escapeHtmlPreview = function(value){
-    return String(value ?? "")
-        .replaceAll("&", "&amp;")
-        .replaceAll('"', "&quot;")
-        .replaceAll("<", "&lt;")
-        .replaceAll(">", "&gt;");
-};
-
-window.renderPreview = function(){
-    const div = document.getElementById("preview-area");
-    const salvar = document.getElementById("salvar-preview");
-
-    if(!div){
-        console.error("preview-area não existe no HTML");
-        alert("OCR lido, mas a área de preview não existe no HTML.");
-        return;
-    }
-
-    div.innerHTML = "";
-
-    if(!Array.isArray(window.apostasPreview) || window.apostasPreview.length === 0){
-        div.innerHTML = `<div class="preview-empty">Nenhuma aposta lida. Tente colar o print novamente.</div>`;
-        if(salvar) salvar.style.display = "none";
-        return;
-    }
-
-    window.apostasPreview.forEach((a, i)=>{
-        div.innerHTML += `
-        <div class="preview-card preview-card-client">
-            <input id="c${i}" value="${window.escapeHtmlPreview(a.casa || '')}" placeholder="Casa">
-            <input id="e${i}" value="${window.escapeHtmlPreview(a.esporte || '')}" placeholder="Esporte">
-            <input id="j${i}" value="${window.escapeHtmlPreview(a.jogo || '')}" placeholder="Jogo">
-            <input id="a${i}" value="${window.escapeHtmlPreview(a.aposta || '')}" placeholder="Aposta">
-            <input id="o${i}" value="${window.escapeHtmlPreview(a.odd || '')}" placeholder="Odd">
-            <input id="v${i}" value="${window.escapeHtmlPreview(a.valor || '')}" placeholder="Valor">
-
-            <input type="hidden" id="m${i}" value="${window.escapeHtmlPreview(a.mercado || '')}">
-            <input type="hidden" id="s${i}" value="${window.escapeHtmlPreview(a.selecao || '')}">
-            <input type="hidden" id="l${i}" value="${window.escapeHtmlPreview(a.linha || '')}">
-            <input type="hidden" id="p${i}" value="${window.escapeHtmlPreview(a.periodo || '')}">
-        </div>`;
-    });
-
-    if(salvar){
-        salvar.style.display = "block";
-        salvar.disabled = false;
-        salvar.innerText = "Salvar Apostas do Preview";
-    }
-
-    div.scrollIntoView({behavior:"smooth", block:"center"});
-};
-
-document.addEventListener("DOMContentLoaded", ()=>{
-    const salvar = document.getElementById("salvar-preview");
-    if(!salvar || salvar.dataset.v60Ready === "1") return;
-    salvar.dataset.v60Ready = "1";
-
-    salvar.onclick = ()=>{
-        const dados = (window.apostasPreview || []).map((a, i)=>({
-            aposta: document.getElementById(`a${i}`)?.value || "",
-            casa: document.getElementById(`c${i}`)?.value || "",
-            esporte: document.getElementById(`e${i}`)?.value || "",
-            jogo: document.getElementById(`j${i}`)?.value || "",
-            mercado: document.getElementById(`m${i}`)?.value || "",
-            selecao: document.getElementById(`s${i}`)?.value || "",
-            linha: document.getElementById(`l${i}`)?.value || "",
-            periodo: document.getElementById(`p${i}`)?.value || "",
-            odd: document.getElementById(`o${i}`)?.value || "",
-            valor: document.getElementById(`v${i}`)?.value || "",
-            texto_bruto: a.texto_bruto || "",
-            texto_interpretado: a.texto_interpretado || "",
-            itens_multipla: a.itens_multipla || {},
-            itens_multipla_detalhados: a.itens_multipla_detalhados || []
-        }));
-
-        salvar.disabled = true;
-        salvar.innerText = "Salvando...";
-
-        fetch("/salvar_preview", {
-            method: "POST",
-            headers: {"Content-Type":"application/json"},
-            body: JSON.stringify({apostas:dados})
-        })
-        .then(r=>r.json())
-        .then(()=>{
-            salvar.innerText = "Salvo ✓";
-            setTimeout(()=>location.reload(), 450);
-        })
-        .catch(()=>{
-            alert("Erro ao salvar preview");
-            salvar.disabled = false;
-            salvar.innerText = "Salvar Apostas do Preview";
-        });
-    };
-});
-</script>
 
 
 <script id="v62-userbox-js">
@@ -1763,28 +1665,96 @@ window.copiarApostaComunidade = function(btn){
 </script>
 
 
-<script id="v73-preview-save-fix">
+
+
+
+<script id="v75-preview-save-no-reload">
+window.apostasPreview = window.apostasPreview || []
+
+window.escapeHtmlPreview = window.escapeHtmlPreview || function(value){
+    return String(value ?? "")
+        .replaceAll("&", "&amp;")
+        .replaceAll('"', "&quot;")
+        .replaceAll("<", "&lt;")
+        .replaceAll(">", "&gt;")
+}
+
+window.renderPreview = function(){
+    const div = document.getElementById("preview-area")
+    const salvar = document.getElementById("salvar-preview")
+
+    if(!div) return
+
+    div.innerHTML = ""
+
+    if(!Array.isArray(window.apostasPreview) || window.apostasPreview.length === 0){
+        div.innerHTML = `<div class="preview-empty">Nenhuma aposta lida. Tente colar o print novamente.</div>`
+        if(salvar) salvar.style.display = "none"
+        return
+    }
+
+    window.apostasPreview.forEach((a, i)=>{
+        const odd = String(a.odd || "").replace(",", ".")
+        let valor = String(a.valor || "").replace(",", ".")
+        if(odd && valor && parseFloat(odd) > 1 && Math.abs(parseFloat(odd) - parseFloat(valor)) < 0.0001){
+            valor = ""
+        }
+
+        div.innerHTML += `
+        <div class="preview-card preview-card-client">
+            <input id="c${i}" value="${window.escapeHtmlPreview(a.casa || '')}" placeholder="Casa">
+            <input id="e${i}" value="${window.escapeHtmlPreview(a.esporte || '')}" placeholder="Esporte">
+            <input id="j${i}" value="${window.escapeHtmlPreview(a.jogo || '')}" placeholder="Jogo">
+            <input id="a${i}" value="${window.escapeHtmlPreview(a.aposta || '')}" placeholder="Aposta">
+            <input id="o${i}" value="${window.escapeHtmlPreview(odd || '')}" placeholder="Odd">
+            <input id="v${i}" value="${window.escapeHtmlPreview(valor || '')}" placeholder="Valor">
+
+            <input type="hidden" id="m${i}" value="${window.escapeHtmlPreview(a.mercado || '')}">
+            <input type="hidden" id="s${i}" value="${window.escapeHtmlPreview(a.selecao || '')}">
+            <input type="hidden" id="l${i}" value="${window.escapeHtmlPreview(a.linha || '')}">
+            <input type="hidden" id="p${i}" value="${window.escapeHtmlPreview(a.periodo || '')}">
+        </div>`
+    })
+
+    if(salvar){
+        salvar.style.display = "block"
+        salvar.disabled = false
+        salvar.innerText = "Salvar Apostas do Preview"
+    }
+
+    div.scrollIntoView({behavior:"smooth", block:"center"})
+}
+
 document.addEventListener("DOMContentLoaded", ()=>{
     const salvar = document.getElementById("salvar-preview")
     if(!salvar) return
 
     salvar.onclick = ()=>{
-        const dados = (window.apostasPreview || []).map((a, i)=>({
-            aposta: document.getElementById(`a${i}`)?.value || "",
-            casa: document.getElementById(`c${i}`)?.value || "",
-            esporte: document.getElementById(`e${i}`)?.value || "",
-            jogo: document.getElementById(`j${i}`)?.value || "",
-            mercado: document.getElementById(`m${i}`)?.value || "",
-            selecao: document.getElementById(`s${i}`)?.value || "",
-            linha: document.getElementById(`l${i}`)?.value || "",
-            periodo: document.getElementById(`p${i}`)?.value || "",
-            odd: document.getElementById(`o${i}`)?.value || "",
-            valor: document.getElementById(`v${i}`)?.value || "",
-            texto_bruto: a.texto_bruto || "",
-            texto_interpretado: a.texto_interpretado || "",
-            itens_multipla: a.itens_multipla || {},
-            itens_multipla_detalhados: a.itens_multipla_detalhados || []
-        }))
+        const dados = (window.apostasPreview || []).map((a, i)=>{
+            const odd = document.getElementById(`o${i}`)?.value || ""
+            let valor = document.getElementById(`v${i}`)?.value || ""
+
+            if(odd && valor && parseFloat(String(odd).replace(",", ".")) > 1 && Math.abs(parseFloat(String(odd).replace(",", ".")) - parseFloat(String(valor).replace(",", "."))) < 0.0001){
+                valor = ""
+            }
+
+            return {
+                aposta: document.getElementById(`a${i}`)?.value || "",
+                casa: document.getElementById(`c${i}`)?.value || "",
+                esporte: document.getElementById(`e${i}`)?.value || "",
+                jogo: document.getElementById(`j${i}`)?.value || "",
+                mercado: document.getElementById(`m${i}`)?.value || "",
+                selecao: document.getElementById(`s${i}`)?.value || "",
+                linha: document.getElementById(`l${i}`)?.value || "",
+                periodo: document.getElementById(`p${i}`)?.value || "",
+                odd,
+                valor,
+                texto_bruto: a.texto_bruto || "",
+                texto_interpretado: a.texto_interpretado || "",
+                itens_multipla: a.itens_multipla || {},
+                itens_multipla_detalhados: a.itens_multipla_detalhados || []
+            }
+        })
 
         salvar.disabled = true
         salvar.innerText = "Salvando..."
@@ -1803,10 +1773,21 @@ document.addEventListener("DOMContentLoaded", ()=>{
         })
         .then(d=>{
             salvar.innerText = "Salvo ✓"
-            if(typeof v72Toast === "function"){
-                v72Toast(`${d.salvas || 0} aposta(s) salva(s)`)
-            }
-            setTimeout(()=>location.reload(), 450)
+            if(typeof v72UpdateMetrics === "function" && d.metricas) v72UpdateMetrics(d.metricas)
+            if(typeof v72Toast === "function") v72Toast(`${d.salvas || 0} aposta(s) salva(s)`)
+
+            const div = document.getElementById("preview-area")
+            if(div) div.innerHTML = `<div class="preview-empty preview-success">${d.salvas || 0} aposta(s) salva(s). A tabela foi atualizada no sistema.</div>`
+
+            window.apostasPreview = []
+            setTimeout(()=>{
+                salvar.style.display = "none"
+                salvar.disabled = false
+                salvar.innerText = "Salvar Apostas do Preview"
+            }, 900)
+
+            // Atualiza só o feed se existir, sem resetar página.
+            if(typeof carregarFeedApostas === "function") carregarFeedApostas(false)
         })
         .catch(err=>{
             console.error("ERRO salvar_preview:", err)
