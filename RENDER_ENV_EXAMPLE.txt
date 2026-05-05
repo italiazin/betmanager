@@ -1,1 +1,5 @@
-web: gunicorn app:app
+DATABASE_URL=cole_a_url_do_postgres
+SECRET_KEY=uma_chave_grande
+ADMIN_EMAIL=admin@betmanager.com
+ADMIN_PASSWORD=Admin@123
+APP_STORE_CACHE_TTL=3

@@ -36,7 +36,7 @@ function formatarLinhaApostaNova(b){
         <td class="data-cell">${b.data || ""}</td>
         <td class="casa-cell">${b.casa || ""}</td>
         <td class="esporte-cell">${b.esporte || ""}</td>
-        <td class="jogo-cell">${b.jogo || ""}</td>
+        <td class="jogo-cell">${b.jogo || ""}${b.horario_jogo ? `<div class="game-time">⏰ ${b.horario_jogo}</div>` : ""}</td>
         <td class="aposta-cell" title="${b.aposta || ""}">${apostaVisual}</td>
         <td class="odd-cell">${b.odd || ""}</td>
         <td class="valor-cell">${valor}</td>
@@ -199,7 +199,7 @@ function formatarLinhaApostaNovaV39(b){
         <td class="data-cell">${b.data || ""}</td>
         <td class="casa-cell">${b.casa || ""}</td>
         <td class="esporte-cell">${b.esporte || ""}</td>
-        <td class="jogo-cell">${b.jogo || ""}</td>
+        <td class="jogo-cell">${b.jogo || ""}${b.horario_jogo ? `<div class="game-time">⏰ ${b.horario_jogo}</div>` : ""}</td>
         <td class="aposta-cell" title="${b.aposta || ""}">${apostaVisual}</td>
         <td class="odd-cell">${b.odd || ""}</td>
         <td class="valor-cell">${valor}</td>
@@ -384,7 +384,8 @@ document.addEventListener("DOMContentLoaded", ()=>{
             texto_bruto: a.texto_bruto || "",
             texto_interpretado: a.texto_interpretado || "",
             itens_multipla: a.itens_multipla || {},
-            itens_multipla_detalhados: a.itens_multipla_detalhados || []
+            itens_multipla_detalhados: a.itens_multipla_detalhados || [],
+                horario_jogo: a.horario_jogo || ""
         }))
 
         salvar.disabled = true
@@ -550,6 +551,9 @@ document.addEventListener("DOMContentLoaded", ()=>{
         <h2>Nova Aposta Manual</h2>
 
         <form method="POST" class="manual-form" id="manualForm">
+            <input type="hidden" name="copiada_comunidade" id="copiadaComunidade" value="0">
+            <input type="hidden" name="source_original_id" id="sourceOriginalId" value="">
+            <input type="hidden" name="horario_jogo" id="horarioJogo" value="">
             <input name="aposta" placeholder="Nome da aposta" required>
             <input name="casa" placeholder="Casa">
             <input name="esporte" placeholder="Esporte">
@@ -741,7 +745,7 @@ document.addEventListener("DOMContentLoaded", ()=>{
                 <td class="data-cell">{{ b.data }}</td>
                 <td class="casa-cell">{{ b.casa }}</td>
                 <td class="esporte-cell">{{ b.esporte }}</td>
-                <td class="jogo-cell">{{ b.jogo }}</td>
+                <td class="jogo-cell">{{ b.jogo }}{% if b.horario_jogo %}<div class="game-time">⏰ {{ b.horario_jogo }}</div>{% endif %}</td>
                 <td class="aposta-cell">{{ b.aposta_display if b.aposta_display is defined else b.aposta }}</td>
                 <td class="odd-cell">{{ b.odd }}</td>
                 <td class="valor-cell">{{ "%.2f"|format(b.valor) }}</td>
@@ -854,7 +858,8 @@ document.addEventListener("DOMContentLoaded", ()=>{
             texto_bruto: a.texto_bruto || "",
             texto_interpretado: a.texto_interpretado || "",
             itens_multipla: a.itens_multipla || {},
-            itens_multipla_detalhados: a.itens_multipla_detalhados || []
+            itens_multipla_detalhados: a.itens_multipla_detalhados || [],
+                horario_jogo: a.horario_jogo || ""
         }))
 
         salvar.disabled = true
@@ -908,7 +913,8 @@ document.addEventListener("DOMContentLoaded", ()=>{
             texto_bruto: a.texto_bruto || "",
             texto_interpretado: a.texto_interpretado || "",
             itens_multipla: a.itens_multipla || {},
-            itens_multipla_detalhados: a.itens_multipla_detalhados || []
+            itens_multipla_detalhados: a.itens_multipla_detalhados || [],
+                horario_jogo: a.horario_jogo || ""
         }))
 
         salvar.disabled = true
@@ -1007,7 +1013,7 @@ function carregarFeedApostas(force=false){
                                 ${isNew ? '<span class="novo-badge">NOVO</span>' : ''}
                             </div>
                             <span>${a.aposta || ""}</span>
-                            <div class="feed-meta">${a.casa || "Casa"} • ${a.esporte || "Esporte"} • Odd ${a.odd || "-"} • R$ ${a.valor || "-"} ${a.data ? "• " + a.data : ""}</div>
+                            <div class="feed-meta">${a.casa || "Casa"} • ${a.esporte || "Esporte"} • Odd ${a.odd || "-"} • R$ ${a.valor || "-"} ${a.horario_jogo ? "• Jogo: " + a.horario_jogo : ""} ${a.data ? "• " + a.data : ""}</div>
                         </div>
                         <button type="button" class="copy-bet-btn" data-payload="${payload}" onclick="copiarApostaComunidade(this)">Copiar</button>
                     </div>`
@@ -1035,6 +1041,9 @@ function copiarApostaComunidade(btn){
     if(fields.jogo) fields.jogo.value = data.jogo || ""
     if(fields.odd) fields.odd.value = data.odd || ""
     if(fields.valor) fields.valor.value = data.valor || ""
+    const copiedFlag = document.getElementById("copiadaComunidade"); if(copiedFlag) copiedFlag.value = "1"
+    const src = document.getElementById("sourceOriginalId"); if(src) src.value = data.source_original_id || data.id || ""
+    const hj = document.getElementById("horarioJogo"); if(hj) hj.value = data.horario_jogo || ""
     btn.classList.add("copied"); btn.innerText = "Copiado"
     setTimeout(()=>{ btn.classList.remove("copied"); btn.innerText = "Copiar" }, 1200)
     document.querySelector('input[name="aposta"]')?.focus()
@@ -1442,7 +1451,7 @@ window.carregarFeedApostas = function(force=false){
                                 ${isNew ? '<span class="novo-badge">NOVO</span>' : ''}
                             </div>
                             <span>${a.aposta || ""}</span>
-                            <div class="feed-meta">${a.casa || "Casa"} • ${a.esporte || "Esporte"} • Odd ${a.odd || "-"} • R$ ${a.valor || "-"} ${a.data ? "• " + a.data : ""}</div>
+                            <div class="feed-meta">${a.casa || "Casa"} • ${a.esporte || "Esporte"} • Odd ${a.odd || "-"} • R$ ${a.valor || "-"} ${a.horario_jogo ? "• Jogo: " + a.horario_jogo : ""} ${a.data ? "• " + a.data : ""}</div>
                         </div>
                         <button type="button" class="copy-bet-btn" data-payload="${payload}" onclick="copiarApostaComunidade(this)">Copiar</button>
                     </div>`
@@ -1631,6 +1640,8 @@ document.addEventListener("submit", function(e){
         form.reset()
         const copied = document.getElementById("copiadaComunidade")
         if(copied) copied.value = "0"
+        const src = document.getElementById("sourceOriginalId"); if(src) src.value = ""
+        const hj = document.getElementById("horarioJogo"); if(hj) hj.value = ""
         setTimeout(()=>location.reload(), 300) // reload curto só para reconstruir tabela com layout perfeito
     })
     .catch(()=>v72Toast("Erro ao adicionar aposta", "err"))
@@ -1659,6 +1670,8 @@ window.copiarApostaComunidade = function(btn){
 
     const hidden = document.getElementById("copiadaComunidade")
     if(hidden) hidden.value = "1"
+    const src = document.getElementById("sourceOriginalId")
+    try { const data = JSON.parse(decodeURIComponent(btn.dataset.payload || "{}")); if(src) src.value = data.source_original_id || data.id || ""; const hj=document.getElementById("horarioJogo"); if(hj) hj.value=data.horario_jogo||"" } catch(e) {}
 
     v72Toast("Aposta copiada como privada")
 }
@@ -1752,7 +1765,8 @@ document.addEventListener("DOMContentLoaded", ()=>{
                 texto_bruto: a.texto_bruto || "",
                 texto_interpretado: a.texto_interpretado || "",
                 itens_multipla: a.itens_multipla || {},
-                itens_multipla_detalhados: a.itens_multipla_detalhados || []
+                itens_multipla_detalhados: a.itens_multipla_detalhados || [],
+                horario_jogo: a.horario_jogo || ""
             }
         })
 
@@ -1834,7 +1848,7 @@ function v76AddBetToTable(b){
         <td>${v76Escape(b.data || "")}</td>
         <td class="casa-cell">${v76Escape(b.casa || "")}</td>
         <td class="esporte-cell">${v76Escape(b.esporte || "")}</td>
-        <td class="jogo-cell">${v76Escape(b.jogo || "")}</td>
+        <td class="jogo-cell">${v76Escape(b.jogo || "")}${b.horario_jogo ? `<div class="game-time">⏰ ${v76Escape(b.horario_jogo)}</div>` : ""}</td>
         <td class="aposta-cell">${v76Escape(b.aposta_display || b.aposta || "")}</td>
         <td class="odd-cell">${v76Escape(b.odd || "")}</td>
         <td class="valor-cell">${v76Escape(b.valor || "")}</td>
