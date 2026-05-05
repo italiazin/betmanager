@@ -2706,3 +2706,14 @@ button:disabled {
     color: #bbf7d0 !important;
     background: rgba(34,197,94,.08);
 }
+
+
+/* V76 - aposta do preview aparece na tabela na hora */
+.v76-new-row {
+    animation: v76RowFlash 2.2s ease;
+}
+
+@keyframes v76RowFlash {
+    0% { background: rgba(34,197,94,.25); transform: translateY(-4px); }
+    100% { background: transparent; transform: translateY(0); }
+}

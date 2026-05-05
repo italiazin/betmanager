@@ -216,7 +216,7 @@ API_KEY = CONFIG.get("API_KEY", "")
 
 print("CONFIG PATH:", CONFIG_PATH)
 print("API KEY:", API_KEY)
-print("VERSAO_CARREGADA: OCR_CLIENTE_V75_FINAL_OCR_PREVIEW")
+print("VERSAO_CARREGADA: OCR_CLIENTE_V76_PREVIEW_TABLE_INSTANT")
 
 if os.name == "nt":
     tess_path = r"C:\Program Files\Tesseract-OCR\tesseract.exe"
@@ -5425,6 +5425,7 @@ def salvar_preview():
 
         salvas = 0
         erros = []
+        bets_salvas = []
 
         for a in apostas:
             try:
@@ -5483,6 +5484,7 @@ def salvar_preview():
 
                 registrar_nova_aposta_saldo(bet)
                 dados.setdefault("bets", []).append(bet)
+                bets_salvas.append(limpar_aposta_display_v39(bet) if "limpar_aposta_display_v39" in globals() else bet)
                 salvas += 1
 
             except Exception as e:
@@ -5494,6 +5496,7 @@ def salvar_preview():
         return jsonify({
             "ok": True,
             "salvas": salvas,
+            "bets": bets_salvas,
             "erros": erros,
             "metricas": metricas() if "metricas" in globals() else {}
         })

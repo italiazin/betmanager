@@ -1774,6 +1774,7 @@ document.addEventListener("DOMContentLoaded", ()=>{
         .then(d=>{
             salvar.innerText = "Salvo ✓"
             if(typeof v72UpdateMetrics === "function" && d.metricas) v72UpdateMetrics(d.metricas)
+            if(typeof v76AddSavedPreviewBets === "function") v76AddSavedPreviewBets(d)
             if(typeof v72Toast === "function") v72Toast(`${d.salvas || 0} aposta(s) salva(s)`)
 
             const div = document.getElementById("preview-area")
@@ -1797,6 +1798,66 @@ document.addEventListener("DOMContentLoaded", ()=>{
         })
     }
 })
+</script>
+
+
+<script id="v76-preview-table-instant-js">
+function v76Escape(value){
+    return String(value ?? "").replaceAll("&","&amp;").replaceAll("<","&lt;").replaceAll(">","&gt;").replaceAll('"',"&quot;")
+}
+
+function v76Money(value){
+    const n = Number(value || 0)
+    return "R$ " + n.toFixed(2)
+}
+
+function v76StatusBadge(estado){
+    if(estado === "ganha") return '<span class="badge green">Ganha</span>'
+    if(estado === "perdida") return '<span class="badge red">Perdida</span>'
+    if(estado === "anulada") return '<span class="badge gray">Anulada</span>'
+    return '<span class="badge yellow">Pendente</span>'
+}
+
+function v76AddBetToTable(b){
+    const tbody = document.querySelector(".table-panel tbody")
+    if(!tbody || !b) return
+
+    const id = b.id || ""
+    if(id && document.querySelector(`tr[data-id="${CSS.escape(id)}"]`)) return
+
+    const lucro = Number(b.lucro || 0)
+    const tr = document.createElement("tr")
+    tr.dataset.id = id
+    tr.classList.add("v76-new-row")
+
+    tr.innerHTML = `
+        <td>${v76Escape(b.data || "")}</td>
+        <td class="casa-cell">${v76Escape(b.casa || "")}</td>
+        <td class="esporte-cell">${v76Escape(b.esporte || "")}</td>
+        <td class="jogo-cell">${v76Escape(b.jogo || "")}</td>
+        <td class="aposta-cell">${v76Escape(b.aposta_display || b.aposta || "")}</td>
+        <td class="odd-cell">${v76Escape(b.odd || "")}</td>
+        <td class="valor-cell">${v76Escape(b.valor || "")}</td>
+        <td class="status-cell">${v76StatusBadge(b.estado || "")}</td>
+        <td class="${lucro > 0 ? 'green-text' : lucro < 0 ? 'red-text' : ''}">${v76Money(lucro)}</td>
+        <td class="api-cell">${v76Escape(b.api_status || "")}</td>
+        <td class="actions">
+            <a href="/resultado/${id}/ganha"><button class="green">✓</button></a>
+            <a href="/resultado/${id}/perdida"><button class="red">✕</button></a>
+            <a href="/resultado/${id}/anulada"><button class="gray">–</button></a>
+            <button class="blue" onclick="abrirEditar(this)" data-id="${id}" data-estado="${v76Escape(b.estado || '')}">✎</button>
+            <a href="/remover/${id}" onclick="return confirm('Apagar esta aposta?')" class="delete-bet-link"><button class="dark delete-bet-btn" title="Apagar aposta">🗑</button></a>
+        </td>
+    `
+
+    tbody.prepend(tr)
+    setTimeout(()=>tr.classList.remove("v76-new-row"), 2200)
+}
+
+function v76AddSavedPreviewBets(data){
+    if(!data || !Array.isArray(data.bets)) return
+    data.bets.forEach(v76AddBetToTable)
+}
 </script>
 
 </body>
