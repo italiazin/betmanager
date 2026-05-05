@@ -216,7 +216,7 @@ API_KEY = CONFIG.get("API_KEY", "")
 
 print("CONFIG PATH:", CONFIG_PATH)
 print("API KEY:", API_KEY)
-print("VERSAO_CARREGADA: OCR_CLIENTE_V73_PREVIEW_SAVE_FIX")
+print("VERSAO_CARREGADA: OCR_CLIENTE_V74_FEED_OCR_PUBLIC_FIX")
 
 if os.name == "nt":
     tess_path = r"C:\Program Files\Tesseract-OCR\tesseract.exe"
@@ -741,16 +741,17 @@ def bets_display_v39():
 
 
 def ultimas_apostas_comunidade_base(limit=10):
-    bets = list(reversed(dados.get("bets", [])))
     saida = []
-
-    for b in bets:
+    for b in list(reversed(dados.get("bets", []))):
         if len(saida) >= limit:
             break
-        if not b.get("publica", False):
+
+        # Só entra no feed se a aposta estiver marcada como pública e tiver dono.
+        if not b.get("publica", False) or not b.get("user_id"):
             continue
 
-        bd = limpar_aposta_display_v39(b)
+        bd = limpar_aposta_display_v39(b) if "limpar_aposta_display_v39" in globals() else dict(b)
+
         saida.append({
             "id": bd.get("id", ""),
             "data": bd.get("data", ""),
@@ -759,11 +760,11 @@ def ultimas_apostas_comunidade_base(limit=10):
             "jogo": bd.get("jogo", ""),
             "aposta": bd.get("aposta_display") or bd.get("aposta", ""),
             "odd": bd.get("odd", ""),
-            "valor": bd.get("valor", "")
+            "valor": bd.get("valor", ""),
+            "origem": bd.get("origem", "")
         })
 
     return saida
-
 
 def buscar_aposta(bet_id):
     return buscar_aposta_segura_v61(bet_id)
@@ -5425,8 +5426,9 @@ def salvar_preview():
                     "saldo_debitado": False,
                     "saldo_creditado_estado": "",
                     "saldo_creditado_valor": 0.0,
-                    # Preview OCR é privado por padrão para evitar vazar aposta sem querer.
-                    "publica": False
+                    # Preview OCR segue a configuração do usuário.
+                    # Apostas copiadas da comunidade continuam privadas no fluxo manual/copiar.
+                    "publica": aposta_publica_padrao_usuario() if "aposta_publica_padrao_usuario" in globals() else False
                 }
 
                 registrar_nova_aposta_saldo(bet)
@@ -5454,30 +5456,12 @@ def salvar_preview():
 @app.route("/ultimas_apostas")
 @login_required
 def ultimas_apostas():
-    exemplos = [
-        {"casa":"Superbet","esporte":"Futebol","jogo":"Manchester City x Arsenal","aposta":"Man City ML, over 2.5 gols e Haaland anytime","odd":3.20,"valor":50.00},
-        {"casa":"Esportiva","esporte":"Futebol","jogo":"Internacional x Fluminense","aposta":"10+ esc, 5+ cartoes, DC Inter ou Flu HT","odd":5.75,"valor":23.00},
-        {"casa":"Betbra","esporte":"Futebol","jogo":"Freiburg x Wolfsburg","aposta":"ML Wolfsburg e u2.5 gols","odd":8.62,"valor":38.00},
-        {"casa":"Lottu","esporte":"Futebol","jogo":"Aston Villa x Tottenham / Lyon x Rennes / Inter x Parma","aposta":"Aston Villa, Lyon e Inter de Milão vencem","odd":7.40,"valor":35.00},
-        {"casa":"Betano","esporte":"Futebol","jogo":"Chapecoense x Bragantino","aposta":"Bragantino vence de 0 o HT","odd":3.50,"valor":103.00}
-    ]
+    ultimas = ultimas_apostas_comunidade_base(12)
+    resp = jsonify(ultimas)
+    resp.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
+    resp.headers["Pragma"] = "no-cache"
+    return resp
 
-    ultimas = ultimas_apostas_comunidade_base(8)
-
-    for ex in exemplos:
-        if len(ultimas) >= 10:
-            break
-        ultimas.append(ex)
-
-    return jsonify(ultimas[:10])
-
-
-
-
-
-# ============================================================
-# V42 - Rotas da página de saldos por casa
-# ============================================================
 
 @app.route("/saldos")
 @login_required
