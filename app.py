@@ -59,10 +59,7 @@ def get_db_engine():
         DB_ENGINE = create_engine(
             _normalizar_database_url(DATABASE_URL),
             pool_pre_ping=True,
-            pool_recycle=280,
-            pool_size=5,
-            max_overflow=10,
-            connect_args={"connect_timeout": 10}
+            pool_recycle=280
         )
         inicializar_banco()
 
@@ -76,10 +73,7 @@ def inicializar_banco():
     engine = DB_ENGINE or create_engine(
         _normalizar_database_url(DATABASE_URL),
         pool_pre_ping=True,
-        pool_recycle=280,
-        pool_size=5,
-        max_overflow=10,
-        connect_args={"connect_timeout": 10}
+        pool_recycle=280
     )
 
     with engine.begin() as conn:
@@ -208,7 +202,7 @@ API_KEY = CONFIG.get("API_KEY", "")
 
 print("CONFIG PATH:", CONFIG_PATH)
 print("API KEY:", API_KEY)
-print("VERSAO_CARREGADA: OCR_CLIENTE_V68_RENDER_FINAL")
+print("VERSAO_CARREGADA: OCR_CLIENTE_V69_ADMIN_BOOT_FIX")
 
 if os.name == "nt":
     tess_path = r"C:\Program Files\Tesseract-OCR\tesseract.exe"
@@ -4768,28 +4762,6 @@ def carregar_usuarios():
             }
         ]
     }
-    def garantir_admin():
-    usuarios = carregar_usuarios()
-
-    existe_admin = any(u.get("is_admin") for u in usuarios.get("users", []))
-
-    if not existe_admin:
-        novo_admin = {
-            "id": str(uuid.uuid4()),
-            "nome": "Admin",
-            "email": "admin@betmanager.com",
-            "senha_hash": generate_password_hash("Admin@123"),
-            "is_admin": True,
-            "ativo": True,
-            "assinatura_ativa": True,
-            "plano": "admin",
-            "apostas_publicas_padrao": False
-        }
-
-        usuarios["users"].append(novo_admin)
-        salvar_usuarios(usuarios)
-
-        print("ADMIN CRIADO AUTOMATICAMENTE")
 
     if banco_ativo():
         migrar_json_para_banco_se_vazio()
@@ -4823,6 +4795,56 @@ def salvar_usuarios(data):
 
     with open(USUARIOS_PATH, "w", encoding="utf-8") as f:
         json.dump(data, f, indent=4, ensure_ascii=False)
+
+
+
+# ============================================================
+# V69 - ADMIN AUTOMÁTICO SEGURO
+# ============================================================
+
+def garantir_admin():
+    try:
+        usuarios = carregar_usuarios()
+        usuarios.setdefault("users", [])
+
+        admin_email = os.environ.get("ADMIN_EMAIL", "admin@betmanager.com").strip().lower()
+        admin_password = os.environ.get("ADMIN_PASSWORD", "Admin@123")
+
+        existe_admin_email = False
+        existe_qualquer_admin = False
+
+        for u in usuarios.get("users", []):
+            if u.get("is_admin"):
+                existe_qualquer_admin = True
+
+            if u.get("email", "").strip().lower() == admin_email:
+                existe_admin_email = True
+                u["is_admin"] = True
+                u["ativo"] = True
+                u["assinatura_ativa"] = True
+                u["plano"] = "admin"
+                u.setdefault("nome", "Admin")
+                u.setdefault("apostas_publicas_padrao", False)
+
+        if not existe_admin_email and not existe_qualquer_admin:
+            usuarios["users"].append({
+                "id": str(uuid.uuid4()),
+                "nome": "Admin",
+                "email": admin_email,
+                "senha_hash": generate_password_hash(admin_password),
+                "is_admin": True,
+                "ativo": True,
+                "assinatura_ativa": True,
+                "plano": "admin",
+                "apostas_publicas_padrao": False,
+                "criado_em": datetime.now().strftime("%d/%m/%Y %H:%M")
+            })
+
+        salvar_usuarios(usuarios)
+        print("ADMIN GARANTIDO:", admin_email)
+
+    except Exception as e:
+        print("ERRO AO GARANTIR ADMIN:", repr(e))
 
 def buscar_usuario_email(email):
     email = (email or "").strip().lower()
@@ -4888,6 +4910,14 @@ def aplicar_headers_seguranca(response):
     response.headers["X-Content-Type-Options"] = "nosniff"
     response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
     return response
+
+
+
+# Garante admin no boot da aplicação
+try:
+    garantir_admin()
+except Exception as e:
+    print('BOOT ADMIN ERROR:', repr(e))
 
 
 @app.route("/bloqueado")
@@ -8358,7 +8388,7 @@ def ultimas_apostas_comunidade_base(limit=10):
             "valor": bd.get("valor", "")
         })
     return saida
-garantir_admin()
+
 
 if __name__ == "__main__":
     app.run(debug=True)
