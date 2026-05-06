@@ -2798,3 +2798,12 @@ button:disabled {
     .table-panel th:nth-child(4), .table-panel td:nth-child(4) { width: 225px !important; }
     .table-panel th:nth-child(11), .table-panel td:nth-child(11) { width: 150px !important; }
 }
+
+
+/* V87 - ESPN match e organizar jogos corrigidos */
+.day-separator-row td { text-align: left !important; }
+.table-panel .jogo-cell .game-time, .bets-table .jogo-cell .game-time {
+    display: inline-flex !important;
+    margin-left: 6px !important;
+    vertical-align: middle !important;
+}

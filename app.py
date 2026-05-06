@@ -217,7 +217,7 @@ API_KEY = CONFIG.get("API_KEY", "")
 
 print("CONFIG PATH:", CONFIG_PATH)
 print("API KEY:", API_KEY)
-print("VERSAO_CARREGADA: OCR_CLIENTE_V86_LAYOUT_ORGANIZAR")
+print("VERSAO_CARREGADA: OCR_CLIENTE_V87_ESPN_MATCH_ORGANIZAR_FIX")
 
 if os.name == "nt":
     tess_path = r"C:\Program Files\Tesseract-OCR\tesseract.exe"
@@ -5075,13 +5075,41 @@ def espn_normalizar_nome(s):
     s = re.sub(r"[^a-z0-9 ]+", " ", s)
     s = re.sub(r"\s+", " ", s).strip()
     aliases = {
+        "psg": "paris saint germain",
+        "paris": "paris saint germain",
+        "paris sg": "paris saint germain",
+        "paris st germain": "paris saint germain",
+        "bayern": "bayern munich",
+        "bayern de munique": "bayern munich",
+        "bayern munique": "bayern munich",
+        "rayo": "rayo vallecano",
+        "shaktar": "shakhtar donetsk",
+        "shaktar donetsk": "shakhtar donetsk",
+        "shakhtar": "shakhtar donetsk",
+        "vasco": "vasco da gama",
+        "vasco da gama rj": "vasco da gama",
         "inter": "internacional",
-        "athletico pr": "athletico paranaense",
-        "atletico pr": "athletico paranaense",
-        "atletico mg": "atletico mineiro",
         "spfc": "sao paulo",
+        "atletico mg": "atletico mineiro",
+        "atletico pr": "athletico paranaense",
+        "athletico pr": "athletico paranaense"
     }
     return aliases.get(s, s)
+
+
+def espn_extrair_time_unico(jogo, aposta=""):
+    texto = espn_normalizar_nome(f"{jogo} {aposta}")
+    candidatos = [
+        "vasco da gama", "flamengo", "fluminense", "botafogo", "palmeiras",
+        "corinthians", "sao paulo", "santos", "gremio", "internacional",
+        "bayern munich", "paris saint germain", "rayo vallecano",
+        "crystal palace", "shakhtar donetsk", "strasbourg"
+    ]
+    for c in candidatos:
+        cn = espn_normalizar_nome(c)
+        if cn in texto:
+            return cn
+    return ""
 
 def espn_dividir_times(jogo):
     jogo = str(jogo or "").strip()
@@ -5139,50 +5167,84 @@ def espn_formatar_status(comp):
         return dt_br.strftime("%d/%m %H:%M"), dt_br, False
     return "", None, False
 
-def espn_buscar_jogo(jogo, esporte="Futebol"):
+def espn_buscar_jogo(jogo, esporte="Futebol", aposta=""):
     time_a, time_b = espn_dividir_times(jogo)
-    if not time_a or not time_b: return None
-    chave = f"{espn_normalizar_nome(esporte)}|{espn_normalizar_nome(time_a)}|{espn_normalizar_nome(time_b)}"
-    now = time.time()
+    dois_times = bool(time_a and time_b)
+
+    time_unico = ""
+    if not dois_times:
+        time_unico = espn_extrair_time_unico(jogo, aposta)
+        if not time_unico:
+            return None
+
+    chave = f"{espn_normalizar_nome(esporte)}|{espn_normalizar_nome(jogo)}|{espn_normalizar_nome(aposta)}"
+    agora_ts = time.time()
     cache = ESPN_CACHE.get(chave)
-    if cache and now - cache.get("ts", 0) <= ESPN_CACHE_TTL:
+    if cache and (agora_ts - cache.get("ts", 0)) <= ESPN_CACHE_TTL:
         return cache.get("valor")
-    melhor, melhor_score = None, 0
+
+    melhor = None
+    melhor_score = 0
+
     for sport, league in espn_ligas_por_esporte(esporte):
         try:
             r = requests.get(espn_scoreboard_url(sport, league), timeout=6)
-            if r.status_code != 200: continue
+            if r.status_code != 200:
+                continue
+
             for ev in r.json().get("events", []):
                 comp = (ev.get("competitions") or [{}])[0]
                 nomes = []
                 for c in comp.get("competitors", []):
                     team = c.get("team", {}) or {}
                     nomes.append(team.get("displayName") or team.get("shortDisplayName") or team.get("name") or "")
-                if len(nomes) < 2: continue
-                score = max(
-                    espn_similaridade(time_a, nomes[0]) + espn_similaridade(time_b, nomes[1]),
-                    espn_similaridade(time_a, nomes[1]) + espn_similaridade(time_b, nomes[0])
-                )
+
+                if len(nomes) < 2:
+                    continue
+
+                if dois_times:
+                    a1 = espn_similaridade(time_a, nomes[0])
+                    b1 = espn_similaridade(time_b, nomes[1])
+                    a2 = espn_similaridade(time_a, nomes[1])
+                    b2 = espn_similaridade(time_b, nomes[0])
+
+                    if a1 + b1 >= a2 + b2:
+                        score = a1 + b1
+                        min_side = min(a1, b1)
+                    else:
+                        score = a2 + b2
+                        min_side = min(a2, b2)
+
+                    # Não aceitar só um time quando há confronto completo.
+                    if min_side < 58 or score < 142:
+                        continue
+                else:
+                    score = max(espn_similaridade(time_unico, nomes[0]), espn_similaridade(time_unico, nomes[1]))
+                    if score < 82:
+                        continue
+
                 if score > melhor_score:
-                    label, dt_br, ao_vivo = espn_formatar_status(comp)
+                    label, dt_br, ao_vivo, ordem = espn_formatar_status(comp)
                     melhor_score = score
                     melhor = {
                         "espn_event_id": ev.get("id", ""),
                         "espn_sport": sport,
                         "espn_league": league,
                         "espn_match_score": score,
+                        "espn_match_name": " x ".join(nomes),
                         "horario_jogo": dt_br.strftime("%d/%m/%Y %H:%M") if dt_br else "",
                         "horario_jogo_iso": dt_br.isoformat() if dt_br else "",
                         "status_jogo": label,
                         "ao_vivo": bool(ao_vivo),
+                        "ordem_jogo": ordem,
                     }
+
         except Exception as e:
             print("ESPN SAFE erro:", league, repr(e))
-    if melhor and melhor_score >= 120:
-        ESPN_CACHE[chave] = {"ts": now, "valor": melhor}
-        return melhor
-    ESPN_CACHE[chave] = {"ts": now, "valor": None}
-    return None
+            continue
+
+    ESPN_CACHE[chave] = {"ts": agora_ts, "valor": melhor}
+    return melhor
 
 def espn_aplicar_info_na_aposta(bet, forcar=False):
     try:
@@ -5193,7 +5255,7 @@ def espn_aplicar_info_na_aposta(bet, forcar=False):
         bet.setdefault("ao_vivo", False)
         if not forcar and bet.get("horario_jogo") and bet.get("status_jogo"):
             return bet
-        info = espn_buscar_jogo(bet.get("jogo", ""), bet.get("esporte", "Futebol"))
+        info = espn_buscar_jogo(bet.get("jogo", ""), bet.get("esporte", "Futebol"), bet.get("aposta", ""))
         if info: bet.update(info)
     except Exception as e:
         print("ESPN SAFE aplicar erro:", repr(e))
