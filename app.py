@@ -217,7 +217,7 @@ API_KEY = CONFIG.get("API_KEY", "")
 
 print("CONFIG PATH:", CONFIG_PATH)
 print("API KEY:", API_KEY)
-print("VERSAO_CARREGADA: OCR_CLIENTE_V91_ORGANIZAR_COLAPSAVEL")
+print("VERSAO_CARREGADA: OCR_CLIENTE_V93_DATA_MANUAL")
 
 if os.name == "nt":
     tess_path = r"C:\Program Files\Tesseract-OCR\tesseract.exe"
@@ -5113,9 +5113,19 @@ def espn_extrair_time_unico(jogo, aposta=""):
 
 def espn_dividir_times(jogo):
     jogo = str(jogo or "").strip()
-    partes = re.split(r"\s+(?:x|vs|v|versus)\s+", jogo, flags=re.I)
+    if not jogo:
+        return "", ""
+
+    texto = re.sub(r"\s+[–—-]\s+", " x ", jogo)
+    texto = re.sub(r"\s+(?:vs\\.?|versus|v\\.?|x)\\s+", " x ", texto, flags=re.I)
+
+    partes = re.split(r"\s+x\s+", texto, flags=re.I)
     if len(partes) >= 2:
-        return partes[0].strip(), partes[1].strip()
+        a = partes[0].strip()
+        b = partes[1].strip()
+        if "/" in a or "/" in b or "," in a or "," in b:
+            return "", ""
+        return a, b
     return "", ""
 
 def espn_similaridade(a, b):
@@ -6229,6 +6239,35 @@ def ultimas_apostas_comunidade_base(limit=10):
         })
     return saida
 
+
+
+@app.route("/definir_data_jogo", methods=["POST"])
+@login_required
+@assinatura_required
+def definir_data_jogo():
+    data = request.get_json(silent=True) or {}
+    bet_id = str(data.get("id", "")).strip()
+    horario = str(data.get("horario", "")).strip()
+
+    if not bet_id or not horario:
+        return jsonify({"ok": False}), 400
+
+    lista = bets_do_usuario()
+
+    for b in lista:
+        if str(b.get("id")) == bet_id:
+            try:
+                dt = datetime.fromisoformat(horario)
+                b["horario_jogo_iso"] = dt.isoformat()
+                b["horario_jogo"] = dt.strftime("%d/%m %H:%M")
+                b["status_jogo"] = dt.strftime("%d/%m %H:%M")
+                salvar()
+                return jsonify({"ok": True})
+            except Exception as e:
+                print("erro definir_data_jogo", repr(e))
+                return jsonify({"ok": False}), 500
+
+    return jsonify({"ok": False}), 404
 
 if __name__ == "__main__":
     app.run(debug=True)

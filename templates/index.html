@@ -1955,10 +1955,13 @@ document.addEventListener("DOMContentLoaded", () => {
 
 
 
-<script id="v91-organizar-colapsavel-js">
-function v91Toast(msg, type){ if(typeof v72Toast === "function") v72Toast(msg, type || "ok") }
 
-function v91EnsureOrganizarButton(){
+
+
+<script id="v92-organizar-colapsavel-js">
+function v92Toast(msg, type){ if(typeof v72Toast === "function") v72Toast(msg, type || "ok") }
+
+function v92EnsureOrganizarButton(){
     if(document.getElementById("organizarJogosBtn")) return
     const btn = document.createElement("button")
     btn.id = "organizarJogosBtn"
@@ -1970,38 +1973,66 @@ function v91EnsureOrganizarButton(){
     if(filters) filters.appendChild(btn)
 }
 
-function v91NormalizarTexto(txt){
-    return String(txt || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g,"").replace(/[^a-z0-9 xvs]/g," ").replace(/\s+/g," ").trim()
+function v92TeamAlias(name){
+    let s = String(name || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g,"")
+    s = s.replace(/[()]/g," ").replace(/[^a-z0-9 ]/g," ").replace(/\s+/g," ").trim()
+    s = s.replace(/\b(fc|cf|sc|sp|rj|mg|rs|pr|u20|sub 20|feminino)\b/g, " ").replace(/\s+/g," ").trim()
+    const aliases = {
+        "psg":"paris saint germain","paris":"paris saint germain","paris sg":"paris saint germain","paris st germain":"paris saint germain",
+        "bayern":"bayern munich","bayern munique":"bayern munich","bayern de munique":"bayern munich",
+        "atletico de madrid":"atletico madrid","arsenal london":"arsenal",
+        "palmeiras sao paulo":"palmeiras","boca":"boca juniors",
+        "barcelona guayaquil":"barcelona sc","barcelona":"barcelona sc",
+        "okc thunder":"oklahoma city thunder","la lakers":"los angeles lakers","lakers":"los angeles lakers",
+        "shaktar":"shakhtar donetsk","shaktar donetsk":"shakhtar donetsk","shakhtar":"shakhtar donetsk",
+        "vasco":"vasco da gama"
+    }
+    return aliases[s] || s
 }
 
-function v91ParseDateBR(txt){
-    const m = String(txt || "").match(/(\d{2})\/(\d{2})\/(\d{4})(?:\s+(\d{2}):(\d{2}))?/)
-    if(!m) return null
-    const [,dd,mm,yyyy,hh="00",mi="00"] = m
-    return new Date(Number(yyyy), Number(mm)-1, Number(dd), Number(hh), Number(mi))
+function v92NormalizeGameText(raw){
+    return String(raw || "")
+        .replace(/🕒|⏰/g,"")
+        .replace(/Hoje\s+\d{1,2}:\d{2}/gi,"")
+        .replace(/\d{2}\/\d{2}\s+\d{1,2}:\d{2}/g,"")
+        .replace(/Ao vivo|Finalizado/gi,"")
+        .replace(/Começa em\s+\d+min/gi,"")
+        .replace(/\s+/g," ")
+        .trim()
 }
 
-function v91ParseShortDate(txt){
+function v92SplitGame(raw){
+    let text = v92NormalizeGameText(raw)
+    text = text.replace(/\s+[–—-]\s+/g, " x ")
+    text = text.replace(/\s+(vs\.?|versus|v\.?|x)\s+/gi, " x ")
+    if(text.includes("/") || text.includes(",")) return null
+    const parts = text.split(/\s+x\s+/i)
+    if(parts.length !== 2) return null
+    const a = v92TeamAlias(parts[0])
+    const b = v92TeamAlias(parts[1])
+    return a && b ? [a,b].sort() : null
+}
+
+function v92ParseShortDate(txt){
     const m = String(txt || "").match(/(\d{2})\/(\d{2})\s+(\d{1,2}):(\d{2})/)
     if(!m) return null
-    const year = new Date().getFullYear()
-    const [,dd,mm,hh,mi] = m
-    return new Date(year, Number(mm)-1, Number(dd), Number(hh), Number(mi))
+    const y = new Date().getFullYear()
+    return new Date(y, Number(m[2])-1, Number(m[1]), Number(m[3]), Number(m[4]))
 }
 
-function v91DiaLabel(date){
-    if(!date || isNaN(date.getTime())) return "Sem data do jogo"
+function v92DiaLabel(date){
+    if(!date || isNaN(date.getTime()) || date.getFullYear() >= 2999) return "Sem data do jogo"
     const dias = ["Domingo","Segunda-feira","Terça-feira","Quarta-feira","Quinta-feira","Sexta-feira","Sábado"]
     return `${dias[date.getDay()]} ${String(date.getDate()).padStart(2,"0")}/${String(date.getMonth()+1).padStart(2,"0")}/${date.getFullYear()}`
 }
 
-function v91Tbody(){ return document.querySelector(".table-panel tbody") || document.querySelector("table tbody") }
-function v91Rows(){ const tbody = v91Tbody(); return tbody ? Array.from(tbody.querySelectorAll("tr.bet-row")) : [] }
-function v91FindJogoCell(row){ return row.querySelector(".jogo-cell") || row.children?.[3] || null }
+function v92Tbody(){ return document.querySelector(".table-panel tbody") || document.querySelector("table tbody") }
+function v92Rows(){ const tbody = v92Tbody(); return tbody ? Array.from(tbody.querySelectorAll("tr.bet-row")) : [] }
+function v92FindJogoCell(row){ return row.querySelector(".jogo-cell") || row.children?.[3] || null }
 
-function v91RenderBadges(){
-    v91Rows().forEach(row => {
-        const cell = v91FindJogoCell(row)
+function v92RenderBadges(){
+    v92Rows().forEach(row => {
+        const cell = v92FindJogoCell(row)
         if(!cell) return
         cell.querySelectorAll(".game-time").forEach(el => el.remove())
         const status = row.dataset.statusJogo || ""
@@ -2015,14 +2046,14 @@ function v91RenderBadges(){
     })
 }
 
-async function v91AtualizarHorariosAntesDeOrganizar(){
+async function v92AtualizarHorariosAntesDeOrganizar(){
     try{
         const resp = await fetch("/api/horarios_bets", {method:"POST", cache:"no-store"})
         const data = await resp.json()
         if(data && Array.isArray(data.rows)){
             const byId = {}
             data.rows.forEach(item => { if(item.id) byId[item.id] = item })
-            v91Rows().forEach(row => {
+            v92Rows().forEach(row => {
                 const item = byId[row.dataset.id]
                 if(!item) return
                 row.dataset.jogo = item.jogo || row.dataset.jogo || ""
@@ -2030,45 +2061,33 @@ async function v91AtualizarHorariosAntesDeOrganizar(){
                 row.dataset.statusJogo = item.status_label || item.status_jogo || item.horario_jogo || row.dataset.statusJogo || ""
                 row.dataset.statusClass = item.status_class || (item.ao_vivo ? "live" : "") || row.dataset.statusClass || ""
             })
-            v91RenderBadges()
+            v92RenderBadges()
         }
-        return data || {atualizadas: 0}
-    }catch(e){
-        console.warn("Erro ao atualizar horários antes de organizar", e)
-        return {atualizadas: 0, erro: true}
-    }
+    }catch(e){ console.warn("Erro horários", e) }
 }
 
-function v91RowDate(row){
+function v92RowDate(row){
     const iso = row.dataset.horario || ""
-    if(iso){ const d = new Date(iso); if(!isNaN(d.getTime())) return d }
+    if(iso){
+        const d = new Date(iso)
+        if(!isNaN(d.getTime())) return d
+    }
     const status = row.dataset.statusJogo || row.querySelector(".game-time")?.innerText || ""
-    const shortD = v91ParseShortDate(status)
+    const shortD = v92ParseShortDate(status)
     if(shortD) return shortD
-    const dataD = v91ParseDateBR(row.dataset.data || row.children?.[0]?.innerText || "")
-    if(dataD) return dataD
     return new Date(2999,0,1)
 }
 
-function v91CleanGame(raw){
-    return String(raw || "").replace(/🕒|⏰/g,"").replace(/Hoje\s+\d{1,2}:\d{2}/gi,"").replace(/\d{2}\/\d{2}\s+\d{1,2}:\d{2}/g,"").replace(/Ao vivo/gi,"").replace(/Começa em\s+\d+min/gi,"").trim()
+function v92GameKey(row, idx){
+    const cell = v92FindJogoCell(row)
+    const raw = row.dataset.jogo || cell?.childNodes?.[0]?.textContent || cell?.innerText || ""
+    const split = v92SplitGame(raw)
+    if(!split) return `zz-multipla-${idx}`
+    return split.join(" x ")
 }
 
-function v91GameKey(row, idx){
-    const cell = v91FindJogoCell(row)
-    const raw = v91CleanGame(row.dataset.jogo || cell?.childNodes?.[0]?.textContent || cell?.innerText || "")
-    const lower = raw.toLowerCase()
-    if(lower.includes("múltipla") || lower.includes("multipla") || raw.includes("/") || raw.includes(",") || raw.split(/\s+x\s+/i).length !== 2){
-        return `zz-multipla-${idx}`
-    }
-    const parts = raw.split(/\s+x\s+/i)
-    const a = v91NormalizarTexto(parts[0])
-    const b = v91NormalizarTexto(parts[1])
-    return a && b ? [a,b].sort().join(" x ") : `zz-outro-${idx}`
-}
-
-function v91SetDayCollapsed(dayKey, collapsed){
-    const tbody = v91Tbody()
+function v92SetDayCollapsed(dayKey, collapsed){
+    const tbody = v92Tbody()
     if(!tbody) return
     let active = false
     Array.from(tbody.children).forEach(row => {
@@ -2087,28 +2106,27 @@ function v91SetDayCollapsed(dayKey, collapsed){
     })
 }
 
-function v91ToggleDay(dayKey){
+function v92ToggleDay(dayKey){
     const sep = document.querySelector(`.day-separator-row[data-day-key="${CSS.escape(dayKey)}"]`)
     if(!sep) return
-    const collapsed = sep.dataset.collapsed !== "1"
-    v91SetDayCollapsed(dayKey, collapsed)
+    v92SetDayCollapsed(dayKey, sep.dataset.collapsed !== "1")
 }
 
 async function organizarJogosTabela(){
-    v91Toast("Atualizando horários e organizando...")
-    await v91AtualizarHorariosAntesDeOrganizar()
-    const tbody = v91Tbody()
+    v92Toast("Atualizando horários e organizando...")
+    await v92AtualizarHorariosAntesDeOrganizar()
+    const tbody = v92Tbody()
     if(!tbody) return
     tbody.querySelectorAll(".day-separator-row").forEach(r => r.remove())
-    const rows = v91Rows()
-    if(!rows.length){ v91Toast("Nenhuma aposta para organizar", "err"); return }
+    const rows = v92Rows()
+    if(!rows.length){ v92Toast("Nenhuma aposta para organizar", "err"); return }
 
     const enriched = rows.map((row, idx) => {
-        const date = v91RowDate(row)
+        const date = v92RowDate(row)
         return {
             row, idx, date,
-            dayKey: date && !isNaN(date.getTime()) ? date.toISOString().slice(0,10) : "9999-01-01",
-            gameKey: v91GameKey(row, idx),
+            dayKey: date && !isNaN(date.getTime()) && date.getFullYear() < 2999 ? date.toISOString().slice(0,10) : "9999-99-99",
+            gameKey: v92GameKey(row, idx),
             time: date && !isNaN(date.getTime()) ? date.getTime() : 9999999999999
         }
     })
@@ -2128,26 +2146,78 @@ async function organizarJogosTabela(){
             sep.className = "day-separator-row"
             sep.dataset.dayKey = item.dayKey
             sep.dataset.collapsed = "0"
-            sep.innerHTML = `<td colspan="11"><button type="button" class="day-toggle" onclick="v91ToggleDay('${item.dayKey}')"><span class="day-arrow">▼</span><span>${v91DiaLabel(item.date)}</span></button></td>`
+            sep.innerHTML = `<td colspan="11"><button type="button" class="day-toggle" onclick="v92ToggleDay('${item.dayKey}')"><span class="day-arrow">▼</span><span>${v92DiaLabel(item.date)}</span></button></td>`
             tbody.appendChild(sep)
         }
         tbody.appendChild(item.row)
         item.row.style.display = ""
     })
 
-    v91RenderBadges()
-    v91Toast("Jogos organizados por dia e confronto")
+    v92RenderBadges()
+    v92Toast("Jogos organizados por dia e confronto")
 }
 
 document.addEventListener("DOMContentLoaded", () => {
-    v91EnsureOrganizarButton()
-    v91RenderBadges()
-    setTimeout(v91EnsureOrganizarButton, 500)
-    setTimeout(v91RenderBadges, 500)
+    v92EnsureOrganizarButton()
+    v92RenderBadges()
+    setTimeout(v92EnsureOrganizarButton, 500)
+    setTimeout(v92RenderBadges, 500)
 })
 
 window.organizarJogosTabela = organizarJogosTabela
-window.v91ToggleDay = v91ToggleDay
+window.v92ToggleDay = v92ToggleDay
+</script>
+
+
+<script id="v92-manual-date-js">
+async function definirDataManual(btn){
+    const row = btn.closest("tr.bet-row")
+    if(!row) return
+
+    const atual = row.dataset.horario || ""
+    const valor = prompt("Digite a data/hora do jogo:\nFormato: 2026-05-10T16:00", atual)
+
+    if(!valor) return
+
+    try{
+        const resp = await fetch("/definir_data_jogo", {
+            method: "POST",
+            headers: {"Content-Type":"application/json"},
+            body: JSON.stringify({
+                id: row.dataset.id,
+                horario: valor
+            })
+        })
+
+        const data = await resp.json()
+
+        if(data.ok){
+            location.reload()
+        }else{
+            alert("Erro ao salvar data")
+        }
+    }catch(e){
+        alert("Erro ao salvar data")
+    }
+}
+
+document.addEventListener("DOMContentLoaded", () => {
+    document.querySelectorAll("tr.bet-row").forEach(row => {
+        if(row.querySelector(".manual-date-btn")) return
+
+        const actions = row.lastElementChild
+        if(!actions) return
+
+        const btn = document.createElement("button")
+        btn.type = "button"
+        btn.className = "manual-date-btn"
+        btn.innerHTML = "📅"
+        btn.title = "Definir data manual"
+        btn.onclick = function(){ definirDataManual(btn) }
+
+        actions.prepend(btn)
+    })
+})
 </script>
 
 </body>
