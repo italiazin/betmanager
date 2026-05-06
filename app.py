@@ -17,6 +17,7 @@ from sqlalchemy import create_engine, text
 from sqlalchemy.exc import SQLAlchemyError
 from functools import wraps
 from werkzeug.security import generate_password_hash, check_password_hash
+from werkzeug.exceptions import HTTPException
 
 import pytesseract
 from PIL import Image
@@ -227,7 +228,7 @@ API_KEY = CONFIG.get("API_KEY", "")
 
 print("CONFIG PATH:", CONFIG_PATH)
 print("API KEY:", API_KEY)
-print("VERSAO_CARREGADA: OCR_CLIENTE_V82_DEPLOY_FINAL_FIX")
+print("VERSAO_CARREGADA: OCR_CLIENTE_V83_NO_JINJA_ERROR")
 
 if os.name == "nt":
     tess_path = r"C:\Program Files\Tesseract-OCR\tesseract.exe"
@@ -5457,6 +5458,9 @@ def garantir_campos_horario_bet(b):
 
 @app.errorhandler(Exception)
 def v81_log_internal_error(e):
+    if isinstance(e, HTTPException):
+        return e
+
     print("===== ERRO FLASK 500 =====")
     traceback.print_exc()
     print("===== FIM ERRO FLASK 500 =====")
@@ -5465,9 +5469,13 @@ def v81_log_internal_error(e):
 
 
 # V82 - compatibilidade com versões antigas
-def data_hora_local():
+def agora_brasil():
     return agora_brasil()
 
+
+# V83 - compatibilidade com versões antigas
+def data_hora_local():
+    return agora_brasil()
 
 @app.route("/atualizar_horarios_espn", methods=["POST"])
 @login_required
