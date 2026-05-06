@@ -36,7 +36,8 @@ function formatarLinhaApostaNova(b){
         <td class="data-cell">${b.data || ""}</td>
         <td class="casa-cell">${b.casa || ""}</td>
         <td class="esporte-cell">${b.esporte || ""}</td>
-        <td class="jogo-cell">${b.jogo || ""}${b.horario_jogo ? `<div class="game-time">⏰ ${b.horario_jogo}</div>` : ""}</td>
+        <td class="jogo-cell">${b.jogo || ""}${b.horario_jogo ? `<div class="game-time">⏰ ${b.horario_jogo}</div>` : ""}${b.jogo_status_visual ? `<div class="game-status">${b.jogo_status_visual}</div>` : ""}</td>
+                    <td class="horario-cell"><span class="game-status {{ \'live\' if b.ao_vivo else \'\' }}">{{ b.status_jogo or b.horario_jogo or "-" }}</span></td>
         <td class="aposta-cell" title="${b.aposta || ""}">${apostaVisual}</td>
         <td class="odd-cell">${b.odd || ""}</td>
         <td class="valor-cell">${valor}</td>
@@ -199,7 +200,7 @@ function formatarLinhaApostaNovaV39(b){
         <td class="data-cell">${b.data || ""}</td>
         <td class="casa-cell">${b.casa || ""}</td>
         <td class="esporte-cell">${b.esporte || ""}</td>
-        <td class="jogo-cell">${b.jogo || ""}${b.horario_jogo ? `<div class="game-time">⏰ ${b.horario_jogo}</div>` : ""}</td>
+        <td class="jogo-cell">${b.jogo || ""}${b.horario_jogo ? `<div class="game-time">⏰ ${b.horario_jogo}</div>` : ""}${b.jogo_status_visual ? `<div class="game-status">${b.jogo_status_visual}</div>` : ""}</td>
         <td class="aposta-cell" title="${b.aposta || ""}">${apostaVisual}</td>
         <td class="odd-cell">${b.odd || ""}</td>
         <td class="valor-cell">${valor}</td>
@@ -729,6 +730,7 @@ document.addEventListener("DOMContentLoaded", ()=>{
                 <th>Casa</th>
                 <th>Esporte</th>
                 <th>Jogo</th>
+                    <th>Horário</th>
                 <th>Aposta</th>
                 <th>Odd</th>
                 <th>Valor</th>
@@ -745,7 +747,7 @@ document.addEventListener("DOMContentLoaded", ()=>{
                 <td class="data-cell">{{ b.data }}</td>
                 <td class="casa-cell">{{ b.casa }}</td>
                 <td class="esporte-cell">{{ b.esporte }}</td>
-                <td class="jogo-cell">{{ b.jogo }}{% if b.horario_jogo %}<div class="game-time">⏰ {{ b.horario_jogo }}</div>{% endif %}</td>
+                <td class="jogo-cell">{{ b.jogo }}{% if b.horario_jogo %}<div class="game-time">⏰ {{ b.horario_jogo }}</div>{% endif %}{% if b.jogo_status_visual %}<div class="game-status">{{ b.jogo_status_visual }}</div>{% endif %}</td>
                 <td class="aposta-cell">{{ b.aposta_display if b.aposta_display is defined else b.aposta }}</td>
                 <td class="odd-cell">{{ b.odd }}</td>
                 <td class="valor-cell">{{ "%.2f"|format(b.valor) }}</td>
@@ -1013,7 +1015,7 @@ function carregarFeedApostas(force=false){
                                 ${isNew ? '<span class="novo-badge">NOVO</span>' : ''}
                             </div>
                             <span>${a.aposta || ""}</span>
-                            <div class="feed-meta">${a.casa || "Casa"} • ${a.esporte || "Esporte"} • Odd ${a.odd || "-"} • R$ ${a.valor || "-"} ${a.horario_jogo ? "• Jogo: " + a.horario_jogo : ""} ${a.data ? "• " + a.data : ""}</div>
+                            <div class="feed-meta">${a.casa || "Casa"} • ${a.esporte || "Esporte"} • Odd ${a.odd || "-"} • R$ ${a.valor || "-"} ${a.horario_jogo ? "• Jogo: " + a.horario_jogo : ""} ${a.jogo_status_visual ? "• " + a.jogo_status_visual : ""} ${a.data ? "• " + a.data : ""}</div>
                         </div>
                         <button type="button" class="copy-bet-btn" data-payload="${payload}" onclick="copiarApostaComunidade(this)">Copiar</button>
                     </div>`
@@ -1451,7 +1453,7 @@ window.carregarFeedApostas = function(force=false){
                                 ${isNew ? '<span class="novo-badge">NOVO</span>' : ''}
                             </div>
                             <span>${a.aposta || ""}</span>
-                            <div class="feed-meta">${a.casa || "Casa"} • ${a.esporte || "Esporte"} • Odd ${a.odd || "-"} • R$ ${a.valor || "-"} ${a.horario_jogo ? "• Jogo: " + a.horario_jogo : ""} ${a.data ? "• " + a.data : ""}</div>
+                            <div class="feed-meta">${a.casa || "Casa"} • ${a.esporte || "Esporte"} • Odd ${a.odd || "-"} • R$ ${a.valor || "-"} ${a.horario_jogo ? "• Jogo: " + a.horario_jogo : ""} ${a.jogo_status_visual ? "• " + a.jogo_status_visual : ""} ${a.data ? "• " + a.data : ""}</div>
                         </div>
                         <button type="button" class="copy-bet-btn" data-payload="${payload}" onclick="copiarApostaComunidade(this)">Copiar</button>
                     </div>`
@@ -1848,7 +1850,7 @@ function v76AddBetToTable(b){
         <td>${v76Escape(b.data || "")}</td>
         <td class="casa-cell">${v76Escape(b.casa || "")}</td>
         <td class="esporte-cell">${v76Escape(b.esporte || "")}</td>
-        <td class="jogo-cell">${v76Escape(b.jogo || "")}${b.horario_jogo ? `<div class="game-time">⏰ ${v76Escape(b.horario_jogo)}</div>` : ""}</td>
+        <td class="jogo-cell">${v76Escape(b.jogo || "")}${b.horario_jogo ? `<div class="game-time">⏰ ${v76Escape(b.horario_jogo)}</div>` : ""}${b.jogo_status_visual ? `<div class="game-status">${v76Escape(b.jogo_status_visual)}</div>` : ""}</td>
         <td class="aposta-cell">${v76Escape(b.aposta_display || b.aposta || "")}</td>
         <td class="odd-cell">${v76Escape(b.odd || "")}</td>
         <td class="valor-cell">${v76Escape(b.valor || "")}</td>
@@ -1871,6 +1873,23 @@ function v76AddBetToTable(b){
 function v76AddSavedPreviewBets(data){
     if(!data || !Array.isArray(data.bets)) return
     data.bets.forEach(v76AddBetToTable)
+}
+</script>
+
+
+<script id="v80-espn-js">
+function atualizarHorariosEspn(){
+    if(typeof v72Toast === "function") v72Toast("Atualizando horários ESPN...")
+    fetch("/atualizar_horarios_espn", {method:"POST", cache:"no-store"})
+    .then(r=>r.json())
+    .then(d=>{
+        if(typeof v72Toast === "function") v72Toast(`${d.atualizadas || 0} horário(s) atualizado(s)`)
+        setTimeout(()=>location.reload(), 500)
+    })
+    .catch(()=>{
+        if(typeof v72Toast === "function") v72Toast("Erro ao atualizar horários", "err")
+        else alert("Erro ao atualizar horários")
+    })
 }
 </script>
 

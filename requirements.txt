@@ -6,3 +6,5 @@ requests
 Werkzeug
 SQLAlchemy
 psycopg2-binary
+
+tzdata
