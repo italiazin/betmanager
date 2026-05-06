@@ -217,7 +217,7 @@ API_KEY = CONFIG.get("API_KEY", "")
 
 print("CONFIG PATH:", CONFIG_PATH)
 print("API KEY:", API_KEY)
-print("VERSAO_CARREGADA: OCR_CLIENTE_V90_ESPN_LAYOUT_FINAL")
+print("VERSAO_CARREGADA: OCR_CLIENTE_V91_ORGANIZAR_COLAPSAVEL")
 
 if os.name == "nt":
     tess_path = r"C:\Program Files\Tesseract-OCR\tesseract.exe"
@@ -5322,6 +5322,65 @@ def espn_lazy_preencher_horarios_dashboard(limit=25):
             print("ESPN lazy salvar erro:", repr(e))
 
     return atualizadas
+
+
+
+@app.route("/api/horarios_bets", methods=["POST"])
+@login_required
+@assinatura_required
+def api_horarios_bets():
+    atualizadas = 0
+    rows = []
+
+    try:
+        lista = bets_do_usuario()
+    except Exception as e:
+        print("api_horarios_bets listar erro:", repr(e))
+        lista = []
+
+    for b in lista:
+        try:
+            if not isinstance(b, dict):
+                continue
+
+            antes = (b.get("horario_jogo_iso", ""), b.get("status_jogo", ""))
+
+            if not (b.get("horario_jogo") or b.get("status_jogo")):
+                jogo_txt = str(b.get("jogo", "") or "").strip()
+                if len(jogo_txt) >= 4:
+                    info = espn_buscar_jogo(
+                        b.get("jogo", ""),
+                        b.get("esporte", "Futebol"),
+                        b.get("aposta", "")
+                    )
+                    if info:
+                        b.update(info)
+
+            depois = (b.get("horario_jogo_iso", ""), b.get("status_jogo", ""))
+            if depois != antes and (depois[0] or depois[1]):
+                atualizadas += 1
+
+            rows.append({
+                "id": b.get("id", ""),
+                "jogo": b.get("jogo", ""),
+                "horario_jogo": b.get("horario_jogo", ""),
+                "horario_jogo_iso": b.get("horario_jogo_iso", ""),
+                "status_jogo": b.get("status_jogo", ""),
+                "ao_vivo": bool(b.get("ao_vivo", False)),
+                "status_class": espn_status_class_bet(b) if "espn_status_class_bet" in globals() else ("live" if b.get("ao_vivo") else ""),
+                "status_label": espn_status_label_bet(b) if "espn_status_label_bet" in globals() else (b.get("status_jogo") or b.get("horario_jogo") or "")
+            })
+
+        except Exception as e:
+            print("api_horarios_bets item erro:", repr(e))
+
+    if atualizadas:
+        try:
+            salvar()
+        except Exception as e:
+            print("api_horarios_bets salvar erro:", repr(e))
+
+    return jsonify({"ok": True, "atualizadas": atualizadas, "rows": rows})
 
 
 @app.route("/atualizar_horarios_espn", methods=["POST"])
