@@ -742,7 +742,12 @@ document.addEventListener("DOMContentLoaded", ()=>{
 
         <tbody>
             {% for b in bets %}
-            <tr class="bet-row" data-jogo="{{ b.jogo }}" data-horario="{{ b.horario_jogo_iso if b.horario_jogo_iso is defined else '' }}" data-data="{{ b.data }}">
+            <tr class="bet-row"
+                    data-jogo="{{ b.jogo }}"
+                    data-horario="{{ b.horario_jogo_iso if b.horario_jogo_iso is defined else '' }}"
+                    data-status-jogo="{{ espn_status_label_bet(b) if espn_status_label_bet is defined else (b.get('status_jogo') or b.get('horario_jogo') or '') }}"
+                    data-status-class="{{ espn_status_class_bet(b) if espn_status_class_bet is defined else ('live' if b.get('ao_vivo') else '') }}"
+                    data-data="{{ b.data }}">
                 <td class="data-cell">{{ b.data }}</td>
                 <td class="casa-cell">{{ b.casa }}</td>
                 <td class="esporte-cell">{{ b.esporte }}</td>
@@ -1843,6 +1848,10 @@ function v76AddBetToTable(b){
     const lucro = Number(b.lucro || 0)
     const tr = document.createElement("tr")
     tr.dataset.id = id
+    tr.dataset.jogo = b.jogo || ""
+    tr.dataset.horario = b.horario_jogo_iso || ""
+    tr.dataset.statusJogo = b.status_jogo || b.horario_jogo || ""
+    tr.dataset.statusClass = b.ao_vivo ? "live" : ""
     tr.classList.add("v76-new-row")
 
     tr.innerHTML = `
@@ -1998,6 +2007,46 @@ function organizarJogosTabela(){
     if(typeof v72Toast === "function") v72Toast("Jogos organizados por dia e confronto")
 }
 window.organizarJogosTabela = organizarJogosTabela
+</script>
+
+
+<script id="v89-force-game-time-js">
+function v89InjectGameTimeBadges(){
+    const rows = document.querySelectorAll("tr.bet-row")
+    rows.forEach(row => {
+        const status = row.dataset.statusJogo || ""
+        const klass = row.dataset.statusClass || ""
+
+        const jogoCell = row.querySelector(".jogo-cell") || row.children?.[3]
+        if(!jogoCell) return
+
+        jogoCell.querySelectorAll(".game-time").forEach(el => el.remove())
+
+        if(!status || status === "-") return
+
+        const badge = document.createElement("span")
+        badge.className = "game-time " + klass
+        badge.textContent = "🕒 " + status
+        jogoCell.appendChild(document.createTextNode(" "))
+        jogoCell.appendChild(badge)
+    })
+}
+
+document.addEventListener("DOMContentLoaded", () => {
+    v89InjectGameTimeBadges()
+    setTimeout(v89InjectGameTimeBadges, 300)
+    setTimeout(v89InjectGameTimeBadges, 1000)
+})
+
+const v89Observer = new MutationObserver(() => {
+    clearTimeout(window.v89InjectTimer)
+    window.v89InjectTimer = setTimeout(v89InjectGameTimeBadges, 80)
+})
+
+document.addEventListener("DOMContentLoaded", () => {
+    const tbody = document.querySelector(".table-panel tbody") || document.querySelector("table tbody")
+    if(tbody) v89Observer.observe(tbody, {childList: true, subtree: true})
+})
 </script>
 
 </body>
