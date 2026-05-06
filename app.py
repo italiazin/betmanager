@@ -217,7 +217,7 @@ API_KEY = CONFIG.get("API_KEY", "")
 
 print("CONFIG PATH:", CONFIG_PATH)
 print("API KEY:", API_KEY)
-print("VERSAO_CARREGADA: OCR_CLIENTE_V94_BUSCA_JOGOS_ESPN")
+print("VERSAO_CARREGADA: OCR_CLIENTE_V95_SELETOR_PARTIDA")
 
 if os.name == "nt":
     tess_path = r"C:\Program Files\Tesseract-OCR\tesseract.exe"
@@ -5336,6 +5336,33 @@ def espn_lazy_preencher_horarios_dashboard(limit=25):
 
 
 
+
+# ============================================================
+# V95 - labels amigáveis para seletor de partidas
+# ============================================================
+
+def v95_liga_label(league):
+    labels = {
+        "bra.1": "BRASILEIRÃO",
+        "bra.2": "SÉRIE B",
+        "eng.1": "PREMIER LEAGUE",
+        "esp.1": "LA LIGA",
+        "ita.1": "SERIE A",
+        "ger.1": "BUNDESLIGA",
+        "fra.1": "LIGUE 1",
+        "uefa.champions": "CHAMPIONS LEAGUE",
+        "uefa.europa": "EUROPA LEAGUE",
+        "conmebol.libertadores": "LIBERTADORES",
+        "conmebol.sudamericana": "SUL-AMERICANA",
+        "arg.1": "ARGENTINA",
+        "mex.1": "MÉXICO",
+        "usa.1": "MLS",
+        "por.1": "PORTUGAL",
+        "nba": "NBA",
+        "mens-college-basketball": "NCAAB",
+    }
+    return labels.get(str(league or ""), str(league or "").upper())
+
 # ============================================================
 # V94 - Busca manual de jogos ESPN com cache
 # ============================================================
@@ -5387,6 +5414,7 @@ def v94_cache_jogos_espn(forcar=False):
                         "esporte": esporte,
                         "sport": sport,
                         "league": league,
+                        "liga_nome": v95_liga_label(league) if "v95_liga_label" in globals() else league,
                         "horario_jogo": dt_br.strftime("%d/%m/%Y %H:%M") if dt_br else "",
                         "horario_jogo_iso": dt_br.isoformat() if dt_br else "",
                         "status_jogo": label,

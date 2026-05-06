@@ -2221,12 +2221,19 @@ document.addEventListener("DOMContentLoaded", () => {
 </script>
 
 
-<script id="v94-busca-jogos-js">
-function v94EscapeHtml(v){
-    return String(v ?? "").replaceAll("&","&amp;").replaceAll("<","&lt;").replaceAll(">","&gt;").replaceAll('"',"&quot;")
+
+
+
+<script id="v95-seletor-partida-js">
+function v95Escape(v){
+    return String(v ?? "")
+        .replaceAll("&","&amp;")
+        .replaceAll("<","&lt;")
+        .replaceAll(">","&gt;")
+        .replaceAll('"',"&quot;")
 }
 
-function v94EhCampoJogo(input){
+function v95EhCampoJogo(input){
     if(!input || input.tagName !== "INPUT") return false
     const ph = (input.getAttribute("placeholder") || "").toLowerCase()
     const id = input.id || ""
@@ -2237,18 +2244,7 @@ function v94EhCampoJogo(input){
     return false
 }
 
-function v94CriarDropdown(input){
-    let box = input.parentElement.querySelector(".v94-jogos-dropdown")
-    if(!box){
-        box = document.createElement("div")
-        box.className = "v94-jogos-dropdown"
-        input.parentElement.style.position = "relative"
-        input.parentElement.appendChild(box)
-    }
-    return box
-}
-
-function v94EsporteDoInput(input){
+function v95EsporteDoInput(input){
     try{
         const id = input.id || ""
         const idx = id.match(/^j(\d+)$/)?.[1]
@@ -2256,97 +2252,157 @@ function v94EsporteDoInput(input){
             const esp = document.getElementById(`e${idx}`)
             if(esp) return esp.value || ""
         }
-        const form = input.closest("form") || document
-        const esporte = form.querySelector('input[name="esporte"], input[placeholder*="Esporte"], input[placeholder*="esporte"]')
+        const root = input.closest("form") || document
+        const esporte = root.querySelector('input[name="esporte"], input[placeholder*="Esporte"], input[placeholder*="esporte"]')
         return esporte ? esporte.value : ""
     }catch(e){
         return ""
     }
 }
 
-async function v94BuscarJogos(input, refresh=false){
-    const q = input.value.trim()
-    const box = v94CriarDropdown(input)
-
-    if(q.length < 3){
-        box.innerHTML = ""
-        box.style.display = "none"
-        return
+function v95PickerLabel(input){
+    const status = input.dataset.statusJogo || ""
+    if(input.dataset.partidaSelecionada === "1"){
+        return `✅ ${input.value}${status ? " • " + status : ""}`
     }
-
-    box.style.display = "block"
-    box.innerHTML = `<div class="v94-jogo-loading">Buscando jogos...</div>`
-
-    const esporte = encodeURIComponent(v94EsporteDoInput(input))
-    const url = `/api/buscar_jogos?q=${encodeURIComponent(q)}&esporte=${esporte}${refresh ? "&refresh=1" : ""}`
-
-    try{
-        const resp = await fetch(url, {cache:"no-store"})
-        const data = await resp.json()
-        const jogos = data.jogos || []
-
-        if(!jogos.length){
-            box._input = input
-            box.innerHTML = `
-                <div class="v94-jogo-empty">
-                    Nenhum jogo encontrado.
-                    <button type="button" onclick="v94BuscarJogos(this.closest('.v94-jogos-dropdown')._input, true)">Atualizar lista ESPN</button>
-                </div>`
-            return
-        }
-
-        box.innerHTML = jogos.map(j => `
-            <button type="button" class="v94-jogo-option"
-                data-jogo="${v94EscapeHtml(j.jogo)}"
-                data-horario="${v94EscapeHtml(j.horario_jogo_iso || '')}"
-                data-status="${v94EscapeHtml(j.status_jogo || j.horario_jogo || '')}"
-                data-live="${j.ao_vivo ? '1' : '0'}">
-                <strong>${v94EscapeHtml(j.jogo)}</strong>
-                <span>${v94EscapeHtml(j.status_jogo || j.horario_jogo || '')}</span>
-            </button>
-        `).join("")
-
-        box.querySelectorAll(".v94-jogo-option").forEach(btn=>{
-            btn.onclick = ()=>{
-                input.value = btn.dataset.jogo || input.value
-                input.dataset.horario = btn.dataset.horario || ""
-                input.dataset.statusJogo = btn.dataset.status || ""
-                input.dataset.aoVivo = btn.dataset.live || "0"
-                box.style.display = "none"
-                if(typeof v72Toast === "function") v72Toast("Jogo selecionado")
-            }
-        })
-    }catch(e){
-        box.innerHTML = `<div class="v94-jogo-empty">Erro ao buscar jogos</div>`
-    }
+    return "Pesquisar partida..."
 }
 
-function v94AtivarBuscaEmInputs(){
-    document.querySelectorAll("input").forEach(input=>{
-        if(!v94EhCampoJogo(input)) return
-        if(input.dataset.v94BuscaAtiva === "1") return
-        input.dataset.v94BuscaAtiva = "1"
+function v95CriarSeletor(input){
+    if(input.dataset.v95Picker === "1") return
+    input.dataset.v95Picker = "1"
 
-        let timer = null
-        input.addEventListener("input", ()=>{
-            clearTimeout(timer)
-            timer = setTimeout(()=>v94BuscarJogos(input), 350)
-        })
-        input.addEventListener("focus", ()=>{
-            if(input.value.trim().length >= 3) v94BuscarJogos(input)
-        })
+    const wrapper = document.createElement("div")
+    wrapper.className = "v95-partida-picker"
+
+    const label = document.createElement("label")
+    label.className = "v95-partida-label"
+    label.textContent = "Partida"
+
+    const btn = document.createElement("button")
+    btn.type = "button"
+    btn.className = "v95-partida-btn"
+    btn.innerHTML = `<span>${v95PickerLabel(input)}</span><span>⌄</span>`
+
+    const panel = document.createElement("div")
+    panel.className = "v95-partida-panel"
+    panel.innerHTML = `
+        <div class="v95-search-row">
+            <span>⌕</span>
+            <input type="text" class="v95-search-input" placeholder="Time ou liga...">
+        </div>
+        <div class="v95-results">
+            <div class="v95-loading">Carregando jogos...</div>
+        </div>
+    `
+
+    wrapper.appendChild(label)
+    wrapper.appendChild(btn)
+    wrapper.appendChild(panel)
+
+    input.insertAdjacentElement("afterend", wrapper)
+
+    const search = panel.querySelector(".v95-search-input")
+    const results = panel.querySelector(".v95-results")
+
+    async function carregar(q="", refresh=false){
+        results.innerHTML = `<div class="v95-loading">Buscando jogos...</div>`
+        const esporte = encodeURIComponent(v95EsporteDoInput(input))
+        const url = `/api/buscar_jogos?q=${encodeURIComponent(q)}&esporte=${esporte}${refresh ? "&refresh=1" : ""}`
+
+        try{
+            const resp = await fetch(url, {cache:"no-store"})
+            const data = await resp.json()
+            const jogos = data.jogos || []
+
+            if(!jogos.length){
+                results.innerHTML = `
+                    <div class="v95-empty">
+                        Nenhum jogo encontrado.
+                        <button type="button" class="v95-refresh">Atualizar lista ESPN</button>
+                    </div>`
+                results.querySelector(".v95-refresh").onclick = () => carregar(search.value, true)
+                return
+            }
+
+            results.innerHTML = jogos.map(j=>{
+                const dt = j.horario_jogo || j.status_jogo || ""
+                const dataPart = dt.includes(" ") ? dt.split(" ")[0] : ""
+                const horaPart = dt.includes(" ") ? dt.split(" ")[1] : (j.status_jogo || "")
+                const liga = j.liga_nome || j.league || ""
+
+                return `
+                    <button type="button" class="v95-game-option"
+                        data-jogo="${v95Escape(j.jogo)}"
+                        data-horario="${v95Escape(j.horario_jogo_iso || '')}"
+                        data-status="${v95Escape(j.status_jogo || j.horario_jogo || '')}"
+                        data-live="${j.ao_vivo ? '1' : '0'}">
+                        <div class="v95-game-date">
+                            <span>${v95Escape(dataPart || "DATA")}</span>
+                            <strong>${v95Escape(horaPart || "")}</strong>
+                        </div>
+                        <div class="v95-game-main">
+                            <small>${v95Escape(liga)}</small>
+                            <strong>${v95Escape(j.jogo)}</strong>
+                        </div>
+                    </button>`
+            }).join("")
+
+            results.querySelectorAll(".v95-game-option").forEach(opt=>{
+                opt.onclick = ()=>{
+                    input.value = opt.dataset.jogo || input.value
+                    input.dataset.horario = opt.dataset.horario || ""
+                    input.dataset.statusJogo = opt.dataset.status || ""
+                    input.dataset.aoVivo = opt.dataset.live || "0"
+                    input.dataset.partidaSelecionada = "1"
+
+                    btn.innerHTML = `<span>${v95Escape(v95PickerLabel(input))}</span><span>⌄</span>`
+                    panel.style.display = "none"
+
+                    input.dispatchEvent(new Event("input", {bubbles:true}))
+
+                    if(typeof v72Toast === "function") v72Toast("Partida selecionada")
+                }
+            })
+
+        }catch(e){
+            results.innerHTML = `<div class="v95-empty">Erro ao buscar jogos.</div>`
+        }
+    }
+
+    btn.onclick = ()=>{
+        const aberto = panel.style.display === "block"
+        document.querySelectorAll(".v95-partida-panel").forEach(p=>p.style.display="none")
+        panel.style.display = aberto ? "none" : "block"
+        if(!aberto){
+            search.value = input.value || ""
+            carregar(search.value)
+            setTimeout(()=>search.focus(), 80)
+        }
+    }
+
+    let timer = null
+    search.addEventListener("input", ()=>{
+        clearTimeout(timer)
+        timer = setTimeout(()=>carregar(search.value), 250)
+    })
+}
+
+function v95AtivarSeletores(){
+    document.querySelectorAll("input").forEach(input=>{
+        if(v95EhCampoJogo(input)) v95CriarSeletor(input)
     })
 }
 
 document.addEventListener("click", (e)=>{
-    if(!e.target.closest(".v94-jogos-dropdown") && !v94EhCampoJogo(e.target)){
-        document.querySelectorAll(".v94-jogos-dropdown").forEach(box=>box.style.display="none")
+    if(!e.target.closest(".v95-partida-picker")){
+        document.querySelectorAll(".v95-partida-panel").forEach(p=>p.style.display="none")
     }
 })
 
 document.addEventListener("DOMContentLoaded", ()=>{
-    v94AtivarBuscaEmInputs()
-    setInterval(v94AtivarBuscaEmInputs, 1000)
+    v95AtivarSeletores()
+    setInterval(v95AtivarSeletores, 1000)
     fetch("/api/precarregar_jogos", {cache:"no-store"}).catch(()=>{})
 })
 </script>
