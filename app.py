@@ -217,7 +217,7 @@ API_KEY = CONFIG.get("API_KEY", "")
 
 print("CONFIG PATH:", CONFIG_PATH)
 print("API KEY:", API_KEY)
-print("VERSAO_CARREGADA: OCR_CLIENTE_V89_FORCAR_BADGE_HORARIO")
+print("VERSAO_CARREGADA: OCR_CLIENTE_V90_ESPN_LAYOUT_FINAL")
 
 if os.name == "nt":
     tess_path = r"C:\Program Files\Tesseract-OCR\tesseract.exe"
@@ -5263,6 +5263,67 @@ def espn_aplicar_info_na_aposta(bet, forcar=False):
 
 
 
+
+# ============================================================
+# V90 - preencher horários ESPN no carregamento do dashboard
+# ============================================================
+
+def espn_lazy_preencher_horarios_dashboard(limit=25):
+    """
+    Preenche horários de apostas já salvas que ainda não têm horário.
+    Seguro: se ESPN não achar, não quebra e não apaga nada.
+    """
+    atualizadas = 0
+    tentativas = 0
+
+    try:
+        lista = bets_do_usuario()
+    except Exception as e:
+        print("ESPN lazy listar erro:", repr(e))
+        return 0
+
+    for b in lista:
+        try:
+            if tentativas >= limit:
+                break
+
+            if not isinstance(b, dict):
+                continue
+
+            if b.get("horario_jogo") or b.get("status_jogo"):
+                continue
+
+            jogo = str(b.get("jogo", "") or "")
+            aposta = str(b.get("aposta", "") or "")
+
+            # Ignora lixo claro.
+            if len(jogo.strip()) < 4:
+                continue
+
+            tentativas += 1
+
+            info = espn_buscar_jogo(
+                b.get("jogo", ""),
+                b.get("esporte", "Futebol"),
+                b.get("aposta", "")
+            )
+
+            if info:
+                b.update(info)
+                atualizadas += 1
+
+        except Exception as e:
+            print("ESPN lazy aposta erro:", repr(e))
+
+    if atualizadas:
+        try:
+            salvar()
+        except Exception as e:
+            print("ESPN lazy salvar erro:", repr(e))
+
+    return atualizadas
+
+
 @app.route("/atualizar_horarios_espn", methods=["POST"])
 @login_required
 @assinatura_required
@@ -5279,7 +5340,6 @@ def atualizar_horarios_espn():
     for b in lista:
         try:
             antes = (b.get("horario_jogo_iso", ""), b.get("status_jogo", ""))
-            # Não apaga horário antigo se ESPN não achar agora.
             info = espn_buscar_jogo(b.get("jogo", ""), b.get("esporte", "Futebol"), b.get("aposta", ""))
             if info:
                 b.update(info)
@@ -5522,6 +5582,8 @@ def index():
         return redirect("/")
 
     recalcular()
+    # V90 lazy ESPN dashboard
+    espn_lazy_preencher_horarios_dashboard(limit=25)
     salvar()
 
     labels, valores = grafico()

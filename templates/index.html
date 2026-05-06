@@ -1908,106 +1908,7 @@ function atualizarHorariosEspn(){
 
 
 
-<script id="v88-organizar-jogos-js">
-function v88NormalizarTexto(txt){
-    return String(txt || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g,"").replace(/[^a-z0-9 xvs]/g," ").replace(/\s+/g," ").trim()
-}
-function v88ParseDateBR(txt){
-    const m = String(txt || "").match(/(\d{2})\/(\d{2})\/(\d{4})(?:\s+(\d{2}):(\d{2}))?/)
-    if(!m) return null
-    const [,dd,mm,yyyy,hh="00",mi="00"] = m
-    return new Date(Number(yyyy), Number(mm)-1, Number(dd), Number(hh), Number(mi))
-}
-function v88ParseShortDate(txt){
-    const m = String(txt || "").match(/(\d{2})\/(\d{2})\s+(\d{1,2}):(\d{2})/)
-    if(!m) return null
-    const year = new Date().getFullYear()
-    const [,dd,mm,hh,mi] = m
-    return new Date(year, Number(mm)-1, Number(dd), Number(hh), Number(mi))
-}
-function v88DiaLabel(date){
-    if(!date || isNaN(date.getTime())) return "Sem data do jogo"
-    const dias = ["Domingo","Segunda-feira","Terça-feira","Quarta-feira","Quinta-feira","Sexta-feira","Sábado"]
-    return `${dias[date.getDay()]} ${String(date.getDate()).padStart(2,"0")}/${String(date.getMonth()+1).padStart(2,"0")}/${date.getFullYear()}`
-}
-function v88FindTbody(){
-    return document.querySelector(".table-panel tbody") || document.querySelector("table tbody")
-}
-function v88RowDate(row){
-    const iso = row.dataset.horario || ""
-    if(iso){
-        const d = new Date(iso)
-        if(!isNaN(d.getTime())) return d
-    }
-    const badgeText = row.querySelector(".game-time")?.innerText || ""
-    const shortDate = v88ParseShortDate(badgeText)
-    if(shortDate) return shortDate
 
-    const full = v88ParseDateBR(row.dataset.data || row.children?.[0]?.innerText || "")
-    if(full) return full
-
-    return new Date(2999,0,1)
-}
-function v88CleanGame(raw){
-    return String(raw || "")
-        .replace(/🕒/g,"")
-        .replace(/Hoje\s+\d{1,2}:\d{2}/gi,"")
-        .replace(/\d{2}\/\d{2}\s+\d{1,2}:\d{2}/g,"")
-        .replace(/Ao vivo/gi,"")
-        .replace(/Começa em\s+\d+min/gi,"")
-        .trim()
-}
-function v88GameKey(row, idx){
-    const cell = row.querySelector(".jogo-cell")
-    const raw = v88CleanGame(row.dataset.jogo || cell?.childNodes?.[0]?.textContent || cell?.innerText || "")
-    const lower = raw.toLowerCase()
-    if(lower.includes("múltipla") || lower.includes("multipla") || raw.includes("/") || raw.includes(",") || raw.split(/\s+x\s+/i).length !== 2){
-        return `zz-multipla-${idx}`
-    }
-    const parts = raw.split(/\s+x\s+/i)
-    const a = v88NormalizarTexto(parts[0])
-    const b = v88NormalizarTexto(parts[1])
-    return a && b ? [a,b].sort().join(" x ") : `zz-outro-${idx}`
-}
-function organizarJogosTabela(){
-    const tbody = v88FindTbody()
-    if(!tbody) return
-    tbody.querySelectorAll(".day-separator-row").forEach(r => r.remove())
-    const rows = Array.from(tbody.querySelectorAll("tr.bet-row"))
-    if(!rows.length){
-        if(typeof v72Toast === "function") v72Toast("Nenhuma aposta para organizar", "err")
-        return
-    }
-    const enriched = rows.map((row, idx)=>{
-        const date = v88RowDate(row)
-        return {
-            row, idx, date,
-            dayKey: date && !isNaN(date.getTime()) ? date.toISOString().slice(0,10) : "9999-01-01",
-            gameKey: v88GameKey(row, idx),
-            time: date && !isNaN(date.getTime()) ? date.getTime() : 9999999999999
-        }
-    })
-    enriched.sort((a,b)=>{
-        if(a.dayKey !== b.dayKey) return a.dayKey.localeCompare(b.dayKey)
-        if(a.gameKey !== b.gameKey) return a.gameKey.localeCompare(b.gameKey)
-        if(a.time !== b.time) return a.time - b.time
-        return a.idx - b.idx
-    })
-    let currentDay = null
-    enriched.forEach(item=>{
-        if(item.dayKey !== currentDay){
-            currentDay = item.dayKey
-            const sep = document.createElement("tr")
-            sep.className = "day-separator-row"
-            sep.innerHTML = `<td colspan="11"><span>${v88DiaLabel(item.date)}</span></td>`
-            tbody.appendChild(sep)
-        }
-        tbody.appendChild(item.row)
-    })
-    if(typeof v72Toast === "function") v72Toast("Jogos organizados por dia e confronto")
-}
-window.organizarJogosTabela = organizarJogosTabela
-</script>
 
 
 <script id="v89-force-game-time-js">
@@ -2047,6 +1948,138 @@ document.addEventListener("DOMContentLoaded", () => {
     const tbody = document.querySelector(".table-panel tbody") || document.querySelector("table tbody")
     if(tbody) v89Observer.observe(tbody, {childList: true, subtree: true})
 })
+</script>
+
+
+<script id="v90-organizar-jogos-js">
+function v90EnsureOrganizarButton(){
+    if(document.getElementById("organizarJogosBtn")) return
+
+    const btn = document.createElement("button")
+    btn.id = "organizarJogosBtn"
+    btn.type = "button"
+    btn.className = "blue organize-games-btn"
+    btn.innerHTML = "🗓️ Organizar jogos"
+    btn.onclick = organizarJogosTabela
+
+    const filters = document.querySelector(".filters") 
+        || document.querySelector(".table-filters")
+        || document.querySelector(".bets-filters")
+        || document.querySelector(".table-panel form")
+        || document.querySelector(".table-panel")
+
+    if(filters){
+        filters.appendChild(btn)
+    } else {
+        document.body.appendChild(btn)
+    }
+}
+
+function v90NormalizarTexto(txt){
+    return String(txt || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g,"").replace(/[^a-z0-9 xvs]/g," ").replace(/\s+/g," ").trim()
+}
+function v90ParseDateBR(txt){
+    const m = String(txt || "").match(/(\d{2})\/(\d{2})\/(\d{4})(?:\s+(\d{2}):(\d{2}))?/)
+    if(!m) return null
+    const [,dd,mm,yyyy,hh="00",mi="00"] = m
+    return new Date(Number(yyyy), Number(mm)-1, Number(dd), Number(hh), Number(mi))
+}
+function v90ParseShortDate(txt){
+    const m = String(txt || "").match(/(\d{2})\/(\d{2})\s+(\d{1,2}):(\d{2})/)
+    if(!m) return null
+    const year = new Date().getFullYear()
+    const [,dd,mm,hh,mi] = m
+    return new Date(year, Number(mm)-1, Number(dd), Number(hh), Number(mi))
+}
+function v90DiaLabel(date){
+    if(!date || isNaN(date.getTime())) return "Sem data do jogo"
+    const dias = ["Domingo","Segunda-feira","Terça-feira","Quarta-feira","Quinta-feira","Sexta-feira","Sábado"]
+    return `${dias[date.getDay()]} ${String(date.getDate()).padStart(2,"0")}/${String(date.getMonth()+1).padStart(2,"0")}/${date.getFullYear()}`
+}
+function v90Tbody(){
+    return document.querySelector(".table-panel tbody") || document.querySelector("table tbody")
+}
+function v90RowDate(row){
+    const iso = row.dataset.horario || ""
+    if(iso){
+        const d = new Date(iso)
+        if(!isNaN(d.getTime())) return d
+    }
+    const badgeText = row.querySelector(".game-time")?.innerText || row.dataset.statusJogo || ""
+    const shortD = v90ParseShortDate(badgeText)
+    if(shortD) return shortD
+    return v90ParseDateBR(row.dataset.data || row.children?.[0]?.innerText || "") || new Date(2999,0,1)
+}
+function v90CleanGame(raw){
+    return String(raw || "")
+        .replace(/🕒|⏰/g,"")
+        .replace(/Hoje\s+\d{1,2}:\d{2}/gi,"")
+        .replace(/\d{2}\/\d{2}\s+\d{1,2}:\d{2}/g,"")
+        .replace(/Ao vivo/gi,"")
+        .replace(/Começa em\s+\d+min/gi,"")
+        .trim()
+}
+function v90GameKey(row, idx){
+    const cell = row.querySelector(".jogo-cell")
+    const raw = v90CleanGame(row.dataset.jogo || cell?.childNodes?.[0]?.textContent || cell?.innerText || "")
+    const lower = raw.toLowerCase()
+
+    if(lower.includes("múltipla") || lower.includes("multipla") || raw.includes("/") || raw.includes(",") || raw.split(/\s+x\s+/i).length !== 2){
+        return `zz-multipla-${idx}`
+    }
+
+    const parts = raw.split(/\s+x\s+/i)
+    const a = v90NormalizarTexto(parts[0])
+    const b = v90NormalizarTexto(parts[1])
+    return a && b ? [a,b].sort().join(" x ") : `zz-outro-${idx}`
+}
+function organizarJogosTabela(){
+    const tbody = v90Tbody()
+    if(!tbody) return
+
+    tbody.querySelectorAll(".day-separator-row").forEach(r => r.remove())
+
+    const rows = Array.from(tbody.querySelectorAll("tr.bet-row"))
+    if(!rows.length){
+        if(typeof v72Toast === "function") v72Toast("Nenhuma aposta para organizar", "err")
+        return
+    }
+
+    const enriched = rows.map((row, idx)=>{
+        const date = v90RowDate(row)
+        return {
+            row, idx, date,
+            dayKey: date && !isNaN(date.getTime()) ? date.toISOString().slice(0,10) : "9999-01-01",
+            gameKey: v90GameKey(row, idx),
+            time: date && !isNaN(date.getTime()) ? date.getTime() : 9999999999999
+        }
+    })
+
+    enriched.sort((a,b)=>{
+        if(a.dayKey !== b.dayKey) return a.dayKey.localeCompare(b.dayKey)
+        if(a.gameKey !== b.gameKey) return a.gameKey.localeCompare(b.gameKey)
+        if(a.time !== b.time) return a.time - b.time
+        return a.idx - b.idx
+    })
+
+    let currentDay = null
+    enriched.forEach(item=>{
+        if(item.dayKey !== currentDay){
+            currentDay = item.dayKey
+            const sep = document.createElement("tr")
+            sep.className = "day-separator-row"
+            sep.innerHTML = `<td colspan="11"><span>${v90DiaLabel(item.date)}</span></td>`
+            tbody.appendChild(sep)
+        }
+        tbody.appendChild(item.row)
+    })
+
+    if(typeof v72Toast === "function") v72Toast("Jogos organizados por dia e confronto")
+}
+
+document.addEventListener("DOMContentLoaded", v90EnsureOrganizarButton)
+setTimeout(v90EnsureOrganizarButton, 700)
+window.organizarJogosTabela = organizarJogosTabela
 </script>
 
 </body>
