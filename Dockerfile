@@ -16,4 +16,4 @@ COPY . .
 ENV TESSERACT_CMD=/usr/bin/tesseract
 ENV PYTHONUNBUFFERED=1
 
-CMD python -c "import app; print('IMPORT_APP_OK')" && gunicorn app:app --bind 0.0.0.0:$PORT --workers 1 --threads 4 --timeout 180 --capture-output --access-logfile - --error-logfile - --log-level debug
+CMD gunicorn app:app --bind 0.0.0.0:$PORT --workers 1 --threads 4 --timeout 180 --capture-output --access-logfile - --error-logfile - --log-level debug

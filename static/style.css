@@ -2765,3 +2765,5 @@ button:disabled {
 @keyframes livePulse { 50% { box-shadow:0 0 16px rgba(239,68,68,.35); } }
 .table-panel th:nth-child(5), .table-panel td:nth-child(5) { width:115px !important; }
 .table-panel th:nth-child(6), .table-panel td:nth-child(6) { width:36% !important; }
+
+/* V81 - internal error logs e ESPN defensiva */

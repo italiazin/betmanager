@@ -4,6 +4,7 @@ import time
 from copy import deepcopy
 import uuid
 import os
+import traceback
 import re
 import base64
 import unicodedata
@@ -226,7 +227,7 @@ API_KEY = CONFIG.get("API_KEY", "")
 
 print("CONFIG PATH:", CONFIG_PATH)
 print("API KEY:", API_KEY)
-print("VERSAO_CARREGADA: OCR_CLIENTE_V80_ESPN_HORARIO_STATUS")
+print("VERSAO_CARREGADA: OCR_CLIENTE_V81_INTERNAL_ERROR_FIX")
 
 if os.name == "nt":
     tess_path = r"C:\Program Files\Tesseract-OCR\tesseract.exe"
@@ -5410,16 +5411,16 @@ def buscar_jogo_espn(jogo, esporte="Futebol"):
 
 def aplicar_info_espn_na_aposta(bet):
     try:
+        if not isinstance(bet, dict):
+            return bet
+
         info = buscar_jogo_espn(bet.get("jogo", ""), bet.get("esporte", "Futebol"))
         if info:
             bet.update(info)
-        else:
-            bet.setdefault("horario_jogo", "")
-            bet.setdefault("horario_jogo_iso", "")
-            bet.setdefault("status_jogo", "")
-            bet.setdefault("ao_vivo", False)
+        garantir_campos_horario_bet(bet)
     except Exception as e:
         print("ERRO aplicar_info_espn_na_aposta:", repr(e))
+        garantir_campos_horario_bet(bet)
     return bet
 
 def ordenar_bets_por_horario(bets):
@@ -5435,19 +5436,64 @@ def ordenar_bets_por_horario(bets):
 
 
 
+
+# ============================================================
+# V81 - defaults seguros para horário/status
+# ============================================================
+
+def garantir_campos_horario_bet(b):
+    if isinstance(b, dict):
+        b.setdefault("horario_jogo", "")
+        b.setdefault("horario_jogo_iso", "")
+        b.setdefault("status_jogo", "")
+        b.setdefault("ao_vivo", False)
+    return b
+
+
+
+# ============================================================
+# V81 - log real de erro 500 no Render
+# ============================================================
+
+@app.errorhandler(Exception)
+def v81_log_internal_error(e):
+    print("===== ERRO FLASK 500 =====")
+    traceback.print_exc()
+    print("===== FIM ERRO FLASK 500 =====")
+    return "Internal Server Error - veja logs do Render", 500
+
+
 @app.route("/atualizar_horarios_espn", methods=["POST"])
 @login_required
 @assinatura_required
 def atualizar_horarios_espn():
     atualizadas = 0
-    for b in bets_do_usuario():
-        antes = (b.get("horario_jogo_iso", ""), b.get("status_jogo", ""))
-        aplicar_info_espn_na_aposta(b)
-        depois = (b.get("horario_jogo_iso", ""), b.get("status_jogo", ""))
-        if depois != antes and (depois[0] or depois[1]):
-            atualizadas += 1
-    salvar()
-    return jsonify({"ok": True, "atualizadas": atualizadas})
+    erros = 0
+
+    try:
+        lista = bets_do_usuario()
+    except Exception as e:
+        print("ERRO listar bets para ESPN:", repr(e))
+        lista = []
+
+    for b in lista:
+        try:
+            antes = (b.get("horario_jogo_iso", ""), b.get("status_jogo", ""))
+            aplicar_info_espn_na_aposta(b)
+            garantir_campos_horario_bet(b)
+            depois = (b.get("horario_jogo_iso", ""), b.get("status_jogo", ""))
+            if depois != antes and (depois[0] or depois[1]):
+                atualizadas += 1
+        except Exception as e:
+            erros += 1
+            print("ERRO atualizar uma aposta ESPN:", repr(e))
+
+    try:
+        salvar()
+    except Exception as e:
+        print("ERRO salvar depois ESPN:", repr(e))
+
+    return jsonify({"ok": True, "atualizadas": atualizadas, "erros": erros})
 
 
 @app.route("/healthz")
