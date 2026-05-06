@@ -217,7 +217,7 @@ API_KEY = CONFIG.get("API_KEY", "")
 
 print("CONFIG PATH:", CONFIG_PATH)
 print("API KEY:", API_KEY)
-print("VERSAO_CARREGADA: OCR_CLIENTE_V87_ESPN_MATCH_ORGANIZAR_FIX")
+print("VERSAO_CARREGADA: OCR_CLIENTE_V88_HORARIO_VISIVEL_ORGANIZAR")
 
 if os.name == "nt":
     tess_path = r"C:\Program Files\Tesseract-OCR\tesseract.exe"
@@ -5269,26 +5269,32 @@ def espn_aplicar_info_na_aposta(bet, forcar=False):
 def atualizar_horarios_espn():
     atualizadas = 0
     erros = 0
+
     try:
         lista = bets_do_usuario()
     except Exception as e:
-        print("ESPN SAFE listar erro:", repr(e))
+        print("ESPN listar erro:", repr(e))
         lista = []
+
     for b in lista:
         try:
-            antes = (b.get("horario_jogo"), b.get("status_jogo"), b.get("ao_vivo"))
-            b["horario_jogo"] = ""
-            b["horario_jogo_iso"] = ""
-            b["status_jogo"] = ""
-            b["ao_vivo"] = False
-            espn_aplicar_info_na_aposta(b, forcar=True)
-            depois = (b.get("horario_jogo"), b.get("status_jogo"), b.get("ao_vivo"))
-            if depois != antes and (depois[0] or depois[1]): atualizadas += 1
+            antes = (b.get("horario_jogo_iso", ""), b.get("status_jogo", ""))
+            # Não apaga horário antigo se ESPN não achar agora.
+            info = espn_buscar_jogo(b.get("jogo", ""), b.get("esporte", "Futebol"), b.get("aposta", ""))
+            if info:
+                b.update(info)
+            depois = (b.get("horario_jogo_iso", ""), b.get("status_jogo", ""))
+            if depois != antes and (depois[0] or depois[1]):
+                atualizadas += 1
         except Exception as e:
             erros += 1
-            print("ESPN SAFE atualizar erro:", repr(e))
-    try: salvar()
-    except Exception as e: print("ESPN SAFE salvar erro:", repr(e))
+            print("ESPN atualizar aposta erro:", repr(e))
+
+    try:
+        salvar()
+    except Exception as e:
+        print("ESPN salvar erro:", repr(e))
+
     return jsonify({"ok": True, "atualizadas": atualizadas, "erros": erros})
 
 

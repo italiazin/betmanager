@@ -2807,3 +2807,22 @@ button:disabled {
     margin-left: 6px !important;
     vertical-align: middle !important;
 }
+
+
+/* V88 - horário visível dentro do jogo */
+.table-panel .jogo-cell {
+    overflow: visible !important;
+    white-space: normal !important;
+    line-height: 1.25 !important;
+}
+.table-panel .jogo-cell .game-time {
+    display: inline-flex !important;
+    width: fit-content !important;
+    max-width: 100% !important;
+    margin-left: 6px !important;
+    margin-top: 3px !important;
+    vertical-align: middle !important;
+}
+.table-panel .jogo-cell .game-time:empty {
+    display: none !important;
+}
