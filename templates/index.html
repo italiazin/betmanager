@@ -2220,5 +2220,136 @@ document.addEventListener("DOMContentLoaded", () => {
 })
 </script>
 
+
+<script id="v94-busca-jogos-js">
+function v94EscapeHtml(v){
+    return String(v ?? "").replaceAll("&","&amp;").replaceAll("<","&lt;").replaceAll(">","&gt;").replaceAll('"',"&quot;")
+}
+
+function v94EhCampoJogo(input){
+    if(!input || input.tagName !== "INPUT") return false
+    const ph = (input.getAttribute("placeholder") || "").toLowerCase()
+    const id = input.id || ""
+    const name = input.name || ""
+    if(id.match(/^j\d+$/)) return true
+    if(ph.includes("jogo") || ph.includes("time")) return true
+    if(name.toLowerCase().includes("jogo")) return true
+    return false
+}
+
+function v94CriarDropdown(input){
+    let box = input.parentElement.querySelector(".v94-jogos-dropdown")
+    if(!box){
+        box = document.createElement("div")
+        box.className = "v94-jogos-dropdown"
+        input.parentElement.style.position = "relative"
+        input.parentElement.appendChild(box)
+    }
+    return box
+}
+
+function v94EsporteDoInput(input){
+    try{
+        const id = input.id || ""
+        const idx = id.match(/^j(\d+)$/)?.[1]
+        if(idx !== undefined){
+            const esp = document.getElementById(`e${idx}`)
+            if(esp) return esp.value || ""
+        }
+        const form = input.closest("form") || document
+        const esporte = form.querySelector('input[name="esporte"], input[placeholder*="Esporte"], input[placeholder*="esporte"]')
+        return esporte ? esporte.value : ""
+    }catch(e){
+        return ""
+    }
+}
+
+async function v94BuscarJogos(input, refresh=false){
+    const q = input.value.trim()
+    const box = v94CriarDropdown(input)
+
+    if(q.length < 3){
+        box.innerHTML = ""
+        box.style.display = "none"
+        return
+    }
+
+    box.style.display = "block"
+    box.innerHTML = `<div class="v94-jogo-loading">Buscando jogos...</div>`
+
+    const esporte = encodeURIComponent(v94EsporteDoInput(input))
+    const url = `/api/buscar_jogos?q=${encodeURIComponent(q)}&esporte=${esporte}${refresh ? "&refresh=1" : ""}`
+
+    try{
+        const resp = await fetch(url, {cache:"no-store"})
+        const data = await resp.json()
+        const jogos = data.jogos || []
+
+        if(!jogos.length){
+            box._input = input
+            box.innerHTML = `
+                <div class="v94-jogo-empty">
+                    Nenhum jogo encontrado.
+                    <button type="button" onclick="v94BuscarJogos(this.closest('.v94-jogos-dropdown')._input, true)">Atualizar lista ESPN</button>
+                </div>`
+            return
+        }
+
+        box.innerHTML = jogos.map(j => `
+            <button type="button" class="v94-jogo-option"
+                data-jogo="${v94EscapeHtml(j.jogo)}"
+                data-horario="${v94EscapeHtml(j.horario_jogo_iso || '')}"
+                data-status="${v94EscapeHtml(j.status_jogo || j.horario_jogo || '')}"
+                data-live="${j.ao_vivo ? '1' : '0'}">
+                <strong>${v94EscapeHtml(j.jogo)}</strong>
+                <span>${v94EscapeHtml(j.status_jogo || j.horario_jogo || '')}</span>
+            </button>
+        `).join("")
+
+        box.querySelectorAll(".v94-jogo-option").forEach(btn=>{
+            btn.onclick = ()=>{
+                input.value = btn.dataset.jogo || input.value
+                input.dataset.horario = btn.dataset.horario || ""
+                input.dataset.statusJogo = btn.dataset.status || ""
+                input.dataset.aoVivo = btn.dataset.live || "0"
+                box.style.display = "none"
+                if(typeof v72Toast === "function") v72Toast("Jogo selecionado")
+            }
+        })
+    }catch(e){
+        box.innerHTML = `<div class="v94-jogo-empty">Erro ao buscar jogos</div>`
+    }
+}
+
+function v94AtivarBuscaEmInputs(){
+    document.querySelectorAll("input").forEach(input=>{
+        if(!v94EhCampoJogo(input)) return
+        if(input.dataset.v94BuscaAtiva === "1") return
+        input.dataset.v94BuscaAtiva = "1"
+
+        let timer = null
+        input.addEventListener("input", ()=>{
+            clearTimeout(timer)
+            timer = setTimeout(()=>v94BuscarJogos(input), 350)
+        })
+        input.addEventListener("focus", ()=>{
+            if(input.value.trim().length >= 3) v94BuscarJogos(input)
+        })
+    })
+}
+
+document.addEventListener("click", (e)=>{
+    if(!e.target.closest(".v94-jogos-dropdown") && !v94EhCampoJogo(e.target)){
+        document.querySelectorAll(".v94-jogos-dropdown").forEach(box=>box.style.display="none")
+    }
+})
+
+document.addEventListener("DOMContentLoaded", ()=>{
+    v94AtivarBuscaEmInputs()
+    setInterval(v94AtivarBuscaEmInputs, 1000)
+    fetch("/api/precarregar_jogos", {cache:"no-store"}).catch(()=>{})
+})
+</script>
+
 </body>
 </html>

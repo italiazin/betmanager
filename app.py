@@ -217,7 +217,7 @@ API_KEY = CONFIG.get("API_KEY", "")
 
 print("CONFIG PATH:", CONFIG_PATH)
 print("API KEY:", API_KEY)
-print("VERSAO_CARREGADA: OCR_CLIENTE_V93_DATA_MANUAL")
+print("VERSAO_CARREGADA: OCR_CLIENTE_V94_BUSCA_JOGOS_ESPN")
 
 if os.name == "nt":
     tess_path = r"C:\Program Files\Tesseract-OCR\tesseract.exe"
@@ -5333,6 +5333,158 @@ def espn_lazy_preencher_horarios_dashboard(limit=25):
 
     return atualizadas
 
+
+
+
+# ============================================================
+# V94 - Busca manual de jogos ESPN com cache
+# ============================================================
+
+JOGOS_ESPN_CACHE = {"ts": 0, "items": []}
+
+def v94_cache_jogos_espn(forcar=False):
+    agora_ts = time.time()
+    ttl = int(os.environ.get("ESPN_GAMES_CACHE_TTL", "900"))
+
+    if not forcar and JOGOS_ESPN_CACHE.get("items") and (agora_ts - JOGOS_ESPN_CACHE.get("ts", 0) < ttl):
+        return JOGOS_ESPN_CACHE["items"]
+
+    jogos = []
+
+    for esporte in ["Futebol", "Basquete"]:
+        try:
+            ligas = espn_ligas_por_esporte(esporte)
+        except Exception:
+            ligas = []
+
+        for sport, league in ligas:
+            try:
+                r = requests.get(espn_scoreboard_url(sport, league), timeout=7)
+                if r.status_code != 200:
+                    continue
+
+                for ev in r.json().get("events", []):
+                    comp = (ev.get("competitions") or [{}])[0]
+                    competitors = comp.get("competitors", [])
+
+                    nomes = []
+                    for c in competitors:
+                        team = c.get("team", {}) or {}
+                        nome = team.get("displayName") or team.get("shortDisplayName") or team.get("name") or ""
+                        if nome:
+                            nomes.append(nome)
+
+                    if len(nomes) < 2:
+                        continue
+
+                    label, dt_br, ao_vivo, ordem = espn_formatar_status(comp)
+                    jogo_nome = f"{nomes[0]} x {nomes[1]}"
+
+                    jogos.append({
+                        "id": ev.get("id", ""),
+                        "jogo": jogo_nome,
+                        "jogo_norm": espn_normalizar_nome(jogo_nome),
+                        "esporte": esporte,
+                        "sport": sport,
+                        "league": league,
+                        "horario_jogo": dt_br.strftime("%d/%m/%Y %H:%M") if dt_br else "",
+                        "horario_jogo_iso": dt_br.isoformat() if dt_br else "",
+                        "status_jogo": label,
+                        "ao_vivo": bool(ao_vivo),
+                        "ordem_jogo": ordem,
+                    })
+
+            except Exception as e:
+                print("V94 cache ESPN erro:", sport, league, repr(e))
+                continue
+
+    seen = set()
+    limpos = []
+    for j in jogos:
+        chave = (j.get("id"), j.get("jogo"), j.get("horario_jogo_iso"))
+        if chave in seen:
+            continue
+        seen.add(chave)
+        limpos.append(j)
+
+    JOGOS_ESPN_CACHE["ts"] = agora_ts
+    JOGOS_ESPN_CACHE["items"] = limpos
+    return limpos
+
+
+def v94_score_busca_jogo(query, jogo):
+    q = espn_normalizar_nome(query)
+    j = espn_normalizar_nome(jogo)
+
+    if not q or not j:
+        return 0
+
+    if q == j:
+        return 1000
+
+    score = 0
+    palavras = [p for p in q.split() if len(p) >= 2]
+
+    for p in palavras:
+        if p in j:
+            score += 60
+
+    try:
+        qa, qb = espn_dividir_times(query)
+        ja, jb = espn_dividir_times(jogo)
+
+        if qa and qb and ja and jb:
+            s1 = espn_similaridade(qa, ja) + espn_similaridade(qb, jb)
+            s2 = espn_similaridade(qa, jb) + espn_similaridade(qb, ja)
+            score += max(s1, s2)
+        else:
+            score += espn_similaridade(q, j)
+    except Exception:
+        score += espn_similaridade(q, j)
+
+    return score
+
+
+@app.route("/api/buscar_jogos")
+@login_required
+@assinatura_required
+def api_buscar_jogos():
+    q = request.args.get("q", "").strip()
+    esporte = request.args.get("esporte", "").strip()
+    forcar = request.args.get("refresh") == "1"
+
+    jogos = v94_cache_jogos_espn(forcar=forcar)
+
+    if esporte:
+        e_norm = espn_normalizar_nome(esporte)
+        if "basquete" in e_norm or "basket" in e_norm:
+            jogos = [j for j in jogos if j.get("esporte") == "Basquete"]
+        elif "futebol" in e_norm or "soccer" in e_norm:
+            jogos = [j for j in jogos if j.get("esporte") == "Futebol"]
+
+    if q:
+        scored = []
+        for j in jogos:
+            s = v94_score_busca_jogo(q, j.get("jogo", ""))
+            if s >= 70:
+                item = dict(j)
+                item["score"] = s
+                scored.append(item)
+
+        scored.sort(key=lambda x: (-x.get("score", 0), x.get("horario_jogo_iso", "")))
+        jogos = scored[:12]
+    else:
+        jogos = sorted(jogos, key=lambda x: x.get("horario_jogo_iso", ""))[:20]
+
+    return jsonify({"ok": True, "total_cache": len(JOGOS_ESPN_CACHE.get("items", [])), "jogos": jogos})
+
+
+@app.route("/api/precarregar_jogos")
+@login_required
+@assinatura_required
+def api_precarregar_jogos():
+    jogos = v94_cache_jogos_espn(forcar=True)
+    return jsonify({"ok": True, "total": len(jogos)})
 
 
 @app.route("/api/horarios_bets", methods=["POST"])
