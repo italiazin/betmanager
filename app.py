@@ -4,7 +4,6 @@ import time
 from copy import deepcopy
 import uuid
 import os
-import traceback
 import re
 import base64
 import unicodedata
@@ -17,18 +16,11 @@ from sqlalchemy import create_engine, text
 from sqlalchemy.exc import SQLAlchemyError
 from functools import wraps
 from werkzeug.security import generate_password_hash, check_password_hash
-from werkzeug.exceptions import HTTPException
 
 import pytesseract
 from PIL import Image
 
 app = Flask(__name__)
-
-print("===== BETMANAGER BOOT START =====")
-print("DATABASE_URL existe:", bool(os.environ.get("DATABASE_URL")))
-print("SECRET_KEY existe:", bool(os.environ.get("SECRET_KEY")))
-print("TESSERACT_CMD:", os.environ.get("TESSERACT_CMD", "/usr/bin/tesseract"))
-print("===== BETMANAGER BOOT ENV OK =====")
 app.secret_key = os.environ.get("SECRET_KEY", "troque-essa-chave-em-producao")
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -76,10 +68,7 @@ def get_db_engine():
             pool_pre_ping=True,
             pool_recycle=280
         )
-        try:
-            inicializar_banco()
-        except Exception as e:
-            print("ERRO AO INICIALIZAR BANCO NO BOOT:", repr(e))
+        inicializar_banco()
 
     return DB_ENGINE
 
@@ -228,7 +217,7 @@ API_KEY = CONFIG.get("API_KEY", "")
 
 print("CONFIG PATH:", CONFIG_PATH)
 print("API KEY:", API_KEY)
-print("VERSAO_CARREGADA: OCR_CLIENTE_V83_NO_JINJA_ERROR")
+print("VERSAO_CARREGADA: OCR_CLIENTE_V85_V77_ESPN_SAFE")
 
 if os.name == "nt":
     tess_path = r"C:\Program Files\Tesseract-OCR\tesseract.exe"
@@ -303,10 +292,6 @@ def carregar():
             b.setdefault("selecao", "")
             b.setdefault("btts_resposta", "")
             b.setdefault("api_status", "")
-            b.setdefault("horario_jogo", "")
-            b.setdefault("horario_jogo_iso", "")
-            b.setdefault("jogo_status_api", "")
-            b.setdefault("jogo_status_visual", "")
             b.setdefault("texto_bruto", "")
             b.setdefault("texto_interpretado", "")
             b.setdefault("itens_multipla", {})
@@ -699,7 +684,7 @@ def registrar_movimentacao_casa(casa, tipo, valor, descricao=""):
 
     movimentacoes_usuario().append({
         "id": str(uuid.uuid4()),
-        "data": agora_brasil(),
+        "data": data_hora_local(),
         "casa": casa_limpa,
         "tipo": tipo,
         "valor": round(float(valor or 0), 2),
@@ -742,9 +727,6 @@ def aplicar_movimento_manual_casa(casa, tipo, valor, destino=""):
 def limpar_aposta_display_v39(b):
     b2 = dict(b)
     b2.setdefault("horario_jogo", "")
-    b2.setdefault("horario_jogo_iso", "")
-    b2.setdefault("jogo_status_api", "")
-    b2.setdefault("jogo_status_visual", status_visual_horario_jogo(b2) if "status_visual_horario_jogo" in globals() else "")
     jogo = str(b2.get("jogo", "") or "").strip()
     aposta = str(b2.get("aposta", "") or "").strip()
 
@@ -757,11 +739,7 @@ def limpar_aposta_display_v39(b):
 
 
 def bets_display_v39():
-    lista = [limpar_aposta_display_v39(b) for b in bets_do_usuario()]
-    try:
-        return sorted(lista, key=sort_key_aposta_horario)
-    except Exception:
-        return list(reversed(lista))
+    return [limpar_aposta_display_v39(b) for b in list(reversed(bets_do_usuario()))]
 
 
 def ultimas_apostas_comunidade_base(limit=10):
@@ -783,7 +761,6 @@ def ultimas_apostas_comunidade_base(limit=10):
             "source_original_id": bd.get("id", ""),
             "data": bd.get("data", ""),
             "horario_jogo": bd.get("horario_jogo", ""),
-            "jogo_status_visual": bd.get("jogo_status_visual", ""),
             "casa": bd.get("casa", ""),
             "esporte": bd.get("esporte", ""),
             "jogo": bd.get("jogo", ""),
@@ -4732,7 +4709,7 @@ def criar_aposta_manual_payload(form):
     bet = {
         "id": str(uuid.uuid4()),
         "user_id": usuario_id_atual(),
-        "data": agora_brasil(),
+        "data": data_hora_local(),
         "horario_jogo": form.get("horario_jogo", "") or extrair_horario_jogo(f"{jogo} {aposta_texto}"),
         "aposta": aposta_texto,
         "casa": limpar_casa(form.get("casa", "")),
@@ -4760,8 +4737,6 @@ def criar_aposta_manual_payload(form):
         "saldo_creditado_valor": 0.0,
         "publica": False if form.get("copiada_comunidade") == "1" else aposta_publica_padrao_usuario()
     }
-
-    bet = resolver_horario_jogo_aposta(bet) if "resolver_horario_jogo_aposta" in globals() else bet
 
     # Usa o mesmo motor visual/universal das múltiplas OCR também no manual/cópia.
     if "aplicar_formatacao_multiplas_combinadas" in globals():
@@ -4795,7 +4770,7 @@ def carregar_usuarios():
                 "assinatura_ativa": True,
                 "plano": "admin",
                 "apostas_publicas_padrao": False,
-                "criado_em": agora_brasil()
+                "criado_em": data_hora_local()
             }
         ]
     }
@@ -4874,7 +4849,7 @@ def garantir_admin():
                 "assinatura_ativa": True,
                 "plano": "admin",
                 "apostas_publicas_padrao": False,
-                "criado_em": agora_brasil()
+                "criado_em": data_hora_local()
             })
 
         salvar_usuarios(usuarios)
@@ -5041,7 +5016,7 @@ def agora_local():
         return datetime.now()
 
 
-def agora_brasil():
+def data_hora_local():
     return agora_local().strftime("%d/%m/%Y %H:%M")
 
 
@@ -5056,196 +5031,6 @@ def extrair_horario_jogo(texto):
     if m:
         return m.group(0)
     return ""
-
-
-# ============================================================
-# V79 - horário do jogo via API + organização por proximidade
-# ============================================================
-
-LIVE_STATUS_API = {"1H", "HT", "2H", "ET", "BT", "P", "SUSP", "INT", "LIVE"}
-UPCOMING_STATUS_API = {"NS", "TBD"}
-
-
-def parse_iso_api_local(date_str):
-    try:
-        if not date_str:
-            return None
-        sdt = str(date_str).replace("Z", "+00:00")
-        dt = datetime.fromisoformat(sdt)
-        if dt.tzinfo is None:
-            dt = dt.replace(tzinfo=ZoneInfo("UTC"))
-        return dt.astimezone(ZoneInfo(TIMEZONE_APP))
-    except Exception as e:
-        print("ERRO parse_iso_api_local:", repr(e))
-        return None
-
-
-def formatar_horario_local(dt):
-    if not dt:
-        return ""
-    try:
-        return dt.strftime("%d/%m %H:%M")
-    except Exception:
-        return ""
-
-
-def parse_horario_jogo_local(valor):
-    try:
-        if not valor:
-            return None
-        txt = str(valor).strip()
-        agora = agora_local()
-
-        # ISO completo salvo internamente.
-        if "T" in txt:
-            return parse_iso_api_local(txt)
-
-        for fmt in ["%d/%m/%Y %H:%M", "%d/%m/%y %H:%M"]:
-            try:
-                dt = datetime.strptime(txt, fmt)
-                return dt.replace(tzinfo=ZoneInfo(TIMEZONE_APP))
-            except Exception:
-                pass
-
-        # Exibição curta: 05/05 20:30
-        try:
-            dt = datetime.strptime(txt, "%d/%m %H:%M")
-            dt = dt.replace(year=agora.year, tzinfo=ZoneInfo(TIMEZONE_APP))
-            return dt
-        except Exception:
-            pass
-
-        # Só hora: joga para hoje.
-        try:
-            dt = datetime.strptime(txt, "%H:%M")
-            return agora.replace(hour=dt.hour, minute=dt.minute, second=0, microsecond=0)
-        except Exception:
-            pass
-    except Exception:
-        pass
-    return None
-
-
-def status_visual_horario_jogo(b):
-    status_api = str(b.get("jogo_status_api", "") or "").upper()
-    dt = parse_horario_jogo_local(b.get("horario_jogo_iso") or b.get("horario_jogo"))
-
-    if status_api in LIVE_STATUS_API:
-        return "🔴 Ao vivo"
-
-    if not dt:
-        return ""
-
-    agora = agora_local()
-    diff_min = (dt - agora).total_seconds() / 60
-
-    if -120 <= diff_min <= 180 and status_api not in {"FT", "AET", "PEN"}:
-        if diff_min <= 0:
-            return "🔴 Ao vivo"
-        if diff_min <= 30:
-            return "🟡 Começa em breve"
-
-    if dt.date() == agora.date():
-        return "🕒 Hoje"
-
-    if 0 < diff_min <= 24 * 60:
-        return "🟢 Próximo"
-
-    return "📅 Agendado"
-
-
-def sort_key_aposta_horario(b):
-    dt = parse_horario_jogo_local(b.get("horario_jogo_iso") or b.get("horario_jogo"))
-    agora = agora_local()
-
-    if dt:
-        diff = (dt - agora).total_seconds()
-        # Jogos ao vivo ou próximos aparecem primeiro, depois por horário.
-        status_api = str(b.get("jogo_status_api", "") or "").upper()
-        grupo = 0 if status_api in LIVE_STATUS_API else (1 if diff >= -7200 else 3)
-        return (grupo, abs(diff) if grupo == 0 else max(diff, 0), str(b.get("data", "")))
-
-    # Sem horário: mantém mais recentes depois.
-    return (4, 999999999, str(b.get("data", "")))
-
-
-def buscar_horario_jogo_api(aposta, dias_a_frente=7):
-    """Busca horário do jogo pela API usando nome dos times. Não quebra se API falhar."""
-    try:
-        if not API_KEY:
-            return {}
-
-        jogo = str(aposta.get("jogo", "") or "").strip()
-        if not jogo:
-            return {}
-
-        hoje = agora_local().date()
-        cache_key = "horario_jogo:" + normalizar_nome(jogo) + ":" + hoje.isoformat()
-        if cache_key in CACHE_RESULTADOS:
-            return CACHE_RESULTADOS[cache_key]
-
-        url = "https://v3.football.api-sports.io/fixtures"
-        params = {
-            "from": hoje.isoformat(),
-            "to": (hoje + timedelta(days=dias_a_frente)).isoformat()
-        }
-
-        js = api_get(url, params)
-        if not js:
-            return {}
-
-        fixtures = js.get("response", []) or []
-        if not fixtures:
-            return {}
-
-        melhor = escolher_melhor_fixture_futebol(fixtures, aposta)
-        if not melhor:
-            CACHE_RESULTADOS[cache_key] = {}
-            return {}
-
-        raw = melhor.get("raw", {}) or {}
-        fixture = raw.get("fixture", {}) or {}
-        status = fixture.get("status", {}) or {}
-        dt_local = parse_iso_api_local(fixture.get("date"))
-
-        resposta = {
-            "fixture_id": fixture.get("id") or melhor.get("fixture_id"),
-            "horario_jogo": formatar_horario_local(dt_local),
-            "horario_jogo_iso": fixture.get("date", ""),
-            "jogo_status_api": status.get("short", ""),
-            "jogo_status_nome": status.get("long", ""),
-            "jogo_minuto": status.get("elapsed")
-        }
-
-        CACHE_RESULTADOS[cache_key] = resposta
-        return resposta
-
-    except Exception as e:
-        print("ERRO buscar_horario_jogo_api:", repr(e))
-        return {}
-
-
-def resolver_horario_jogo_aposta(bet):
-    """Preenche horário no bet, primeiro OCR/manual, depois API."""
-    try:
-        if not bet.get("horario_jogo"):
-            bet["horario_jogo"] = extrair_horario_jogo((bet.get("texto_bruto", "") or "") + " " + (bet.get("jogo", "") or "") + " " + (bet.get("aposta", "") or ""))
-
-        info = {}
-        if not bet.get("horario_jogo_iso") and (not bet.get("horario_jogo") or len(str(bet.get("horario_jogo"))) <= 5):
-            info = buscar_horario_jogo_api(bet)
-
-        if info:
-            for k in ["fixture_id", "horario_jogo", "horario_jogo_iso", "jogo_status_api", "jogo_status_nome", "jogo_minuto"]:
-                if info.get(k) not in [None, ""]:
-                    bet[k] = info.get(k)
-
-        bet["jogo_status_visual"] = status_visual_horario_jogo(bet)
-
-    except Exception as e:
-        print("ERRO resolver_horario_jogo_aposta:", repr(e))
-
-    return bet
 
 
 def id_raiz_aposta(b):
@@ -5277,41 +5062,43 @@ def propagar_resultado_para_copias(aposta_base, estado):
 
 
 
-
 # ============================================================
-# V80 - ESPN: horário do jogo + status ao vivo
+# V85 - ESPN SAFE: horário do jogo + status ao vivo
 # ============================================================
-
 ESPN_CACHE = {}
 ESPN_CACHE_TTL = int(os.environ.get("ESPN_CACHE_TTL", "300"))
 
-def normalizar_espn_nome(s):
+def espn_normalizar_nome(s):
     s = str(s or "").lower().strip()
     s = unicodedata.normalize("NFD", s)
     s = "".join(c for c in s if unicodedata.category(c) != "Mn")
     s = re.sub(r"[^a-z0-9 ]+", " ", s)
     s = re.sub(r"\s+", " ", s).strip()
-    return s
+    aliases = {
+        "inter": "internacional",
+        "athletico pr": "athletico paranaense",
+        "atletico pr": "athletico paranaense",
+        "atletico mg": "atletico mineiro",
+        "spfc": "sao paulo",
+    }
+    return aliases.get(s, s)
 
-def dividir_times_jogo(jogo):
+def espn_dividir_times(jogo):
     jogo = str(jogo or "").strip()
     partes = re.split(r"\s+(?:x|vs|v|versus)\s+", jogo, flags=re.I)
     if len(partes) >= 2:
         return partes[0].strip(), partes[1].strip()
-    return jogo, ""
+    return "", ""
 
-def similaridade_nome(a, b):
-    a, b = normalizar_espn_nome(a), normalizar_espn_nome(b)
+def espn_similaridade(a, b):
+    a, b = espn_normalizar_nome(a), espn_normalizar_nome(b)
     if not a or not b: return 0
     if a == b: return 100
     if a in b or b in a: return 88
-    try:
-        return int(difflib.SequenceMatcher(None, a, b).ratio() * 100)
-    except Exception:
-        return 0
+    return int(difflib.SequenceMatcher(None, a, b).ratio() * 100)
 
 def espn_ligas_por_esporte(esporte):
-    e = normalizar_espn_nome(esporte)
+    e = espn_normalizar_nome(esporte)
     if "basquete" in e or "basket" in e or "nba" in e:
         return [("basketball", "nba"), ("basketball", "mens-college-basketball")]
     return [
@@ -5320,14 +5107,16 @@ def espn_ligas_por_esporte(esporte):
         ("soccer", "ger.1"), ("soccer", "fra.1"),
         ("soccer", "uefa.champions"), ("soccer", "uefa.europa"),
         ("soccer", "conmebol.libertadores"), ("soccer", "conmebol.sudamericana"),
-        ("soccer", "usa.1"), ("soccer", "mex.1"), ("soccer", "arg.1"),
+        ("soccer", "arg.1"), ("soccer", "mex.1"), ("soccer", "usa.1"), ("soccer", "por.1"),
     ]
 
-def espn_scoreboard_url(sport, league, data_ini, data_fim):
-    dates = f"{data_ini.strftime('%Y%m%d')}-{data_fim.strftime('%Y%m%d')}"
-    return f"https://site.api.espn.com/apis/site/v2/sports/{sport}/{league}/scoreboard?dates={dates}&limit=200"
+def espn_scoreboard_url(sport, league):
+    hoje = agora_local().date() if "agora_local" in globals() else datetime.now(ZoneInfo("America/Sao_Paulo")).date()
+    ini, fim = hoje - timedelta(days=1), hoje + timedelta(days=7)
+    dates = f"{ini.strftime('%Y%m%d')}-{fim.strftime('%Y%m%d')}"
+    return f"https://site.api.espn.com/apis/site/v2/sports/{sport}/{league}/scoreboard?dates={dates}&limit=300"
 
-def espn_status_formatado(comp):
+def espn_formatar_status(comp):
     status = comp.get("status", {}) or {}
     typ = status.get("type", {}) or {}
     state = typ.get("state", "")
@@ -5336,45 +5125,32 @@ def espn_status_formatado(comp):
         dt_iso = comp.get("date")
         if dt_iso:
             dt_utc = datetime.fromisoformat(dt_iso.replace("Z", "+00:00"))
-            dt_br = dt_utc.astimezone(ZoneInfo("America/Sao_Paulo"))
+            dt_br = dt_utc.astimezone(ZoneInfo(TIMEZONE_APP if "TIMEZONE_APP" in globals() else "America/Sao_Paulo"))
     except Exception:
         dt_br = None
-
-    agora = agora_brasil() if "agora_brasil" in globals() else datetime.now(ZoneInfo("America/Sao_Paulo"))
-
-    if state == "in":
-        return "Ao vivo", dt_br, True
-    if state == "post":
-        return "Finalizado", dt_br, False
+    if state == "in": return "Ao vivo", dt_br, True
+    if state == "post": return "Finalizado", dt_br, False
     if dt_br:
+        agora = agora_local() if "agora_local" in globals() else datetime.now(ZoneInfo("America/Sao_Paulo"))
         mins = int((dt_br - agora).total_seconds() // 60)
-        if -15 <= mins <= 0:
-            return "Começando", dt_br, False
-        if 0 < mins <= 30:
-            return f"Começa em {mins}min", dt_br, False
-        if dt_br.date() == agora.date():
-            return "Hoje " + dt_br.strftime("%H:%M"), dt_br, False
+        if -10 <= mins <= 0: return "Começando", dt_br, False
+        if 0 < mins <= 30: return f"Começa em {mins}min", dt_br, False
+        if dt_br.date() == agora.date(): return "Hoje " + dt_br.strftime("%H:%M"), dt_br, False
         return dt_br.strftime("%d/%m %H:%M"), dt_br, False
-    return "", dt_br, False
+    return "", None, False
 
-def buscar_jogo_espn(jogo, esporte="Futebol"):
-    time_a, time_b = dividir_times_jogo(jogo)
-    if not time_a or not time_b:
-        return None
-
-    chave = f"{normalizar_espn_nome(esporte)}|{normalizar_espn_nome(jogo)}"
-    agora_ts = time.time()
+def espn_buscar_jogo(jogo, esporte="Futebol"):
+    time_a, time_b = espn_dividir_times(jogo)
+    if not time_a or not time_b: return None
+    chave = f"{espn_normalizar_nome(esporte)}|{espn_normalizar_nome(time_a)}|{espn_normalizar_nome(time_b)}"
+    now = time.time()
     cache = ESPN_CACHE.get(chave)
-    if cache and agora_ts - cache["ts"] < ESPN_CACHE_TTL:
-        return cache["valor"]
-
-    hoje = (agora_brasil() if "agora_brasil" in globals() else datetime.now(ZoneInfo("America/Sao_Paulo"))).date()
-    data_ini, data_fim = hoje - timedelta(days=1), hoje + timedelta(days=7)
-
+    if cache and now - cache.get("ts", 0) <= ESPN_CACHE_TTL:
+        return cache.get("valor")
     melhor, melhor_score = None, 0
     for sport, league in espn_ligas_por_esporte(esporte):
         try:
-            r = requests.get(espn_scoreboard_url(sport, league, data_ini, data_fim), timeout=7)
+            r = requests.get(espn_scoreboard_url(sport, league), timeout=6)
             if r.status_code != 200: continue
             for ev in r.json().get("events", []):
                 comp = (ev.get("competitions") or [{}])[0]
@@ -5384,98 +5160,46 @@ def buscar_jogo_espn(jogo, esporte="Futebol"):
                     nomes.append(team.get("displayName") or team.get("shortDisplayName") or team.get("name") or "")
                 if len(nomes) < 2: continue
                 score = max(
-                    similaridade_nome(time_a, nomes[0]) + similaridade_nome(time_b, nomes[1]),
-                    similaridade_nome(time_a, nomes[1]) + similaridade_nome(time_b, nomes[0])
+                    espn_similaridade(time_a, nomes[0]) + espn_similaridade(time_b, nomes[1]),
+                    espn_similaridade(time_a, nomes[1]) + espn_similaridade(time_b, nomes[0])
                 )
                 if score > melhor_score:
-                    label, dt_br, ao_vivo = espn_status_formatado(comp)
+                    label, dt_br, ao_vivo = espn_formatar_status(comp)
                     melhor_score = score
                     melhor = {
-                        "espn_event_id": ev.get("id"),
-                        "espn_league": league,
+                        "espn_event_id": ev.get("id", ""),
                         "espn_sport": sport,
-                        "home_away": " / ".join(nomes),
+                        "espn_league": league,
+                        "espn_match_score": score,
                         "horario_jogo": dt_br.strftime("%d/%m/%Y %H:%M") if dt_br else "",
                         "horario_jogo_iso": dt_br.isoformat() if dt_br else "",
                         "status_jogo": label,
-                        "ao_vivo": ao_vivo,
-                        "espn_match_score": score,
+                        "ao_vivo": bool(ao_vivo),
                     }
         except Exception as e:
-            print("ERRO ESPN scoreboard:", league, repr(e))
-
+            print("ESPN SAFE erro:", league, repr(e))
     if melhor and melhor_score >= 120:
-        ESPN_CACHE[chave] = {"ts": agora_ts, "valor": melhor}
+        ESPN_CACHE[chave] = {"ts": now, "valor": melhor}
         return melhor
-    ESPN_CACHE[chave] = {"ts": agora_ts, "valor": None}
+    ESPN_CACHE[chave] = {"ts": now, "valor": None}
     return None
 
-def aplicar_info_espn_na_aposta(bet):
+def espn_aplicar_info_na_aposta(bet, forcar=False):
     try:
-        if not isinstance(bet, dict):
+        if not isinstance(bet, dict): return bet
+        bet.setdefault("horario_jogo", "")
+        bet.setdefault("horario_jogo_iso", "")
+        bet.setdefault("status_jogo", "")
+        bet.setdefault("ao_vivo", False)
+        if not forcar and bet.get("horario_jogo") and bet.get("status_jogo"):
             return bet
-
-        info = buscar_jogo_espn(bet.get("jogo", ""), bet.get("esporte", "Futebol"))
-        if info:
-            bet.update(info)
-        garantir_campos_horario_bet(bet)
+        info = espn_buscar_jogo(bet.get("jogo", ""), bet.get("esporte", "Futebol"))
+        if info: bet.update(info)
     except Exception as e:
-        print("ERRO aplicar_info_espn_na_aposta:", repr(e))
-        garantir_campos_horario_bet(bet)
+        print("ESPN SAFE aplicar erro:", repr(e))
     return bet
 
-def ordenar_bets_por_horario(bets):
-    def key(b):
-        iso = b.get("horario_jogo_iso") or ""
-        if iso:
-            try:
-                return (0, datetime.fromisoformat(iso))
-            except Exception:
-                pass
-        return (1, b.get("data", ""))
-    return sorted(bets, key=key)
 
-
-
-
-# ============================================================
-# V81 - defaults seguros para horário/status
-# ============================================================
-
-def garantir_campos_horario_bet(b):
-    if isinstance(b, dict):
-        b.setdefault("horario_jogo", "")
-        b.setdefault("horario_jogo_iso", "")
-        b.setdefault("status_jogo", "")
-        b.setdefault("ao_vivo", False)
-    return b
-
-
-
-# ============================================================
-# V81 - log real de erro 500 no Render
-# ============================================================
-
-@app.errorhandler(Exception)
-def v81_log_internal_error(e):
-    if isinstance(e, HTTPException):
-        return e
-
-    print("===== ERRO FLASK 500 =====")
-    traceback.print_exc()
-    print("===== FIM ERRO FLASK 500 =====")
-    return "Internal Server Error - veja logs do Render", 500
-
-
-
-# V82 - compatibilidade com versões antigas
-def agora_brasil():
-    return agora_brasil()
-
-
-# V83 - compatibilidade com versões antigas
-def data_hora_local():
-    return agora_brasil()
 
 @app.route("/atualizar_horarios_espn", methods=["POST"])
 @login_required
@@ -5483,36 +5207,27 @@ def data_hora_local():
 def atualizar_horarios_espn():
     atualizadas = 0
     erros = 0
-
     try:
         lista = bets_do_usuario()
     except Exception as e:
-        print("ERRO listar bets para ESPN:", repr(e))
+        print("ESPN SAFE listar erro:", repr(e))
         lista = []
-
     for b in lista:
         try:
-            antes = (b.get("horario_jogo_iso", ""), b.get("status_jogo", ""))
-            aplicar_info_espn_na_aposta(b)
-            garantir_campos_horario_bet(b)
-            depois = (b.get("horario_jogo_iso", ""), b.get("status_jogo", ""))
-            if depois != antes and (depois[0] or depois[1]):
-                atualizadas += 1
+            antes = (b.get("horario_jogo"), b.get("status_jogo"), b.get("ao_vivo"))
+            b["horario_jogo"] = ""
+            b["horario_jogo_iso"] = ""
+            b["status_jogo"] = ""
+            b["ao_vivo"] = False
+            espn_aplicar_info_na_aposta(b, forcar=True)
+            depois = (b.get("horario_jogo"), b.get("status_jogo"), b.get("ao_vivo"))
+            if depois != antes and (depois[0] or depois[1]): atualizadas += 1
         except Exception as e:
             erros += 1
-            print("ERRO atualizar uma aposta ESPN:", repr(e))
-
-    try:
-        salvar()
-    except Exception as e:
-        print("ERRO salvar depois ESPN:", repr(e))
-
+            print("ESPN SAFE atualizar erro:", repr(e))
+    try: salvar()
+    except Exception as e: print("ESPN SAFE salvar erro:", repr(e))
     return jsonify({"ok": True, "atualizadas": atualizadas, "erros": erros})
-
-
-@app.route("/healthz")
-def healthz():
-    return jsonify({"ok": True, "version": "v78"})
 
 
 @app.route("/bloqueado")
@@ -5551,7 +5266,7 @@ def criar_ou_atualizar_admin_emergencial(email=None, senha=None):
             "assinatura_ativa": True,
             "plano": "admin",
             "apostas_publicas_padrao": False,
-            "criado_em": agora_brasil()
+            "criado_em": data_hora_local()
         }
         usuarios["users"].append(admin)
     else:
@@ -5644,7 +5359,7 @@ def criar_conta():
                 "assinatura_ativa": False,
                 "plano": "free",
                 "apostas_publicas_padrao": False,
-                "criado_em": agora_brasil()
+                "criado_em": data_hora_local()
             })
             salvar_usuarios(usuarios)
 
@@ -5708,7 +5423,7 @@ def adicionar_ajax():
             bet["origem"] = "copia"
             bet["source_original_id"] = request.form.get("source_original_id", "") or bet.get("source_original_id", "")
 
-        aplicar_info_espn_na_aposta(bet)
+        espn_aplicar_info_na_aposta(bet)
         registrar_nova_aposta_saldo(bet)
         dados["bets"].append(bet)
         salvar()
@@ -5723,30 +5438,6 @@ def adicionar_ajax():
         return jsonify({"ok": False, "erro": str(e)}), 500
 
 
-def preencher_horarios_pendentes_usuario(max_itens=3):
-    """Atualiza poucos horários faltantes por página para não deixar o site lento."""
-    if not API_KEY:
-        return 0
-    atualizados = 0
-    try:
-        for b in bets_do_usuario():
-            if atualizados >= max_itens:
-                break
-            if str(b.get("esporte", "")).lower() != "futebol":
-                continue
-            if b.get("horario_jogo_iso") or b.get("fixture_id"):
-                continue
-            antes = b.get("horario_jogo", "")
-            resolver_horario_jogo_aposta(b)
-            if b.get("horario_jogo", "") != antes or b.get("horario_jogo_iso"):
-                atualizados += 1
-        if atualizados:
-            salvar()
-    except Exception as e:
-        print("ERRO preencher_horarios_pendentes_usuario:", repr(e))
-    return atualizados
-
-
 @app.route("/", methods=["GET", "POST"])
 @login_required
 def index():
@@ -5756,15 +5447,13 @@ def index():
             bet["publica"] = False
             bet["origem"] = "copia"
             bet["source_original_id"] = request.form.get("source_original_id", "") or bet.get("source_original_id", "")
-        aplicar_info_espn_na_aposta(bet)
+        espn_aplicar_info_na_aposta(bet)
         registrar_nova_aposta_saldo(bet)
         dados["bets"].append(bet)
         salvar()
         return redirect("/")
 
     recalcular()
-    if "preencher_horarios_pendentes_usuario" in globals():
-        preencher_horarios_pendentes_usuario(3)
     salvar()
 
     labels, valores = grafico()
@@ -6007,7 +5696,7 @@ def salvar_preview():
                 bet = {
                     "id": str(uuid.uuid4()),
                     "user_id": usuario_id_atual() if "usuario_id_atual" in globals() else session.get("user_id"),
-                    "data": agora_brasil(),
+                    "data": data_hora_local(),
                     "horario_jogo": a.get("horario_jogo", "") or extrair_horario_jogo((a.get("texto_bruto", "") or "") + " " + jogo + " " + aposta_texto),
                     "aposta": aposta_texto,
                     "casa": casa,
@@ -6037,8 +5726,7 @@ def salvar_preview():
                     "publica": aposta_publica_padrao_usuario() if "aposta_publica_padrao_usuario" in globals() else False
                 }
 
-                bet = resolver_horario_jogo_aposta(bet) if "resolver_horario_jogo_aposta" in globals() else bet
-                aplicar_info_espn_na_aposta(bet)
+                espn_aplicar_info_na_aposta(bet)
                 registrar_nova_aposta_saldo(bet)
                 dados.setdefault("bets", []).append(bet)
                 bets_salvas.append(limpar_aposta_display_v39(bet) if "limpar_aposta_display_v39" in globals() else bet)
@@ -6268,7 +5956,7 @@ def calculadora_planilhar():
             bet = {
                 "id": str(uuid.uuid4()),
                 "user_id": usuario_id_atual(),
-                "data": agora_brasil(),
+                "data": data_hora_local(),
                 "horario_jogo": "",
                 "aposta": aposta_texto,
                 "casa": casa,
