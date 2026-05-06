@@ -37,7 +37,11 @@ function formatarLinhaApostaNova(b){
         <td class="casa-cell">${b.casa || ""}</td>
         <td class="esporte-cell">${b.esporte || ""}</td>
         <td class="jogo-cell">${b.jogo || ""}${b.horario_jogo ? `<div class="game-time">⏰ ${b.horario_jogo}</div>` : ""}${b.jogo_status_visual ? `<div class="game-status">${b.jogo_status_visual}</div>` : ""}</td>
-                    <td class="horario-cell"><span class="game-status {{ \'live\' if b.ao_vivo else \'\' }}">{{ b.get('status_jogo') or b.get('horario_jogo') or '-' }}</span></td>
+                    <td class="horario-cell">
+    <span class="game-status {{ 'live' if b.get('ao_vivo') else '' }}">
+        {{ b.get('status_jogo') or b.get('horario_jogo') or '-' }}
+    </span>
+</td>
         <td class="aposta-cell" title="${b.aposta || ""}">${apostaVisual}</td>
         <td class="odd-cell">${b.odd || ""}</td>
         <td class="valor-cell">${valor}</td>
