@@ -1,12 +1,18 @@
 <!DOCTYPE html>
 <html lang="pt-BR">
-<head><meta charset="UTF-8"><title>Assinatura Pendente</title><link rel="stylesheet" href="/static/style.css"></head>
+<head><meta charset="UTF-8"><title>Criar Conta</title><link rel="stylesheet" href="/static/style.css"></head>
 <body class="auth-page">
 <div class="auth-card">
-    <h1>Assinatura pendente</h1>
-    <p>Sua conta foi criada, mas o administrador ainda não liberou sua assinatura.</p>
-    <a href="/" class="api-button">Voltar ao Dashboard</a>
-    <a href="/logout" class="auth-link" style="display:block;margin-top:18px;">Sair</a>
+    <h1>Criar conta</h1>
+    <p>Crie seu acesso ao Bet Manager.</p>
+    {% if erro %}<div class="auth-error">{{ erro }}</div>{% endif %}
+    <form method="POST" class="auth-form">
+        <input name="nome" placeholder="Nome" required>
+        <input name="email" type="email" placeholder="E-mail" required>
+        <input name="senha" type="password" placeholder="Senha" required>
+        <button type="submit">Criar conta</button>
+    </form>
+    <p style="margin-top:16px;">Já tem conta? <a class="auth-link" href="/login">Entrar</a></p>
 </div>
 
 <script id="v72-global-scroll-js">

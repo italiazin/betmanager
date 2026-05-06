@@ -1,0 +1,1901 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <title>Gestor de Apostas</title>
+    <link rel="stylesheet" href="/static/style.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js">
+function limparApostaDuplicadaVisual(){
+    document.querySelectorAll("tbody tr").forEach(tr=>{
+        const jogoEl = tr.querySelector(".jogo-cell")
+        const apostaEl = tr.querySelector(".aposta-cell")
+        if(!jogoEl || !apostaEl) return
+
+        const jogo = jogoEl.innerText.trim()
+        let aposta = apostaEl.innerText.trim()
+
+        if(jogo && aposta.toLowerCase().startsWith((jogo + " - ").toLowerCase())){
+            apostaEl.innerText = aposta.slice(jogo.length + 3).trim()
+            apostaEl.title = aposta
+        }
+    })
+}
+
+document.addEventListener("DOMContentLoaded", limparApostaDuplicadaVisual)
+
+function formatarLinhaApostaNova(b){
+    const apostaVisual = (b.jogo && b.aposta && b.aposta.toLowerCase().startsWith((b.jogo + " - ").toLowerCase()))
+        ? b.aposta.slice(b.jogo.length + 3)
+        : (b.aposta || "")
+
+    const valor = parseFloat(b.valor || 0).toFixed(2)
+    const lucro = parseFloat(b.lucro || 0).toFixed(2)
+
+    return `
+    <tr class="bet-row">
+        <td class="data-cell">${b.data || ""}</td>
+        <td class="casa-cell">${b.casa || ""}</td>
+        <td class="esporte-cell">${b.esporte || ""}</td>
+        <td class="jogo-cell">${b.jogo || ""}${b.horario_jogo ? `<div class="game-time">⏰ ${b.horario_jogo}</div>` : ""}${b.jogo_status_visual ? `<div class="game-status">${b.jogo_status_visual}</div>` : ""}</td>
+                    <td class="horario-cell">
+                    <span class="game-status {{ 'live' if b.get('ao_vivo') else '' }}">
+                        {{ b.get('status_jogo') or b.get('horario_jogo') or '-' }}
+                    </span>
+                </td>
+        <td class="aposta-cell" title="${b.aposta || ""}">${apostaVisual}</td>
+        <td class="odd-cell">${b.odd || ""}</td>
+        <td class="valor-cell">${valor}</td>
+        <td class="status-cell"><span class="badge yellow">Pendente</span></td>
+        <td>R$ ${lucro}</td>
+        <td class="api-cell">${b.api_status || ""}</td>
+        <td class="actions">
+            <a href="/resultado/${b.id}/ganha"><button class="green">✔</button></a>
+            <a href="/resultado/${b.id}/perdida"><button class="red">✖</button></a>
+            <a href="/resultado/${b.id}/anulada"><button class="gray">↺</button></a>
+            <button class="blue" onclick="abrirEditar(this)" data-id="${b.id}" data-estado="">✎</button>
+            <a href="/remover/${b.id}"><button class="dark">🗑</button></a>
+        </td>
+    </tr>`
+}
+
+
+function window.renderPreview(){
+    const div = document.getElementById("preview-area")
+    const salvar = document.getElementById("salvar-preview")
+
+    if(!div){
+        console.error("preview-area não existe")
+        return
+    }
+
+    div.innerHTML = ""
+
+    if(!Array.isArray(window.apostasPreview) || window.apostasPreview.length === 0){
+        div.innerHTML = `<div class="preview-empty">Nenhuma aposta lida. Tente colar o print novamente.</div>`
+        if(salvar) salvar.style.display = "none"
+        return
+    }
+
+    window.apostasPreview.forEach((a, i)=>{
+        div.innerHTML += `
+        <div class="preview-card preview-card-client">
+            <input id="c${i}" value="${escapeHtmlPreview(a.casa || '')}" placeholder="Casa">
+            <input id="e${i}" value="${escapeHtmlPreview(a.esporte || '')}" placeholder="Esporte">
+            <input id="j${i}" value="${escapeHtmlPreview(a.jogo || '')}" placeholder="Jogo">
+            <input id="a${i}" value="${escapeHtmlPreview(a.aposta || '')}" placeholder="Aposta">
+            <input id="o${i}" value="${escapeHtmlPreview(a.odd || '')}" placeholder="Odd">
+            <input id="v${i}" value="${escapeHtmlPreview(a.valor || '')}" placeholder="Valor">
+
+            <input type="hidden" id="m${i}" value="${escapeHtmlPreview(a.mercado || '')}">
+            <input type="hidden" id="s${i}" value="${escapeHtmlPreview(a.selecao || '')}">
+            <input type="hidden" id="l${i}" value="${escapeHtmlPreview(a.linha || '')}">
+            <input type="hidden" id="p${i}" value="${escapeHtmlPreview(a.periodo || '')}">
+        </div>`
+    })
+
+    if(salvar){
+        salvar.style.display = "block"
+        salvar.disabled = false
+        salvar.innerText = "Salvar Apostas do Preview"
+    }
+
+    div.scrollIntoView({behavior:"smooth", block:"center"})
+}
+
+document.addEventListener("DOMContentLoaded", ()=>{
+    const form = document.getElementById("manualForm")
+    if(!form) return
+
+    form.addEventListener("submit", function(e){
+        e.preventDefault()
+
+        const btn = form.querySelector('button[type="submit"]')
+        const oldText = btn ? btn.innerText : ""
+
+        if(btn){
+            btn.disabled = true
+            btn.innerText = "Salvando..."
+        }
+
+        fetch("/adicionar_ajax", {
+            method: "POST",
+            body: new FormData(form)
+        })
+        .then(r=>r.json())
+        .then(d=>{
+            if(!d.ok){
+                alert(d.erro || "Erro ao salvar aposta")
+                return
+            }
+
+            const tbody = document.querySelector("tbody")
+            if(tbody){
+                tbody.insertAdjacentHTML("afterbegin", formatarLinhaApostaNova(d.bet))
+                limparApostaDuplicadaVisual()
+            }
+
+            if(btn){
+                btn.innerText = "Adicionado ✓"
+                setTimeout(()=>{ btn.innerText = oldText || "Adicionar" }, 1200)
+            }
+        })
+        .catch(()=>{
+            alert("Erro ao salvar aposta")
+        })
+        .finally(()=>{
+            if(btn) btn.disabled = false
+        })
+    })
+})
+
+
+document.addEventListener("DOMContentLoaded", function(){
+    const form = document.getElementById("manualForm")
+    if(!form || form.dataset.ajaxReady === "1") return
+    form.dataset.ajaxReady = "1"
+
+    form.addEventListener("submit", function(e){
+        e.preventDefault()
+        e.stopPropagation()
+
+        const btn = form.querySelector('button[type="submit"]')
+        const oldText = btn ? btn.innerText : "Adicionar"
+
+        if(btn){
+            btn.disabled = true
+            btn.innerText = "Salvando..."
+        }
+
+        fetch("/adicionar_ajax", {
+            method: "POST",
+            body: new FormData(form)
+        })
+        .then(r=>r.json())
+        .then(d=>{
+            if(!d.ok){
+                alert(d.erro || "Erro ao salvar aposta")
+                return
+            }
+
+            const tbody = document.querySelector("tbody")
+            if(tbody){
+                tbody.insertAdjacentHTML("afterbegin", formatarLinhaApostaNovaV39(d.bet))
+            }
+
+            if(btn){
+                btn.innerText = "Adicionado ✓"
+                setTimeout(()=>{ btn.innerText = oldText }, 1000)
+            }
+        })
+        .catch(()=>alert("Erro ao salvar aposta"))
+        .finally(()=>{
+            if(btn) btn.disabled = false
+        })
+    })
+})
+
+function formatarLinhaApostaNovaV39(b){
+    const valor = parseFloat(b.valor || 0).toFixed(2)
+    const lucro = parseFloat(b.lucro || 0).toFixed(2)
+    const apostaVisual = b.aposta_display || b.aposta || ""
+
+    return `
+    <tr class="bet-row">
+        <td class="data-cell">${b.data || ""}</td>
+        <td class="casa-cell">${b.casa || ""}</td>
+        <td class="esporte-cell">${b.esporte || ""}</td>
+        <td class="jogo-cell">${b.jogo || ""}${b.horario_jogo ? `<div class="game-time">⏰ ${b.horario_jogo}</div>` : ""}${b.jogo_status_visual ? `<div class="game-status">${b.jogo_status_visual}</div>` : ""}</td>
+        <td class="aposta-cell" title="${b.aposta || ""}">${apostaVisual}</td>
+        <td class="odd-cell">${b.odd || ""}</td>
+        <td class="valor-cell">${valor}</td>
+        <td class="status-cell"><span class="badge yellow">Pendente</span></td>
+        <td>R$ ${lucro}</td>
+        <td class="api-cell">${b.api_status || ""}</td>
+        <td class="actions">
+            <a href="/resultado/${b.id}/ganha"><button class="green">✔</button></a>
+            <a href="/resultado/${b.id}/perdida"><button class="red">✖</button></a>
+            <a href="/resultado/${b.id}/anulada"><button class="gray">↺</button></a>
+            <button class="blue" onclick="abrirEditar(this)" data-id="${b.id}" data-estado="">✎</button>
+            <a href="/remover/${b.id}"><button class="dark">🗑</button></a>
+        </td>
+    </tr>`
+}
+
+
+function dinheiroBR(v){
+    const n = parseFloat(v || 0)
+    return "R$ " + n.toFixed(2)
+}
+
+function atualizarMetricasV43(m){
+    if(!m) return
+
+    const banca = document.getElementById("metric-banca")
+    const saldo = document.getElementById("metric-saldo-casas")
+    const lucro = document.getElementById("metric-lucro")
+    const roi = document.getElementById("metric-roi")
+    const taxa = document.getElementById("metric-taxa")
+    const total = document.getElementById("metric-total")
+    const pend = document.getElementById("metric-pendentes")
+
+    if(banca) banca.innerText = dinheiroBR(m.banca_atual)
+    if(saldo) saldo.innerText = dinheiroBR(m.saldo_casas_total)
+    if(lucro){
+        lucro.innerText = dinheiroBR(m.lucro_total)
+        lucro.classList.remove("green-text", "red-text")
+        lucro.classList.add(parseFloat(m.lucro_total || 0) >= 0 ? "green-text" : "red-text")
+    }
+    if(roi) roi.innerText = parseFloat(m.roi || 0).toFixed(2) + "%"
+    if(taxa) taxa.innerText = parseFloat(m.taxa || 0).toFixed(2) + "%"
+    if(total) total.innerText = m.total
+    if(pend) pend.innerText = m.pendentes
+}
+
+function badgeStatusV43(estado){
+    if(estado === "ganha") return '<span class="badge green">Ganha</span>'
+    if(estado === "perdida") return '<span class="badge red">Perdida</span>'
+    if(estado === "anulada") return '<span class="badge gray">Anulada</span>'
+    return '<span class="badge yellow">Pendente</span>'
+}
+
+function atualizarLinhaResultadoV43(tr, b){
+    if(!tr || !b) return
+
+    const statusCell = tr.querySelector(".status-cell")
+    if(statusCell) statusCell.innerHTML = badgeStatusV43(b.estado || "")
+
+    const lucroCell = tr.children[12]
+    if(lucroCell){
+        const lucro = parseFloat(b.lucro || 0)
+        lucroCell.innerText = dinheiroBR(lucro)
+        lucroCell.classList.remove("green-text", "red-text")
+        if(lucro > 0) lucroCell.classList.add("green-text")
+        if(lucro < 0) lucroCell.classList.add("red-text")
+    }
+
+    const apiCell = tr.querySelector(".api-cell")
+    if(apiCell && b.api_status !== undefined) apiCell.innerText = b.api_status || ""
+
+    const editBtn = tr.querySelector('button.blue[data-id]')
+    if(editBtn) editBtn.dataset.estado = b.estado || ""
+}
+
+document.addEventListener("click", function(e){
+    const link = e.target.closest('a[href^="/resultado/"]')
+    if(!link) return
+
+    e.preventDefault()
+
+    const tr = link.closest("tr")
+    const oldHTML = link.innerHTML
+    link.style.pointerEvents = "none"
+    link.style.opacity = "0.7"
+
+    fetch(link.getAttribute("href") + "?ajax=1")
+        .then(r=>r.json())
+        .then(d=>{
+            if(!d.ok){
+                alert("Erro ao atualizar resultado")
+                return
+            }
+
+            atualizarLinhaResultadoV43(tr, d.bet)
+            atualizarMetricasV43(d.metricas)
+        })
+        .catch(()=>alert("Erro ao atualizar resultado"))
+        .finally(()=>{
+            link.style.pointerEvents = ""
+            link.style.opacity = ""
+            link.innerHTML = oldHTML
+        })
+})
+
+
+// V44 - bloqueio definitivo de reload/scroll nos botões de resultado
+document.addEventListener("click", function(e){
+    const link = e.target.closest('a[href^="/resultado/"]')
+    if(!link) return
+
+    e.preventDefault()
+    e.stopPropagation()
+    e.stopImmediatePropagation()
+
+    const tr = link.closest("tr")
+    link.style.pointerEvents = "none"
+    link.style.opacity = "0.65"
+
+    fetch(link.getAttribute("href") + "?ajax=1", {headers: {"X-Requested-With": "fetch"}})
+        .then(r=>r.json())
+        .then(d=>{
+            if(!d.ok){
+                alert("Erro ao atualizar resultado")
+                return
+            }
+
+            if(typeof atualizarLinhaResultadoV43 === "function") atualizarLinhaResultadoV43(tr, d.bet)
+            if(typeof atualizarMetricasV43 === "function") atualizarMetricasV43(d.metricas)
+        })
+        .catch(()=>alert("Erro ao atualizar resultado"))
+        .finally(()=>{
+            link.style.pointerEvents = ""
+            link.style.opacity = ""
+        })
+}, true)
+
+
+// V45 - preservar posição em qualquer ação que ainda faça reload
+document.addEventListener("click", function(e){
+    const action = e.target.closest('a[href^="/resultado/"], a[href^="/remover/"], a[href^="/admin/"], a[href^="/saldos/remover/"]')
+    if(action){
+        sessionStorage.setItem("restoreScrollY", String(window.scrollY || 0))
+    }
+}, true)
+
+window.addEventListener("beforeunload", function(){
+    sessionStorage.setItem("restoreScrollY", String(window.scrollY || 0))
+})
+
+document.addEventListener("DOMContentLoaded", function(){
+    const y = sessionStorage.getItem("restoreScrollY")
+    if(y !== null){
+        sessionStorage.removeItem("restoreScrollY")
+        setTimeout(()=>window.scrollTo(0, parseInt(y || "0")), 0)
+    }
+})
+
+
+
+
+
+
+document.addEventListener("DOMContentLoaded", ()=>{
+    const salvar = document.getElementById("salvar-preview")
+    if(!salvar || salvar.dataset.v51Ready === "1") return
+
+    salvar.dataset.v51Ready = "1"
+
+    salvar.onclick = ()=>{
+        let dados = apostasPreview.map((a, i)=>({
+            aposta: document.getElementById(`a${i}`)?.value || "",
+            casa: document.getElementById(`c${i}`)?.value || "",
+            esporte: document.getElementById(`e${i}`)?.value || "",
+            jogo: document.getElementById(`j${i}`)?.value || "",
+            mercado: document.getElementById(`m${i}`)?.value || "",
+            selecao: document.getElementById(`s${i}`)?.value || "",
+            linha: document.getElementById(`l${i}`)?.value || "",
+            periodo: document.getElementById(`p${i}`)?.value || "",
+            odd: document.getElementById(`o${i}`)?.value || "",
+            valor: document.getElementById(`v${i}`)?.value || "",
+            texto_bruto: a.texto_bruto || "",
+            texto_interpretado: a.texto_interpretado || "",
+            itens_multipla: a.itens_multipla || {},
+            itens_multipla_detalhados: a.itens_multipla_detalhados || [],
+                horario_jogo: a.horario_jogo || ""
+        }))
+
+        salvar.disabled = true
+        salvar.innerText = "Salvando..."
+
+        fetch("/salvar_preview", {
+            method: "POST",
+            headers: {"Content-Type": "application/json"},
+            body: JSON.stringify({apostas: dados})
+        })
+        .then(r=>r.json())
+        .then(()=>{
+            salvar.innerText = "Salvo ✓"
+            setTimeout(()=>location.reload(), 450)
+        })
+        .catch(()=>{
+            alert("Erro ao salvar apostas do preview")
+            salvar.disabled = false
+            salvar.innerText = "Salvar Apostas do Preview"
+        })
+    }
+})
+
+
+// V57 - feed da comunidade em tempo quase real
+let feedAutoRefreshHandle = null
+
+function iniciarFeedTempoReal(){
+    if(feedAutoRefreshHandle) return
+    feedAutoRefreshHandle = setInterval(()=>{
+        const feed = document.getElementById("aba-feed")
+        // Atualiza mesmo se a aba estiver aberta; se estiver fechada, atualiza leve do mesmo jeito.
+        carregarFeedApostas(false)
+    }, 7000)
+}
+
+document.addEventListener("DOMContentLoaded", ()=>{
+    iniciarFeedTempoReal()
+})
+
+</script>
+</head>
+
+<body>
+
+<aside class="sidebar">
+    <div class="sidebar-top">
+        <div class="logo">
+            <span class="logo-icon">🎯</span>
+            <span class="logo-text">Bet Manager</span>
+        </div>
+        <button type="button" class="sidebar-toggle" onclick="toggleSidebar()" title="Recolher menu">‹</button>
+    </div>
+    <nav>
+        <a class="active" href="/" data-title="Dashboard"><span class="nav-icon">⌂</span><span class="nav-text">Dashboard</span></a>
+        <a href="/calculadora" data-title="Calculadora"><span class="nav-icon">🧮</span><span class="nav-text">Calculadora</span></a>
+        <a href="/estatisticas" data-title="Estatísticas"><span class="nav-icon">▥</span><span class="nav-text">Estatísticas</span></a>
+        <a href="/saldos" data-title="Saldos"><span class="nav-icon">💰</span><span class="nav-text">Saldos</span></a>
+    {% if usuario and usuario.is_admin %}
+        <a href="/admin" data-title="Admin"><span class="nav-icon">⚙</span><span class="nav-text">Admin</span></a>
+        {% endif %}
+        <a href="/configuracoes" data-title="Configurações"><span class="nav-icon">⚙</span><span class="nav-text">Configurações</span></a>
+        <a href="/logout" data-title="Sair"><span class="nav-icon">↪</span><span class="nav-text">Sair</span></a>
+</nav>
+
+    <div class="sidebar-user-wrap">
+        <div class="sidebar-user-card" onclick="toggleUserMenu(event)">
+            <div class="sidebar-user-avatar">{{ usuario_inicial if usuario_inicial else "U" }}</div>
+            <div class="sidebar-user-info">
+                <strong>{{ usuario.nome if usuario else "Usuário" }}</strong>
+                <span>{{ usuario.email if usuario else "" }}</span>
+            </div>
+            <span class="sidebar-user-arrow">⌄</span>
+        </div>
+
+        <div id="sidebarUserMenu" class="sidebar-user-menu">
+            <a href="/configuracoes">👤 Perfil / Configurações</a>
+            <a href="/saldos">💰 Saldos</a>
+            {% if usuario and usuario.is_admin %}
+            <a href="/admin">⚙ Admin</a>
+            {% endif %}
+            <a href="/logout" class="logout-link">🚪 Sair</a>
+        </div>
+    </div>
+
+</aside>
+
+<main class="app">
+
+<header class="topbar">
+    <div>
+        <h1>Gestor de Apostas</h1>
+        <p>Controle sua banca, prints, resultados, OCR e API</p>
+    </div>
+
+    {% if usuario and usuario.is_admin %}<a href="/atualizar_api" class="api-button">{% if usuario and usuario.is_admin %}Atualizar Resultados API{% endif %}</a>{% endif %}
+</header>
+
+<section class="cards">
+
+    <div class="metric-card banca-card">
+        <span>Banca Atual</span>
+
+        <div id="banca-view" class="banca-view">
+            <strong id="metric-banca">R$ {{ "%.2f"|format(m.banca_atual) }}</strong>
+            <div class="banca-actions">
+                <button class="icon-btn" onclick="mostrarEditarBanca()" title="Editar banca">✎</button>
+            </div>
+        </div>
+
+        <form method="POST" action="/banca" id="banca-form" class="banca-form">
+            <input name="banca" type="number" step="0.01" value="{{ m.banca_atual }}">
+            <button type="submit">Salvar</button>
+            <button type="button" onclick="cancelarEditarBanca()">Cancelar</button>
+        </form>
+    </div>
+
+    <div class="metric-card">
+        <span>Lucro Total</span>
+        <strong id="metric-lucro" class="{{ 'green-text' if m.lucro_total >= 0 else 'red-text' }}">
+            R$ {{ "%.2f"|format(m.lucro_total) }}
+        </strong>
+    </div>
+
+    <div class="metric-card">
+        <span>ROI</span>
+        <strong id="metric-roi">{{ "%.2f"|format(m.roi) }}%</strong>
+    </div>
+
+    <div class="metric-card">
+        <span>Taxa de Acerto</span>
+        <strong id="metric-taxa">{{ "%.2f"|format(m.taxa) }}%</strong>
+    </div>
+
+    <div class="metric-card">
+        <span>Total Apostas</span>
+        <strong id="metric-total">{{ m.total }}</strong>
+    </div>
+
+    <div class="metric-card pending-card">
+        <span>Pendentes</span>
+        <strong id="metric-pendentes">{{ m.pendentes }}</strong>
+    </div>
+
+    <div class="metric-card">
+        <span>Saldo nas Casas</span>
+        <strong id="metric-saldo-casas">R$ {{ "%.2f"|format(m.saldo_casas_total or 0) }}</strong>
+    </div>
+
+</section>
+
+{% if not assinatura_ativa_usuario() %}
+<section class="panel assinatura-bloqueada">
+    <h2>Assinatura pendente</h2>
+    <p>Sua conta foi criada, mas as funcionalidades avançadas ainda estão bloqueadas. Aguarde o administrador liberar sua assinatura.</p>
+</section>
+{% endif %}
+
+<section class="main-grid {% if not assinatura_ativa_usuario() %}locked-area{% endif %}">
+
+    <div class="panel left-panel">
+
+        <h2>Nova Aposta Manual</h2>
+
+        <form method="POST" class="manual-form" id="manualForm">
+            <input type="hidden" name="copiada_comunidade" id="copiadaComunidade" value="0">
+            <input type="hidden" name="source_original_id" id="sourceOriginalId" value="">
+            <input type="hidden" name="horario_jogo" id="horarioJogo" value="">
+            <input name="aposta" placeholder="Nome da aposta" required>
+            <input name="casa" placeholder="Casa">
+            <input name="esporte" placeholder="Esporte">
+            <input name="jogo" placeholder="Jogo / Times">
+            <input name="odd" type="number" step="0.01" placeholder="Odd" required>
+            <input name="valor" type="number" step="0.01" placeholder="Valor apostado" required>
+            <button type="submit">Adicionar</button>
+        </form>
+
+        <h2>Colar Prints</h2>
+
+        <div id="paste-area" class="paste-area" tabindex="0">
+            <div class="paste-icon">📋</div>
+            <strong>Clique aqui e cole prints com CTRL + V</strong>
+            <span>Casa, jogo, esporte, mercado, odd e valor serão lidos automaticamente</span>
+        </div>
+
+        <div id="loading" class="loading" style="display:none;">
+            Processando OCR...
+        </div>
+
+        <div id="preview-area"></div>
+
+        <button id="salvar-preview" class="save-preview" style="display:none;">
+            Salvar Apostas do Preview
+        </button>
+    </div>
+
+    <div class="panel chart-panel">
+        <div class="chart-tabs">
+            <button id="tabBancaBtn" type="button" class="chart-tab active" onclick="mostrarPainelDashboard('banca')">Evolução da Banca</button>
+            <button id="tabFeedBtn" type="button" class="chart-tab" onclick="mostrarPainelDashboard('feed')">Últimas Apostas <span id="feedNotifyBadge" class="feed-notify-badge" style="display:none;">NOVO</span></button>
+        </div>
+
+        <div id="aba-banca" class="panel-tab active">
+            <canvas id="grafico"></canvas>
+        </div>
+        <div id="aba-feed" class="panel-tab">
+            <div class="dashboard-switch-title">
+                <h2>Últimas Apostas da Comunidade <span id="feedToastNova" class="feed-toast-nova" style="display:none;">NOVA APOSTA</span></h2>
+                <button type="button" class="copy-bet-btn" onclick="carregarFeedApostas(true)">Atualizar</button>
+            </div>
+            <p class="community-note">Copie uma aposta com 1 clique e use como base para uma nova entrada.</p>
+            <div id="feed-apostas" class="feed-list">
+                <div class="feed-empty">Clique no botão ao lado da banca para carregar.</div>
+            </div>
+        </div>
+    </div>
+
+</section>
+
+<section class="panel table-panel" id="apostas">
+
+    <div class="table-header">
+        <h2>Apostas</h2>
+
+        <div class="filters-right">
+            <input 
+                type="text" 
+                id="searchInput" 
+                class="search-input" 
+                placeholder="Pesquisar aposta..."
+                onkeyup="filtrarApostas()"
+            >
+
+            <select id="statusFilter" onchange="filtrarApostas()">
+                <option value="todos">Todos</option>
+                <option value="ganha">Ganhas</option>
+                <option value="perdida">Perdidas</option>
+                <option value="pendente">Pendentes</option>
+                <option value="anulada">Anuladas</option>
+            </select>
+
+            <select id="dateFilter" onchange="filtrarApostas()">
+                <option value="todos">Todas as datas</option>
+                <option value="hoje">Hoje</option>
+                <option value="7">Últimos 7 dias</option>
+                <option value="30">Últimos 30 dias</option>
+            </select>
+
+            <div class="custom-filter">
+                <button type="button" class="custom-filter-btn" onclick="toggleDropdown('houseDropdown', 'houseSearch')">
+                    🔍 Buscar casas
+                </button>
+
+                <div class="custom-dropdown" id="houseDropdown">
+                    <input 
+                        type="text" 
+                        id="houseSearch" 
+                        class="dropdown-search"
+                        placeholder="Buscar..."
+                        onkeyup="filtrarLista('.casa-linha', 'houseSearch')"
+                    >
+
+                    <label class="dropdown-item select-visible">
+                        <input type="checkbox" onchange="selecionarVisiveis('.casa-linha', this.checked)">
+                        <span>Selecionar Visíveis</span>
+                    </label>
+
+                    <div class="dropdown-list">
+                        {% for casa in casas %}
+                        <label class="dropdown-item casa-linha">
+                            <input 
+                                type="checkbox" 
+                                value="{{ casa|lower }}"
+                                onchange="filtrarApostas()"
+                            >
+                            <span>{{ casa }}</span>
+                        </label>
+                        {% endfor %}
+                    </div>
+                </div>
+            </div>
+
+            <div class="custom-filter">
+                <button type="button" class="custom-filter-btn" onclick="toggleDropdown('sportDropdown', 'sportSearch')">
+                    🎯 Buscar esporte
+                </button>
+
+                <div class="custom-dropdown" id="sportDropdown">
+                    <input 
+                        type="text" 
+                        id="sportSearch" 
+                        class="dropdown-search"
+                        placeholder="Buscar..."
+                        onkeyup="filtrarLista('.sport-linha', 'sportSearch')"
+                    >
+
+                    <label class="dropdown-item select-visible">
+                        <input type="checkbox" onchange="selecionarVisiveis('.sport-linha', this.checked)">
+                        <span>Selecionar Visíveis</span>
+                    </label>
+
+                    <div class="dropdown-list">
+                        {% for esporte in esportes %}
+                        <label class="dropdown-item sport-linha">
+                            <input 
+                                type="checkbox" 
+                                value="{{ esporte|lower }}"
+                                onchange="filtrarApostas()"
+                            >
+                            <span>{{ esporte }}</span>
+                        </label>
+                        {% endfor %}
+                    </div>
+                </div>
+            </div>
+
+            <input 
+                type="number" 
+                id="minValue" 
+                class="small-filter" 
+                placeholder="Valor mín."
+                onkeyup="filtrarApostas()"
+                onchange="filtrarApostas()"
+            >
+
+            <input 
+                type="number" 
+                id="maxValue" 
+                class="small-filter" 
+                placeholder="Valor máx."
+                onkeyup="filtrarApostas()"
+                onchange="filtrarApostas()"
+            >
+        </div>
+    </div>
+
+    <table>
+        <thead>
+            <tr>
+                <th>Data</th>
+                <th>Casa</th>
+                <th>Esporte</th>
+                <th>Jogo</th>
+                    <th>Horário</th>
+                <th>Aposta</th>
+                <th>Odd</th>
+                <th>Valor</th>
+                <th>Status</th>
+                <th>Lucro</th>
+                <th>API</th>
+                <th>Ações</th>
+            </tr>
+        </thead>
+
+        <tbody>
+            {% for b in bets %}
+            <tr class="bet-row">
+                <td class="data-cell">{{ b.data }}</td>
+                <td class="casa-cell">{{ b.casa }}</td>
+                <td class="esporte-cell">{{ b.esporte }}</td>
+                <td class="jogo-cell">{{ b.jogo }}{% if b.horario_jogo %}<div class="game-time">⏰ {{ b.horario_jogo }}</div>{% endif %}{% if b.jogo_status_visual %}<div class="game-status">{{ b.jogo_status_visual }}</div>{% endif %}</td>
+                <td class="aposta-cell">{{ b.aposta_display if b.aposta_display is defined else b.aposta }}</td>
+                <td class="odd-cell">{{ b.odd }}</td>
+                <td class="valor-cell">{{ "%.2f"|format(b.valor) }}</td>
+
+                <td class="status-cell">
+                    {% if b.estado == "ganha" %}
+                        <span class="badge green">Ganha</span>
+                    {% elif b.estado == "perdida" %}
+                        <span class="badge red">Perdida</span>
+                    {% elif b.estado == "anulada" %}
+                        <span class="badge gray">Anulada</span>
+                    {% else %}
+                        <span class="badge yellow">Pendente</span>
+                    {% endif %}
+                </td>
+
+                <td class="{{ 'green-text' if b.lucro > 0 else 'red-text' if b.lucro < 0 else '' }}">
+                    R$ {{ "%.2f"|format(b.lucro) }}
+                </td>
+
+                <td class="api-cell">{{ b.api_status }}</td>
+
+                <td class="actions">
+                    <a href="/resultado/{{ b.id }}/ganha"><button class="green">✔</button></a>
+                    <a href="/resultado/{{ b.id }}/perdida"><button class="red">✖</button></a>
+                    <a href="/resultado/{{ b.id }}/anulada"><button class="gray">↺</button></a>
+                    <button 
+                        class="blue"
+                        onclick="abrirEditar(this)"
+                        data-id="{{ b.id }}"
+                        data-estado="{{ b.estado }}"
+                    >✎</button>
+                    <a href="/remover/{{ b.id }}"><button class="dark">🗑</button></a>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</section>
+
+<div id="editModal" class="modal">
+    <div class="modal-content">
+        <h3>Editar Aposta</h3>
+
+        <label>Aposta</label>
+        <input id="editAposta">
+
+        <label>Casa</label>
+        <input id="editCasa">
+
+        <label>Esporte</label>
+        <input id="editEsporte">
+
+        <label>Jogo</label>
+        <input id="editJogo">
+
+        <label>Odd</label>
+        <input id="editOdd" type="number" step="0.01">
+
+        <label>Valor</label>
+        <input id="editValor" type="number" step="0.01">
+
+        <label>Status</label>
+        <select id="editEstado">
+            <option value="">Pendente</option>
+            <option value="ganha">Ganha</option>
+            <option value="perdida">Perdida</option>
+            <option value="anulada">Anulada</option>
+        </select>
+
+        <div class="modal-actions">
+            <button onclick="salvarEdicao()">Salvar</button>
+            <button class="dark" onclick="fecharModal()">Cancelar</button>
+        </div>
+    </div>
+</div>
+
+<script>
+
+// V58 - OCR preview final e visível
+window.apostasPreview = window.apostasPreview || []
+
+function escapeHtmlPreview(value){
+    return String(value ?? "")
+        .replaceAll("&", "&amp;")
+        .replaceAll('"', "&quot;")
+        .replaceAll("<", "&lt;")
+        .replaceAll(">", "&gt;")
+}
+
+
+
+document.addEventListener("DOMContentLoaded", ()=>{
+    const salvar = document.getElementById("salvar-preview")
+    if(!salvar || salvar.dataset.v58Ready === "1") return
+    salvar.dataset.v58Ready = "1"
+
+    salvar.onclick = ()=>{
+        const dados = (window.apostasPreview || []).map((a, i)=>({
+            aposta: document.getElementById(`a${i}`)?.value || "",
+            casa: document.getElementById(`c${i}`)?.value || "",
+            esporte: document.getElementById(`e${i}`)?.value || "",
+            jogo: document.getElementById(`j${i}`)?.value || "",
+            mercado: document.getElementById(`m${i}`)?.value || "",
+            selecao: document.getElementById(`s${i}`)?.value || "",
+            linha: document.getElementById(`l${i}`)?.value || "",
+            periodo: document.getElementById(`p${i}`)?.value || "",
+            odd: document.getElementById(`o${i}`)?.value || "",
+            valor: document.getElementById(`v${i}`)?.value || "",
+            texto_bruto: a.texto_bruto || "",
+            texto_interpretado: a.texto_interpretado || "",
+            itens_multipla: a.itens_multipla || {},
+            itens_multipla_detalhados: a.itens_multipla_detalhados || [],
+                horario_jogo: a.horario_jogo || ""
+        }))
+
+        salvar.disabled = true
+        salvar.innerText = "Salvando..."
+
+        fetch("/salvar_preview", {
+            method: "POST",
+            headers: {"Content-Type":"application/json"},
+            body: JSON.stringify({apostas:dados})
+        })
+        .then(r=>r.json())
+        .then(()=>{
+            salvar.innerText = "Salvo ✓"
+            setTimeout(()=>location.reload(), 450)
+        })
+        .catch(()=>{
+            alert("Erro ao salvar preview")
+            salvar.disabled = false
+            salvar.innerText = "Salvar Apostas do Preview"
+        })
+    }
+})
+
+
+
+// V55 - Preview OCR definitivo
+window.apostasPreview = window.apostasPreview || []
+
+
+
+
+
+document.addEventListener("DOMContentLoaded", ()=>{
+    const salvar = document.getElementById("salvar-preview")
+    if(!salvar || salvar.dataset.previewReady === "1") return
+
+    salvar.dataset.previewReady = "1"
+
+    salvar.onclick = ()=>{
+        const dados = (window.apostasPreview || []).map((a, i)=>({
+            aposta: document.getElementById(`a${i}`)?.value || "",
+            casa: document.getElementById(`c${i}`)?.value || "",
+            esporte: document.getElementById(`e${i}`)?.value || "",
+            jogo: document.getElementById(`j${i}`)?.value || "",
+            mercado: document.getElementById(`m${i}`)?.value || "",
+            selecao: document.getElementById(`s${i}`)?.value || "",
+            linha: document.getElementById(`l${i}`)?.value || "",
+            periodo: document.getElementById(`p${i}`)?.value || "",
+            odd: document.getElementById(`o${i}`)?.value || "",
+            valor: document.getElementById(`v${i}`)?.value || "",
+            texto_bruto: a.texto_bruto || "",
+            texto_interpretado: a.texto_interpretado || "",
+            itens_multipla: a.itens_multipla || {},
+            itens_multipla_detalhados: a.itens_multipla_detalhados || [],
+                horario_jogo: a.horario_jogo || ""
+        }))
+
+        salvar.disabled = true
+        salvar.innerText = "Salvando..."
+
+        fetch("/salvar_preview", {
+            method: "POST",
+            headers: {"Content-Type": "application/json"},
+            body: JSON.stringify({apostas: dados})
+        })
+        .then(r=>r.json())
+        .then(()=>{
+            salvar.innerText = "Salvo ✓"
+            setTimeout(()=>location.reload(), 450)
+        })
+        .catch(()=>{
+            alert("Erro ao salvar apostas do preview")
+            salvar.disabled = false
+            salvar.innerText = "Salvar Apostas do Preview"
+        })
+    }
+})
+
+
+
+function toggleSidebar(){
+    document.body.classList.toggle("sidebar-collapsed")
+    const collapsed = document.body.classList.contains("sidebar-collapsed")
+    localStorage.setItem("sidebarCollapsed", collapsed ? "1" : "0")
+    const btn = document.querySelector(".sidebar-toggle")
+    if(btn) btn.innerText = collapsed ? "›" : "‹"
+}
+document.addEventListener("DOMContentLoaded", ()=>{
+    const collapsed = localStorage.getItem("sidebarCollapsed") === "1"
+    if(collapsed){
+        document.body.classList.add("sidebar-collapsed")
+        const btn = document.querySelector(".sidebar-toggle")
+        if(btn) btn.innerText = "›"
+    }
+})
+let painelAtual = "banca"
+function mostrarPainelDashboard(tipo){
+    const banca = document.getElementById("aba-banca")
+    const feed = document.getElementById("aba-feed")
+    const btnBanca = document.getElementById("tabBancaBtn")
+    const btnFeed = document.getElementById("tabFeedBtn")
+
+    painelAtual = tipo
+
+    if(tipo === "feed"){
+        banca.classList.remove("active")
+        feed.classList.add("active")
+        btnBanca.classList.remove("active")
+        btnFeed.classList.add("active")
+        carregarFeedApostas(true)
+    } else {
+        feed.classList.remove("active")
+        banca.classList.add("active")
+        btnFeed.classList.remove("active")
+        btnBanca.classList.add("active")
+    }
+}
+function carregarFeedApostas(force=false){
+    const div = document.getElementById("feed-apostas")
+    if(!div) return
+
+    const idsAntes = new Set(
+        Array.from(div.querySelectorAll(".feed-card[data-id]")).map(el => el.dataset.id)
+    )
+
+    if(force || div.dataset.loaded !== "1"){
+        div.innerHTML = `<div class="feed-empty">Carregando últimas apostas...</div>`
+    }
+
+    fetch("/ultimas_apostas", {cache: "no-store"})
+        .then(r=>r.json())
+        .then(d=>{
+            div.dataset.loaded = "1"
+            div.innerHTML = ""
+
+            if(!d || d.length === 0){
+                div.innerHTML = `<div class="feed-empty">Nenhuma aposta pública encontrada.</div>`
+                return
+            }
+
+            d.forEach((a, idx)=>{
+                const payload = encodeURIComponent(JSON.stringify(a))
+                const id = a.id || `${a.jogo}-${a.aposta}-${a.odd}-${a.valor}`
+                const isNew = idsAntes.size > 0 && !idsAntes.has(String(id)) && idx === 0
+
+                div.innerHTML += `
+                    <div class="feed-card ${isNew ? "feed-new" : ""}" data-id="${id}">
+                        <div class="feed-card-main">
+                            <div class="feed-title-line">
+                                <strong>${a.jogo || "Jogo não informado"}</strong>
+                                ${isNew ? '<span class="novo-badge">NOVO</span>' : ''}
+                            </div>
+                            <span>${a.aposta || ""}</span>
+                            <div class="feed-meta">${a.casa || "Casa"} • ${a.esporte || "Esporte"} • Odd ${a.odd || "-"} • R$ ${a.valor || "-"} ${a.horario_jogo ? "• Jogo: " + a.horario_jogo : ""} ${a.jogo_status_visual ? "• " + a.jogo_status_visual : ""} ${a.data ? "• " + a.data : ""}</div>
+                        </div>
+                        <button type="button" class="copy-bet-btn" data-payload="${payload}" onclick="copiarApostaComunidade(this)">Copiar</button>
+                    </div>`
+            })
+        })
+        .catch(()=>{
+            if(div.dataset.loaded !== "1"){
+                div.innerHTML = `<div class="feed-empty">Erro ao carregar últimas apostas.</div>`
+            }
+        })
+}
+function copiarApostaComunidade(btn){
+    const data = JSON.parse(decodeURIComponent(btn.dataset.payload || "{}"))
+    const fields = {
+        aposta: document.querySelector('input[name="aposta"]'),
+        casa: document.querySelector('input[name="casa"]'),
+        esporte: document.querySelector('input[name="esporte"]'),
+        jogo: document.querySelector('input[name="jogo"]'),
+        odd: document.querySelector('input[name="odd"]'),
+        valor: document.querySelector('input[name="valor"]')
+    }
+    if(fields.aposta) fields.aposta.value = data.aposta || ""
+    if(fields.casa) fields.casa.value = data.casa || ""
+    if(fields.esporte) fields.esporte.value = data.esporte || ""
+    if(fields.jogo) fields.jogo.value = data.jogo || ""
+    if(fields.odd) fields.odd.value = data.odd || ""
+    if(fields.valor) fields.valor.value = data.valor || ""
+    const copiedFlag = document.getElementById("copiadaComunidade"); if(copiedFlag) copiedFlag.value = "1"
+    const src = document.getElementById("sourceOriginalId"); if(src) src.value = data.source_original_id || data.id || ""
+    const hj = document.getElementById("horarioJogo"); if(hj) hj.value = data.horario_jogo || ""
+    btn.classList.add("copied"); btn.innerText = "Copiado"
+    setTimeout(()=>{ btn.classList.remove("copied"); btn.innerText = "Copiar" }, 1200)
+    document.querySelector('input[name="aposta"]')?.focus()
+}
+
+
+function mostrarEditarBanca(){
+    document.getElementById("banca-view").style.display="none"
+    document.getElementById("banca-form").style.display="flex"
+}
+
+function cancelarEditarBanca(){
+    document.getElementById("banca-form").style.display="none"
+    document.getElementById("banca-view").style.display="flex"
+}
+
+function toggleDropdown(dropdownId, inputId){
+    const dropdown = document.getElementById(dropdownId)
+    dropdown.classList.toggle("open")
+
+    if(dropdown.classList.contains("open")){
+        setTimeout(()=>document.getElementById(inputId).focus(), 80)
+    }
+}
+
+document.addEventListener("click", function(e){
+    document.querySelectorAll(".custom-filter").forEach(box=>{
+        if(!box.contains(e.target)){
+            const dropdown = box.querySelector(".custom-dropdown")
+            if(dropdown) dropdown.classList.remove("open")
+        }
+    })
+})
+
+function filtrarLista(selector, inputId){
+    const busca = document.getElementById(inputId).value.toLowerCase()
+    const itens = document.querySelectorAll(selector)
+
+    itens.forEach(item=>{
+        const texto = item.innerText.toLowerCase()
+        item.style.display = texto.includes(busca) ? "flex" : "none"
+    })
+}
+
+function selecionarVisiveis(selector, checked){
+    const itens = document.querySelectorAll(selector)
+
+    itens.forEach(item=>{
+        if(item.style.display !== "none"){
+            item.querySelector("input").checked = checked
+        }
+    })
+
+    filtrarApostas()
+}
+
+function valoresSelecionados(selector){
+    return Array.from(document.querySelectorAll(selector + " input:checked"))
+        .map(i=>i.value.toLowerCase())
+}
+
+function converterDataBR(dataTexto){
+    const partes = dataTexto.split(" ")[0].split("/")
+    if(partes.length < 3) return null
+
+    return new Date(
+        parseInt(partes[2]),
+        parseInt(partes[1]) - 1,
+        parseInt(partes[0])
+    )
+}
+
+function filtrarApostas(){
+    const busca = document.getElementById("searchInput").value.toLowerCase()
+    const status = document.getElementById("statusFilter").value
+    const dataFiltro = document.getElementById("dateFilter").value
+    const casas = valoresSelecionados(".casa-linha")
+    const esportes = valoresSelecionados(".sport-linha")
+    const minValue = parseFloat(document.getElementById("minValue").value)
+    const maxValue = parseFloat(document.getElementById("maxValue").value)
+
+    const hoje = new Date()
+    hoje.setHours(0,0,0,0)
+
+    const linhas = document.querySelectorAll("tbody tr")
+
+    linhas.forEach(linha=>{
+        const texto = linha.innerText.toLowerCase()
+        const statusTexto = linha.querySelector(".status-cell").innerText.toLowerCase()
+        const casaTexto = linha.querySelector(".casa-cell") ? linha.querySelector(".casa-cell").innerText.toLowerCase().trim() : ""
+        const esporteTexto = linha.querySelector(".esporte-cell") ? linha.querySelector(".esporte-cell").innerText.toLowerCase().trim() : ""
+        const valor = linha.querySelector(".valor-cell") ? parseFloat(linha.querySelector(".valor-cell").innerText.replace(",", ".")) : 0
+        const dataTexto = linha.querySelector(".data-cell").innerText
+        const dataAposta = converterDataBR(dataTexto)
+
+        let mostrar = true
+
+        if(busca && !texto.includes(busca)) mostrar = false
+        if(status !== "todos" && !statusTexto.includes(status)) mostrar = false
+        if(casas.length > 0 && !casas.includes(casaTexto)) mostrar = false
+        if(esportes.length > 0 && !esportes.includes(esporteTexto)) mostrar = false
+        if(!isNaN(minValue) && valor < minValue) mostrar = false
+        if(!isNaN(maxValue) && valor > maxValue) mostrar = false
+
+        if(dataFiltro !== "todos" && dataAposta){
+            const limite = new Date(hoje)
+
+            if(dataFiltro === "hoje"){
+                if(dataAposta.getTime() !== hoje.getTime()) mostrar = false
+            } else {
+                limite.setDate(limite.getDate() - parseInt(dataFiltro))
+                if(dataAposta < limite) mostrar = false
+            }
+        }
+
+        linha.style.display = mostrar ? "" : "none"
+    })
+}
+
+const labels = {{ labels | tojson }};
+const valores = {{ valores | tojson }};
+
+new Chart(document.getElementById("grafico"), {
+    type: "line",
+    data: {
+        labels: labels,
+        datasets: [{
+            label: "Banca",
+            data: valores,
+            borderWidth: 3,
+            tension: 0.35,
+            fill: true
+        }]
+    },
+    options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+            legend: {
+                labels: { color: "#cbd5e1" }
+            }
+        },
+        layout: {
+            padding: { top: 6, right: 8, bottom: 0, left: 0 }
+        },
+        elements: {
+            point: { radius: 2.5, hoverRadius: 5 },
+            line: { borderWidth: 3 }
+        },
+        scales: {
+            x: {
+                ticks: {
+                    color: "#94a3b8",
+                    maxRotation: 45,
+                    minRotation: 45,
+                    autoSkip: true,
+                    maxTicksLimit: 18,
+                    font: { size: 10 }
+                },
+                grid: { color: "rgba(30,41,59,0.55)" }
+            },
+            y: {
+                ticks: {
+                    color: "#94a3b8",
+                    font: { size: 10 }
+                },
+                grid: { color: "rgba(30,41,59,0.65)" }
+            }
+        }
+    }
+})
+
+window.apostasPreview = window.apostasPreview || []
+
+document.addEventListener("paste", function(e){
+    let imagens = []
+    let total = 0
+
+    for(let item of e.clipboardData.items){
+        if(item.type.includes("image")){
+            total++
+            let reader = new FileReader()
+
+            reader.onload = ev => {
+                imagens.push(ev.target.result)
+                if(imagens.length === total) enviar(imagens)
+            }
+
+            reader.readAsDataURL(item.getAsFile())
+        }
+    }
+})
+
+function enviar(imgs){
+    const loading = document.getElementById("loading")
+    if(loading) loading.style.display="block"
+
+    fetch("/colar",{
+        method:"POST",
+        headers:{"Content-Type":"application/json"},
+        body:JSON.stringify({images:imgs})
+    })
+    .then(async r=>{
+        const txt = await r.text()
+        try {
+            return JSON.parse(txt)
+        } catch(e) {
+            console.error("Resposta não JSON do /colar:", txt)
+            return {ok:false, erro:"Resposta inválida do servidor", resultados:[]}
+        }
+    })
+    .then(d=>{
+        console.log("RETORNO /colar:", d)
+
+        if(Array.isArray(d)){
+            window.window.window.apostasPreview = d
+        } else {
+            window.window.window.window.window.window.apostasPreview = d.resultados || []
+        }
+
+        if(typeof window.renderPreview === "function"){
+            window.renderPreview()
+        } else {
+            console.error("renderPreview não existe")
+            alert("OCR lido, mas o preview não está carregado.")
+        }
+
+        if(loading) loading.style.display="none"
+
+        if(d.ok === false && d.erro){
+            console.warn("OCR retornou aviso:", d.erro)
+        }
+    })
+    .catch(err=>{
+        console.error("Erro fetch /colar:", err)
+        if(loading) loading.style.display="none"
+        alert("Erro ao processar OCR. Veja o console do navegador e o CMD.")
+    })
+}
+
+
+
+
+
+let editId = null
+
+function abrirEditar(btn){
+    const tr = btn.closest("tr")
+
+    editId = btn.dataset.id
+
+    document.getElementById("editAposta").value = tr.querySelector(".aposta-cell").innerText
+    document.getElementById("editCasa").value = tr.querySelector(".casa-cell").innerText
+    document.getElementById("editEsporte").value = tr.querySelector(".esporte-cell").innerText
+    document.getElementById("editJogo").value = tr.querySelector(".jogo-cell").innerText
+    if(document.getElementById("editMercado") && tr.querySelector(".mercado-cell")) document.getElementById("editMercado").value = tr.querySelector(".mercado-cell").innerText
+    if(document.getElementById("editSelecao") && tr.querySelector(".selecao-cell")) document.getElementById("editSelecao").value = tr.querySelector(".selecao-cell").innerText
+    if(document.getElementById("editLinha") && tr.querySelector(".linha-cell")) document.getElementById("editLinha").value = tr.querySelector(".linha-cell").innerText
+    if(document.getElementById("editPeriodo") && tr.querySelector(".periodo-cell")) document.getElementById("editPeriodo").value = tr.querySelector(".periodo-cell").innerText
+    document.getElementById("editOdd").value = tr.querySelector(".odd-cell").innerText
+    document.getElementById("editValor").value = tr.querySelector(".valor-cell").innerText
+    document.getElementById("editEstado").value = btn.dataset.estado
+
+    document.getElementById("editModal").style.display="flex"
+}
+
+function fecharModal(){
+    document.getElementById("editModal").style.display="none"
+}
+
+function salvarEdicao(){
+    const payload = {
+        id: editId,
+        aposta: document.getElementById("editAposta").value,
+        casa: document.getElementById("editCasa").value,
+        esporte: document.getElementById("editEsporte").value,
+        jogo: document.getElementById("editJogo").value,
+        mercado: document.getElementById("editMercado") ? document.getElementById("editMercado").value : "",
+        selecao: document.getElementById("editSelecao") ? document.getElementById("editSelecao").value : "",
+        linha: document.getElementById("editLinha") ? document.getElementById("editLinha").value : "",
+        periodo: document.getElementById("editPeriodo") ? document.getElementById("editPeriodo").value : "",
+        odd: document.getElementById("editOdd").value,
+        valor: document.getElementById("editValor").value,
+        estado: document.getElementById("editEstado").value
+    }
+
+    fetch("/editar_ajax",{
+        method:"POST",
+        headers:{"Content-Type":"application/json"},
+        body:JSON.stringify(payload)
+    })
+    .then(()=>location.reload())
+}
+</script>
+
+</main>
+
+
+
+
+
+<script id="v62-userbox-js">
+function toggleUserMenu(ev){
+    if(ev) ev.stopPropagation()
+    const menu = document.getElementById("sidebarUserMenu")
+    if(menu) menu.classList.toggle("open")
+}
+
+document.addEventListener("click", function(e){
+    const menu = document.getElementById("sidebarUserMenu")
+    const card = document.querySelector(".sidebar-user-card")
+    if(menu && card && !menu.contains(e.target) && !card.contains(e.target)){
+        menu.classList.remove("open")
+    }
+})
+</script>
+
+
+
+
+
+<script id="v63-feed-fix-js">
+window.v63FeedKnownIds = window.v63FeedKnownIds || new Set()
+window.v63FeedPrimed = window.v63FeedPrimed || false
+
+function v63ShowNewBetAlert(){
+    const badge = document.getElementById("feedNotifyBadge")
+    const toast = document.getElementById("feedToastNova")
+    const panel = document.querySelector(".chart-panel")
+
+    if(badge){
+        badge.style.display = "inline-flex"
+        badge.classList.add("blink")
+    }
+
+    if(toast){
+        toast.style.display = "inline-flex"
+        toast.classList.add("blink")
+    }
+
+    if(panel){
+        panel.classList.add("feed-has-new")
+    }
+}
+
+function v63ClearNewBetAlert(){
+    const badge = document.getElementById("feedNotifyBadge")
+    const toast = document.getElementById("feedToastNova")
+    const panel = document.querySelector(".chart-panel")
+
+    if(badge){
+        badge.style.display = "none"
+        badge.classList.remove("blink")
+    }
+
+    if(toast){
+        toast.style.display = "none"
+        toast.classList.remove("blink")
+    }
+
+    if(panel){
+        panel.classList.remove("feed-has-new")
+    }
+}
+
+window.carregarFeedApostas = function(force=false){
+    const div = document.getElementById("feed-apostas")
+    if(!div) return
+
+    if(force || div.dataset.loaded !== "1"){
+        div.innerHTML = `<div class="feed-empty">Carregando últimas apostas...</div>`
+    }
+
+    fetch("/ultimas_apostas?_=" + Date.now(), {cache:"no-store"})
+        .then(r=>r.json())
+        .then(d=>{
+            div.dataset.loaded = "1"
+
+            if(!Array.isArray(d) || d.length === 0){
+                div.innerHTML = `<div class="feed-empty">Nenhuma aposta pública encontrada.</div>`
+                return
+            }
+
+            const incomingIds = d.map(a => String(a.id || `${a.jogo}-${a.aposta}-${a.odd}-${a.valor}-${a.data}`))
+            const newestId = incomingIds[0]
+            const hasNew = window.v63FeedPrimed && newestId && !window.v63FeedKnownIds.has(newestId)
+
+            window.v63FeedKnownIds = new Set(incomingIds)
+            window.v63FeedPrimed = true
+
+            if(hasNew) v63ShowNewBetAlert()
+
+            div.innerHTML = ""
+
+            d.forEach((a, idx)=>{
+                const id = String(a.id || `${a.jogo}-${a.aposta}-${a.odd}-${a.valor}-${a.data}`)
+                const payload = encodeURIComponent(JSON.stringify(a))
+                const isNew = hasNew && idx === 0
+
+                div.innerHTML += `
+                    <div class="feed-card ${isNew ? "feed-new" : ""}" data-id="${id}">
+                        <div class="feed-card-main">
+                            <div class="feed-title-line">
+                                <strong>${a.jogo || "Jogo não informado"}</strong>
+                                ${isNew ? '<span class="novo-badge">NOVO</span>' : ''}
+                            </div>
+                            <span>${a.aposta || ""}</span>
+                            <div class="feed-meta">${a.casa || "Casa"} • ${a.esporte || "Esporte"} • Odd ${a.odd || "-"} • R$ ${a.valor || "-"} ${a.horario_jogo ? "• Jogo: " + a.horario_jogo : ""} ${a.jogo_status_visual ? "• " + a.jogo_status_visual : ""} ${a.data ? "• " + a.data : ""}</div>
+                        </div>
+                        <button type="button" class="copy-bet-btn" data-payload="${payload}" onclick="copiarApostaComunidade(this)">Copiar</button>
+                    </div>`
+            })
+        })
+        .catch(()=>{
+            if(div.dataset.loaded !== "1"){
+                div.innerHTML = `<div class="feed-empty">Erro ao carregar últimas apostas.</div>`
+            }
+        })
+}
+
+document.addEventListener("DOMContentLoaded", ()=>{
+    carregarFeedApostas(true)
+    setInterval(()=>carregarFeedApostas(false), 5000)
+
+    const feedTab = document.getElementById("tabFeedBtn")
+    if(feedTab) feedTab.addEventListener("click", v63ClearNewBetAlert)
+
+    const feedPanel = document.getElementById("aba-feed")
+    if(feedPanel) feedPanel.addEventListener("mouseenter", v63ClearNewBetAlert)
+})
+</script>
+
+
+<script id="v72-instant-js">
+window.v72DirtyMetrics = null
+
+function v72Money(v){
+    const n = Number(v || 0)
+    return "R$ " + n.toFixed(2)
+}
+
+function v72UpdateMetrics(m){
+    if(!m) return
+    const map = {
+        "metric-banca": v72Money(m.banca_atual),
+        "metric-saldo-casas": v72Money(m.saldo_casas_total),
+        "metric-roi": Number(m.roi || 0).toFixed(2) + "%",
+        "metric-taxa": Number(m.taxa || 0).toFixed(2) + "%",
+        "metric-total": m.total,
+        "metric-pendentes": m.pendentes
+    }
+    Object.entries(map).forEach(([id,val])=>{
+        const el = document.getElementById(id)
+        if(el) el.innerText = val
+    })
+
+    const lucro = document.getElementById("metric-lucro")
+    if(lucro){
+        lucro.innerText = v72Money(m.lucro_total)
+        lucro.classList.remove("green-text","red-text")
+        lucro.classList.add(Number(m.lucro_total || 0) >= 0 ? "green-text" : "red-text")
+    }
+}
+
+function v72BadgeStatus(estado){
+    if(estado === "ganha") return '<span class="badge green">Ganha</span>'
+    if(estado === "perdida") return '<span class="badge red">Perdida</span>'
+    if(estado === "anulada") return '<span class="badge gray">Anulada</span>'
+    return '<span class="badge yellow">Pendente</span>'
+}
+
+function v72UpdateRow(tr, b){
+    if(!tr || !b) return
+    const statusCell = tr.querySelector(".status-cell")
+    if(statusCell) statusCell.innerHTML = v72BadgeStatus(b.estado || "")
+
+    const lucroCell = tr.children[8] || tr.querySelector(".lucro-cell")
+    if(lucroCell){
+        const lucro = Number(b.lucro || 0)
+        lucroCell.innerText = v72Money(lucro)
+        lucroCell.classList.remove("green-text","red-text")
+        if(lucro > 0) lucroCell.classList.add("green-text")
+        if(lucro < 0) lucroCell.classList.add("red-text")
+    }
+}
+
+function v72Toast(msg, type="ok"){
+    let t = document.getElementById("v72Toast")
+    if(!t){
+        t = document.createElement("div")
+        t.id = "v72Toast"
+        document.body.appendChild(t)
+    }
+    t.className = "v72-toast " + type
+    t.innerText = msg
+    t.classList.add("show")
+    setTimeout(()=>t.classList.remove("show"), 1800)
+}
+
+function v72SaveScroll(){
+    sessionStorage.setItem("restoreScrollY", String(window.scrollY || 0))
+}
+
+function v72RestoreScroll(){
+    const y = sessionStorage.getItem("restoreScrollY")
+    if(y !== null){
+        sessionStorage.removeItem("restoreScrollY")
+        setTimeout(()=>window.scrollTo(0, Number(y || 0)), 0)
+    }
+}
+
+document.addEventListener("DOMContentLoaded", v72RestoreScroll)
+window.addEventListener("beforeunload", v72SaveScroll)
+
+// Resultado sem reload.
+document.addEventListener("click", function(e){
+    const link = e.target.closest('a[href^="/resultado/"]')
+    if(!link) return
+
+    e.preventDefault()
+    e.stopPropagation()
+
+    const tr = link.closest("tr")
+    link.style.pointerEvents = "none"
+    link.style.opacity = ".6"
+
+    fetch(link.getAttribute("href") + "?ajax=1", {cache:"no-store"})
+        .then(r=>r.json())
+        .then(d=>{
+            if(!d.ok) throw new Error("erro")
+            v72UpdateRow(tr, d.bet)
+            v72UpdateMetrics(d.metricas)
+            v72Toast("Resultado atualizado")
+        })
+        .catch(()=>v72Toast("Erro ao atualizar", "err"))
+        .finally(()=>{
+            link.style.pointerEvents = ""
+            link.style.opacity = ""
+        })
+}, true)
+
+// Remover sem reload.
+document.addEventListener("click", function(e){
+    const link = e.target.closest('a[href^="/remover/"]')
+    if(!link) return
+
+    e.preventDefault()
+    e.stopPropagation()
+
+    if(!confirm("Apagar esta aposta?")) return
+
+    const tr = link.closest("tr")
+    fetch(link.getAttribute("href") + "?ajax=1", {cache:"no-store"})
+        .then(r=>r.json())
+        .then(d=>{
+            if(!d.ok) throw new Error("erro")
+            if(tr){
+                tr.style.transition = ".18s ease"
+                tr.style.opacity = "0"
+                tr.style.transform = "translateX(10px)"
+                setTimeout(()=>tr.remove(), 180)
+            }
+            v72UpdateMetrics(d.metricas)
+            v72Toast("Aposta apagada")
+        })
+        .catch(()=>v72Toast("Erro ao apagar", "err"))
+}, true)
+
+// Adicionar manual sem reload, incluindo aposta copiada privada.
+document.addEventListener("submit", function(e){
+    const form = e.target
+    if(!form || !form.matches(".manual-form")) return
+
+    e.preventDefault()
+
+    const fd = new FormData(form)
+    const btn = form.querySelector('button[type="submit"]')
+    if(btn){
+        btn.disabled = true
+        btn.dataset.oldText = btn.innerText
+        btn.innerText = "Salvando..."
+    }
+
+    fetch("/adicionar_ajax", {
+        method:"POST",
+        body: fd,
+        cache:"no-store"
+    })
+    .then(r=>r.json())
+    .then(d=>{
+        if(!d.ok) throw new Error(d.erro || "erro")
+        v72UpdateMetrics(d.metricas)
+        v72Toast("Aposta adicionada")
+        form.reset()
+        const copied = document.getElementById("copiadaComunidade")
+        if(copied) copied.value = "0"
+        const src = document.getElementById("sourceOriginalId"); if(src) src.value = ""
+        const hj = document.getElementById("horarioJogo"); if(hj) hj.value = ""
+        setTimeout(()=>location.reload(), 300) // reload curto só para reconstruir tabela com layout perfeito
+    })
+    .catch(()=>v72Toast("Erro ao adicionar aposta", "err"))
+    .finally(()=>{
+        if(btn){
+            btn.disabled = false
+            btn.innerText = btn.dataset.oldText || "Adicionar"
+        }
+    })
+}, true)
+
+// Qualquer link/form que ainda recarregar preserva posição.
+document.addEventListener("click", function(e){
+    if(e.target.closest("a,button")) v72SaveScroll()
+}, true)
+document.addEventListener("submit", function(e){ v72SaveScroll() }, true)
+</script>
+
+
+<script id="v72-copy-private-js">
+window.v72OriginalCopiarApostaComunidade = window.copiarApostaComunidade
+window.copiarApostaComunidade = function(btn){
+    if(typeof window.v72OriginalCopiarApostaComunidade === "function"){
+        window.v72OriginalCopiarApostaComunidade(btn)
+    }
+
+    const hidden = document.getElementById("copiadaComunidade")
+    if(hidden) hidden.value = "1"
+    const src = document.getElementById("sourceOriginalId")
+    try { const data = JSON.parse(decodeURIComponent(btn.dataset.payload || "{}")); if(src) src.value = data.source_original_id || data.id || ""; const hj=document.getElementById("horarioJogo"); if(hj) hj.value=data.horario_jogo||"" } catch(e) {}
+
+    v72Toast("Aposta copiada como privada")
+}
+</script>
+
+
+
+
+
+<script id="v75-preview-save-no-reload">
+window.apostasPreview = window.apostasPreview || []
+
+window.escapeHtmlPreview = window.escapeHtmlPreview || function(value){
+    return String(value ?? "")
+        .replaceAll("&", "&amp;")
+        .replaceAll('"', "&quot;")
+        .replaceAll("<", "&lt;")
+        .replaceAll(">", "&gt;")
+}
+
+window.renderPreview = function(){
+    const div = document.getElementById("preview-area")
+    const salvar = document.getElementById("salvar-preview")
+
+    if(!div) return
+
+    div.innerHTML = ""
+
+    if(!Array.isArray(window.apostasPreview) || window.apostasPreview.length === 0){
+        div.innerHTML = `<div class="preview-empty">Nenhuma aposta lida. Tente colar o print novamente.</div>`
+        if(salvar) salvar.style.display = "none"
+        return
+    }
+
+    window.apostasPreview.forEach((a, i)=>{
+        const odd = String(a.odd || "").replace(",", ".")
+        let valor = String(a.valor || "").replace(",", ".")
+        if(odd && valor && parseFloat(odd) > 1 && Math.abs(parseFloat(odd) - parseFloat(valor)) < 0.0001){
+            valor = ""
+        }
+
+        div.innerHTML += `
+        <div class="preview-card preview-card-client">
+            <input id="c${i}" value="${window.escapeHtmlPreview(a.casa || '')}" placeholder="Casa">
+            <input id="e${i}" value="${window.escapeHtmlPreview(a.esporte || '')}" placeholder="Esporte">
+            <input id="j${i}" value="${window.escapeHtmlPreview(a.jogo || '')}" placeholder="Jogo">
+            <input id="a${i}" value="${window.escapeHtmlPreview(a.aposta || '')}" placeholder="Aposta">
+            <input id="o${i}" value="${window.escapeHtmlPreview(odd || '')}" placeholder="Odd">
+            <input id="v${i}" value="${window.escapeHtmlPreview(valor || '')}" placeholder="Valor">
+
+            <input type="hidden" id="m${i}" value="${window.escapeHtmlPreview(a.mercado || '')}">
+            <input type="hidden" id="s${i}" value="${window.escapeHtmlPreview(a.selecao || '')}">
+            <input type="hidden" id="l${i}" value="${window.escapeHtmlPreview(a.linha || '')}">
+            <input type="hidden" id="p${i}" value="${window.escapeHtmlPreview(a.periodo || '')}">
+        </div>`
+    })
+
+    if(salvar){
+        salvar.style.display = "block"
+        salvar.disabled = false
+        salvar.innerText = "Salvar Apostas do Preview"
+    }
+
+    div.scrollIntoView({behavior:"smooth", block:"center"})
+}
+
+document.addEventListener("DOMContentLoaded", ()=>{
+    const salvar = document.getElementById("salvar-preview")
+    if(!salvar) return
+
+    salvar.onclick = ()=>{
+        const dados = (window.apostasPreview || []).map((a, i)=>{
+            const odd = document.getElementById(`o${i}`)?.value || ""
+            let valor = document.getElementById(`v${i}`)?.value || ""
+
+            if(odd && valor && parseFloat(String(odd).replace(",", ".")) > 1 && Math.abs(parseFloat(String(odd).replace(",", ".")) - parseFloat(String(valor).replace(",", "."))) < 0.0001){
+                valor = ""
+            }
+
+            return {
+                aposta: document.getElementById(`a${i}`)?.value || "",
+                casa: document.getElementById(`c${i}`)?.value || "",
+                esporte: document.getElementById(`e${i}`)?.value || "",
+                jogo: document.getElementById(`j${i}`)?.value || "",
+                mercado: document.getElementById(`m${i}`)?.value || "",
+                selecao: document.getElementById(`s${i}`)?.value || "",
+                linha: document.getElementById(`l${i}`)?.value || "",
+                periodo: document.getElementById(`p${i}`)?.value || "",
+                odd,
+                valor,
+                texto_bruto: a.texto_bruto || "",
+                texto_interpretado: a.texto_interpretado || "",
+                itens_multipla: a.itens_multipla || {},
+                itens_multipla_detalhados: a.itens_multipla_detalhados || [],
+                horario_jogo: a.horario_jogo || ""
+            }
+        })
+
+        salvar.disabled = true
+        salvar.innerText = "Salvando..."
+
+        fetch("/salvar_preview", {
+            method: "POST",
+            headers: {"Content-Type":"application/json"},
+            body: JSON.stringify({apostas:dados})
+        })
+        .then(async r=>{
+            const txt = await r.text()
+            let data = {}
+            try { data = JSON.parse(txt) } catch(e) { throw new Error(txt || "Resposta inválida") }
+            if(!r.ok || data.ok === false) throw new Error(data.erro || "Erro ao salvar preview")
+            return data
+        })
+        .then(d=>{
+            salvar.innerText = "Salvo ✓"
+            if(typeof v72UpdateMetrics === "function" && d.metricas) v72UpdateMetrics(d.metricas)
+            if(typeof v76AddSavedPreviewBets === "function") v76AddSavedPreviewBets(d)
+            if(typeof v72Toast === "function") v72Toast(`${d.salvas || 0} aposta(s) salva(s)`)
+
+            const div = document.getElementById("preview-area")
+            if(div) div.innerHTML = `<div class="preview-empty preview-success">${d.salvas || 0} aposta(s) salva(s). A tabela foi atualizada no sistema.</div>`
+
+            window.apostasPreview = []
+            setTimeout(()=>{
+                salvar.style.display = "none"
+                salvar.disabled = false
+                salvar.innerText = "Salvar Apostas do Preview"
+            }, 900)
+
+            // Atualiza só o feed se existir, sem resetar página.
+            if(typeof carregarFeedApostas === "function") carregarFeedApostas(false)
+        })
+        .catch(err=>{
+            console.error("ERRO salvar_preview:", err)
+            alert("Erro ao salvar preview: " + (err.message || err))
+            salvar.disabled = false
+            salvar.innerText = "Salvar Apostas do Preview"
+        })
+    }
+})
+</script>
+
+
+<script id="v76-preview-table-instant-js">
+function v76Escape(value){
+    return String(value ?? "").replaceAll("&","&amp;").replaceAll("<","&lt;").replaceAll(">","&gt;").replaceAll('"',"&quot;")
+}
+
+function v76Money(value){
+    const n = Number(value || 0)
+    return "R$ " + n.toFixed(2)
+}
+
+function v76StatusBadge(estado){
+    if(estado === "ganha") return '<span class="badge green">Ganha</span>'
+    if(estado === "perdida") return '<span class="badge red">Perdida</span>'
+    if(estado === "anulada") return '<span class="badge gray">Anulada</span>'
+    return '<span class="badge yellow">Pendente</span>'
+}
+
+function v76AddBetToTable(b){
+    const tbody = document.querySelector(".table-panel tbody")
+    if(!tbody || !b) return
+
+    const id = b.id || ""
+    if(id && document.querySelector(`tr[data-id="${CSS.escape(id)}"]`)) return
+
+    const lucro = Number(b.lucro || 0)
+    const tr = document.createElement("tr")
+    tr.dataset.id = id
+    tr.classList.add("v76-new-row")
+
+    tr.innerHTML = `
+        <td>${v76Escape(b.data || "")}</td>
+        <td class="casa-cell">${v76Escape(b.casa || "")}</td>
+        <td class="esporte-cell">${v76Escape(b.esporte || "")}</td>
+        <td class="jogo-cell">${v76Escape(b.jogo || "")}${b.horario_jogo ? `<div class="game-time">⏰ ${v76Escape(b.horario_jogo)}</div>` : ""}${b.jogo_status_visual ? `<div class="game-status">${v76Escape(b.jogo_status_visual)}</div>` : ""}</td>
+        <td class="aposta-cell">${v76Escape(b.aposta_display || b.aposta || "")}</td>
+        <td class="odd-cell">${v76Escape(b.odd || "")}</td>
+        <td class="valor-cell">${v76Escape(b.valor || "")}</td>
+        <td class="status-cell">${v76StatusBadge(b.estado || "")}</td>
+        <td class="${lucro > 0 ? 'green-text' : lucro < 0 ? 'red-text' : ''}">${v76Money(lucro)}</td>
+        <td class="api-cell">${v76Escape(b.api_status || "")}</td>
+        <td class="actions">
+            <a href="/resultado/${id}/ganha"><button class="green">✓</button></a>
+            <a href="/resultado/${id}/perdida"><button class="red">✕</button></a>
+            <a href="/resultado/${id}/anulada"><button class="gray">–</button></a>
+            <button class="blue" onclick="abrirEditar(this)" data-id="${id}" data-estado="${v76Escape(b.estado || '')}">✎</button>
+            <a href="/remover/${id}" onclick="return confirm('Apagar esta aposta?')" class="delete-bet-link"><button class="dark delete-bet-btn" title="Apagar aposta">🗑</button></a>
+        </td>
+    `
+
+    tbody.prepend(tr)
+    setTimeout(()=>tr.classList.remove("v76-new-row"), 2200)
+}
+
+function v76AddSavedPreviewBets(data){
+    if(!data || !Array.isArray(data.bets)) return
+    data.bets.forEach(v76AddBetToTable)
+}
+</script>
+
+
+<script id="v80-espn-js">
+function atualizarHorariosEspn(){
+    if(typeof v72Toast === "function") v72Toast("Atualizando horários ESPN...")
+    fetch("/atualizar_horarios_espn", {method:"POST", cache:"no-store"})
+    .then(r=>r.json())
+    .then(d=>{
+        if(typeof v72Toast === "function") v72Toast(`${d.atualizadas || 0} horário(s) atualizado(s)`)
+        setTimeout(()=>location.reload(), 500)
+    })
+    .catch(()=>{
+        if(typeof v72Toast === "function") v72Toast("Erro ao atualizar horários", "err")
+        else alert("Erro ao atualizar horários")
+    })
+}
+</script>
+
+</body>
+</html>
