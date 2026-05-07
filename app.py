@@ -1,6 +1,7 @@
 from flask import Flask, render_template, request, redirect, jsonify, session, url_for
 import json
 import time
+import threading
 from copy import deepcopy
 import uuid
 import os
@@ -217,7 +218,7 @@ API_KEY = CONFIG.get("API_KEY", "")
 
 print("CONFIG PATH:", CONFIG_PATH)
 print("API KEY:", API_KEY)
-print("VERSAO_CARREGADA: OCR_CLIENTE_V95_SELETOR_PARTIDA")
+print("VERSAO_CARREGADA: OCR_CLIENTE_V97_CACHE_ESPN_SERVIDOR")
 
 if os.name == "nt":
     tess_path = r"C:\Program Files\Tesseract-OCR\tesseract.exe"
@@ -5137,15 +5138,49 @@ def espn_similaridade(a, b):
 
 def espn_ligas_por_esporte(esporte):
     e = espn_normalizar_nome(esporte)
+
     if "basquete" in e or "basket" in e or "nba" in e:
-        return [("basketball", "nba"), ("basketball", "mens-college-basketball")]
+        return [
+            ("basketball", "nba"),
+            ("basketball", "mens-college-basketball"),
+            ("basketball", "wnba"),
+        ]
+
     return [
-        ("soccer", "bra.1"), ("soccer", "bra.2"),
-        ("soccer", "eng.1"), ("soccer", "esp.1"), ("soccer", "ita.1"),
-        ("soccer", "ger.1"), ("soccer", "fra.1"),
-        ("soccer", "uefa.champions"), ("soccer", "uefa.europa"),
-        ("soccer", "conmebol.libertadores"), ("soccer", "conmebol.sudamericana"),
-        ("soccer", "arg.1"), ("soccer", "mex.1"), ("soccer", "usa.1"), ("soccer", "por.1"),
+        # Brasil / América do Sul
+        ("soccer", "bra.1"),
+        ("soccer", "bra.2"),
+        ("soccer", "conmebol.libertadores"),
+        ("soccer", "conmebol.sudamericana"),
+        ("soccer", "arg.1"),
+        ("soccer", "col.1"),
+        ("soccer", "uru.1"),
+        ("soccer", "chi.1"),
+        ("soccer", "per.1"),
+        ("soccer", "ecu.1"),
+
+        # Europa principais
+        ("soccer", "eng.1"),
+        ("soccer", "eng.2"),
+        ("soccer", "esp.1"),
+        ("soccer", "esp.2"),
+        ("soccer", "ita.1"),
+        ("soccer", "ita.2"),
+        ("soccer", "ger.1"),
+        ("soccer", "fra.1"),
+        ("soccer", "por.1"),
+        ("soccer", "ned.1"),
+        ("soccer", "tur.1"),
+
+        # Competições UEFA
+        ("soccer", "uefa.champions"),
+        ("soccer", "uefa.europa"),
+        ("soccer", "uefa.europa.conf"),
+
+        # Outros comuns em apostas
+        ("soccer", "mex.1"),
+        ("soccer", "usa.1"),
+        ("soccer", "ksa.1"),
     ]
 
 def espn_scoreboard_url(sport, league):
@@ -5338,28 +5373,45 @@ def espn_lazy_preencher_horarios_dashboard(limit=25):
 
 
 # ============================================================
-# V95 - labels amigáveis para seletor de partidas
+# V96 - labels e busca flexível para dropdown no campo Jogo
 # ============================================================
 
-def v95_liga_label(league):
+def v96_liga_label(league):
     labels = {
         "bra.1": "BRASILEIRÃO",
         "bra.2": "SÉRIE B",
-        "eng.1": "PREMIER LEAGUE",
-        "esp.1": "LA LIGA",
-        "ita.1": "SERIE A",
-        "ger.1": "BUNDESLIGA",
-        "fra.1": "LIGUE 1",
-        "uefa.champions": "CHAMPIONS LEAGUE",
-        "uefa.europa": "EUROPA LEAGUE",
         "conmebol.libertadores": "LIBERTADORES",
         "conmebol.sudamericana": "SUL-AMERICANA",
         "arg.1": "ARGENTINA",
+        "col.1": "COLÔMBIA",
+        "uru.1": "URUGUAI",
+        "chi.1": "CHILE",
+        "per.1": "PERU",
+        "ecu.1": "EQUADOR",
+
+        "eng.1": "PREMIER LEAGUE",
+        "eng.2": "CHAMPIONSHIP",
+        "esp.1": "LA LIGA",
+        "esp.2": "LA LIGA 2",
+        "ita.1": "SERIE A",
+        "ita.2": "SERIE B",
+        "ger.1": "BUNDESLIGA",
+        "fra.1": "LIGUE 1",
+        "por.1": "PORTUGAL",
+        "ned.1": "HOLANDA",
+        "tur.1": "TURQUIA",
+
+        "uefa.champions": "CHAMPIONS LEAGUE",
+        "uefa.europa": "EUROPA LEAGUE",
+        "uefa.europa.conf": "CONFERENCE LEAGUE",
+
         "mex.1": "MÉXICO",
         "usa.1": "MLS",
-        "por.1": "PORTUGAL",
+        "ksa.1": "LIGA SAUDITA",
+
         "nba": "NBA",
         "mens-college-basketball": "NCAAB",
+        "wnba": "WNBA",
     }
     return labels.get(str(league or ""), str(league or "").upper())
 
@@ -5414,7 +5466,7 @@ def v94_cache_jogos_espn(forcar=False):
                         "esporte": esporte,
                         "sport": sport,
                         "league": league,
-                        "liga_nome": v95_liga_label(league) if "v95_liga_label" in globals() else league,
+                        "liga_nome": v96_liga_label(league) if "v96_liga_label" in globals() else league,
                         "horario_jogo": dt_br.strftime("%d/%m/%Y %H:%M") if dt_br else "",
                         "horario_jogo_iso": dt_br.isoformat() if dt_br else "",
                         "status_jogo": label,
@@ -5445,17 +5497,36 @@ def v94_score_busca_jogo(query, jogo):
     j = espn_normalizar_nome(jogo)
 
     if not q or not j:
-        return 0
+        return 1
 
-    if q == j:
+    # aliases comuns na busca
+    aliases = {
+        "psg": "paris saint germain",
+        "paris": "paris saint germain",
+        "bayern": "bayern munich",
+        "bayern de munique": "bayern munich",
+        "vasco": "vasco da gama",
+        "shaktar": "shakhtar donetsk",
+        "shakhtar": "shakhtar donetsk",
+        "atletico de madrid": "atletico madrid",
+        "palmeiras sp": "palmeiras",
+        "barca": "barcelona",
+    }
+
+    q_alias = aliases.get(q, q)
+
+    if q_alias == j:
         return 1000
 
-    score = 0
-    palavras = [p for p in q.split() if len(p) >= 2]
+    if q_alias in j:
+        return 800
 
+    score = 0
+
+    palavras = [p for p in q_alias.split() if len(p) >= 2]
     for p in palavras:
         if p in j:
-            score += 60
+            score += 80
 
     try:
         qa, qb = espn_dividir_times(query)
@@ -5466,11 +5537,70 @@ def v94_score_busca_jogo(query, jogo):
             s2 = espn_similaridade(qa, jb) + espn_similaridade(qb, ja)
             score += max(s1, s2)
         else:
-            score += espn_similaridade(q, j)
+            score += espn_similaridade(q_alias, j)
     except Exception:
-        score += espn_similaridade(q, j)
+        score += espn_similaridade(q_alias, j)
 
     return score
+
+
+# ============================================================
+# V97 - cache ESPN carregado pelo servidor
+# ============================================================
+
+V97_ESPN_CACHE_STARTED = False
+
+def v97_aquecer_cache_espn_loop():
+    """
+    Roda em background: carrega jogos assim que o servidor sobe e renova periodicamente.
+    Não depende do usuário abrir dropdown.
+    """
+    try:
+        print("V97 ESPN cache: carregando lista inicial...")
+        jogos = v94_cache_jogos_espn(forcar=True)
+        print("V97 ESPN cache carregado:", len(jogos), "jogos")
+    except Exception as e:
+        print("V97 ESPN cache erro inicial:", repr(e))
+
+    intervalo = int(os.environ.get("ESPN_GAMES_REFRESH_SECONDS", "900"))
+
+    while True:
+        try:
+            time.sleep(intervalo)
+            jogos = v94_cache_jogos_espn(forcar=True)
+            print("V97 ESPN cache renovado:", len(jogos), "jogos")
+        except Exception as e:
+            print("V97 ESPN cache erro renovacao:", repr(e))
+            time.sleep(60)
+
+
+def v97_iniciar_cache_espn_servidor():
+    global V97_ESPN_CACHE_STARTED
+
+    if V97_ESPN_CACHE_STARTED:
+        return
+
+    V97_ESPN_CACHE_STARTED = True
+
+    try:
+        t = threading.Thread(target=v97_aquecer_cache_espn_loop, daemon=True)
+        t.start()
+        print("V97 ESPN cache background iniciado")
+    except Exception as e:
+        print("V97 ESPN cache thread erro:", repr(e))
+
+
+def v97_garantir_cache_espn_minimo():
+    """
+    Segurança extra: se o cache ainda estiver vazio em alguma busca, carrega na hora.
+    """
+    try:
+        if not JOGOS_ESPN_CACHE.get("items"):
+            return v94_cache_jogos_espn(forcar=True)
+        return JOGOS_ESPN_CACHE.get("items", [])
+    except Exception as e:
+        print("V97 garantir cache erro:", repr(e))
+        return []
 
 
 @app.route("/api/buscar_jogos")
@@ -5481,7 +5611,7 @@ def api_buscar_jogos():
     esporte = request.args.get("esporte", "").strip()
     forcar = request.args.get("refresh") == "1"
 
-    jogos = v94_cache_jogos_espn(forcar=forcar)
+    jogos = v94_cache_jogos_espn(forcar=forcar) if forcar else v97_garantir_cache_espn_minimo()
 
     if esporte:
         e_norm = espn_normalizar_nome(esporte)
@@ -5494,7 +5624,7 @@ def api_buscar_jogos():
         scored = []
         for j in jogos:
             s = v94_score_busca_jogo(q, j.get("jogo", ""))
-            if s >= 70:
+            if s >= 35:
                 item = dict(j)
                 item["score"] = s
                 scored.append(item)
@@ -5502,7 +5632,7 @@ def api_buscar_jogos():
         scored.sort(key=lambda x: (-x.get("score", 0), x.get("horario_jogo_iso", "")))
         jogos = scored[:12]
     else:
-        jogos = sorted(jogos, key=lambda x: x.get("horario_jogo_iso", ""))[:20]
+        jogos = sorted(jogos, key=lambda x: x.get("horario_jogo_iso", ""))[:60]
 
     return jsonify({"ok": True, "total_cache": len(JOGOS_ESPN_CACHE.get("items", [])), "jogos": jogos})
 

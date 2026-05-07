@@ -3133,43 +3133,12 @@ table {
 }
 
 
-/* V95 - seletor visual de partida */
+/* V96 - dropdown limpo dentro do campo Jogo/Times */
 .v95-partida-picker {
-    position: relative;
-    margin-top: 8px;
-    width: 100%;
+    display: none !important;
 }
 
-.v95-partida-label {
-    display: block;
-    margin: 0 0 6px 2px;
-    font-size: 11px;
-    letter-spacing: .08em;
-    text-transform: uppercase;
-    color: #8aa4c7;
-    font-weight: 900;
-}
-
-.v95-partida-btn {
-    width: 100%;
-    min-height: 44px;
-    border-radius: 10px;
-    border: 1px solid rgba(96,165,250,.20);
-    background: rgba(30,41,59,.95);
-    color: #fff;
-    padding: 0 14px;
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    font-weight: 800;
-    cursor: pointer;
-}
-
-.v95-partida-btn:hover {
-    border-color: rgba(96,165,250,.45);
-}
-
-.v95-partida-panel {
+.v96-jogos-dropdown {
     position: absolute;
     left: 0;
     right: 0;
@@ -3181,9 +3150,10 @@ table {
     box-shadow: 0 22px 70px rgba(0,0,0,.55);
     overflow: hidden;
     display: none;
+    min-width: 420px;
 }
 
-.v95-search-row {
+.v96-search-head {
     display: flex;
     align-items: center;
     gap: 10px;
@@ -3192,12 +3162,12 @@ table {
     border-bottom: 1px solid rgba(96,165,250,.16);
 }
 
-.v95-search-row span {
+.v96-search-head span {
     color: #94a3b8;
     font-size: 18px;
 }
 
-.v95-search-input {
+.v96-search-field {
     width: 100%;
     border: 0 !important;
     background: transparent !important;
@@ -3207,13 +3177,13 @@ table {
     padding: 0 !important;
 }
 
-.v95-results {
+.v96-results {
     max-height: 330px;
     overflow-y: auto;
     padding: 6px;
 }
 
-.v95-game-option {
+.v96-game-option {
     width: 100%;
     display: grid;
     grid-template-columns: 64px 1fr;
@@ -3227,12 +3197,12 @@ table {
     cursor: pointer;
 }
 
-.v95-game-option:hover {
+.v96-game-option:hover {
     background: rgba(37,99,235,.20);
     border-color: rgba(96,165,250,.30);
 }
 
-.v95-game-date {
+.v96-game-date {
     display: flex;
     flex-direction: column;
     align-items: center;
@@ -3242,40 +3212,40 @@ table {
     font-size: 11px;
 }
 
-.v95-game-date strong {
+.v96-game-date strong {
     color: #3b82f6;
     font-size: 16px;
 }
 
-.v95-game-main {
+.v96-game-main {
     display: flex;
     flex-direction: column;
     justify-content: center;
     min-width: 0;
 }
 
-.v95-game-main small {
+.v96-game-main small {
     color: #8aa4c7;
     font-size: 10px;
     font-weight: 900;
     text-transform: uppercase;
 }
 
-.v95-game-main strong {
+.v96-game-main strong {
     color: #e5e7eb;
     font-size: 14px;
     white-space: normal;
 }
 
-.v95-loading,
-.v95-empty {
+.v96-loading,
+.v96-empty {
     padding: 14px;
     color: #bfdbfe;
     font-size: 12px;
     font-weight: 800;
 }
 
-.v95-empty button {
+.v96-empty button {
     margin-top: 8px;
     padding: 7px 10px;
     border-radius: 8px;
@@ -3283,4 +3253,10 @@ table {
     color: #fff;
     border: 0;
     cursor: pointer;
+}
+
+@media (max-width: 800px){
+    .v96-jogos-dropdown {
+        min-width: 320px;
+    }
 }
