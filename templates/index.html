@@ -37,7 +37,7 @@ function formatarLinhaApostaNova(b){
         <td class="data-cell">${b.data || ""}</td>
         <td class="casa-cell">${b.casa || ""}</td>
         <td class="esporte-cell">${b.esporte || ""}</td>
-        <td class="jogo-cell">${b.jogo || ""}${(b.get('status_jogo', '') || b.get('horario_jogo', '')) ? `<div class="game-time ${b.get('ao_vivo') ? "live" : ""}">⏰ ${b.get('status_jogo', '') || b.get('horario_jogo', '')}</div>` : ""}</td>
+        <td class="jogo-cell">${b.jogo || ""}${((b.status_jogo || "") || (b.horario_jogo || "")) ? `<div class="game-time ${b.ao_vivo ? "live" : ""}">⏰ ${(b.status_jogo || "") || (b.horario_jogo || "")}</div>` : ""}</td>
         <td class="aposta-cell" title="${b.aposta || ""}">${apostaVisual}</td>
         <td class="odd-cell">${b.odd || ""}</td>
         <td class="valor-cell">${valor}</td>
@@ -48,7 +48,7 @@ function formatarLinhaApostaNova(b){
             <a href="/resultado/${b.id}/ganha"><button class="green">✔</button></a>
             <a href="/resultado/${b.id}/perdida"><button class="red">✖</button></a>
             <a href="/resultado/${b.id}/anulada"><button class="gray">↺</button></a>
-            <button class="blue" onclick="abrirEditar(this)" data-id="${b.id}" data-estado="" data-horario="${b.get('horario_jogo_iso', '') || ""}">✎</button>
+            <button class="blue" onclick="abrirEditar(this)" data-id="${b.id}" data-estado="" data-horario="${(b.horario_jogo_iso || "") || ""}">✎</button>
             <a href="/remover/${b.id}"><button class="dark">🗑</button></a>
         </td>
     </tr>`
@@ -200,7 +200,7 @@ function formatarLinhaApostaNovaV39(b){
         <td class="data-cell">${b.data || ""}</td>
         <td class="casa-cell">${b.casa || ""}</td>
         <td class="esporte-cell">${b.esporte || ""}</td>
-        <td class="jogo-cell">${b.jogo || ""}${(b.get('status_jogo', '') || b.get('horario_jogo', '')) ? `<div class="game-time ${b.get('ao_vivo') ? "live" : ""}">⏰ ${b.get('status_jogo', '') || b.get('horario_jogo', '')}</div>` : ""}</td>
+        <td class="jogo-cell">${b.jogo || ""}${((b.status_jogo || "") || (b.horario_jogo || "")) ? `<div class="game-time ${b.ao_vivo ? "live" : ""}">⏰ ${(b.status_jogo || "") || (b.horario_jogo || "")}</div>` : ""}</td>
         <td class="aposta-cell" title="${b.aposta || ""}">${apostaVisual}</td>
         <td class="odd-cell">${b.odd || ""}</td>
         <td class="valor-cell">${valor}</td>
@@ -211,7 +211,7 @@ function formatarLinhaApostaNovaV39(b){
             <a href="/resultado/${b.id}/ganha"><button class="green">✔</button></a>
             <a href="/resultado/${b.id}/perdida"><button class="red">✖</button></a>
             <a href="/resultado/${b.id}/anulada"><button class="gray">↺</button></a>
-            <button class="blue" onclick="abrirEditar(this)" data-id="${b.id}" data-estado="" data-horario="${b.get('horario_jogo_iso', '') || ""}">✎</button>
+            <button class="blue" onclick="abrirEditar(this)" data-id="${b.id}" data-estado="" data-horario="${(b.horario_jogo_iso || "") || ""}">✎</button>
             <a href="/remover/${b.id}"><button class="dark">🗑</button></a>
         </td>
     </tr>`
@@ -428,6 +428,22 @@ document.addEventListener("DOMContentLoaded", ()=>{
 })
 
 </script>
+
+<script id="v112-object-get-safety-js">
+(function(){
+    try{
+        if(!Object.prototype.get){
+            Object.defineProperty(Object.prototype, "get", {
+                value: function(key, fallback){
+                    return Object.prototype.hasOwnProperty.call(this, key) && this[key] !== undefined && this[key] !== null ? this[key] : fallback;
+                },
+                enumerable: false
+            });
+        }
+    }catch(e){}
+})();
+</script>
+
 </head>
 
 <body>
@@ -727,7 +743,7 @@ document.addEventListener("DOMContentLoaded", ()=>{
     <table>
         <thead>
             <tr>
-                <th>Jogo/Data</th>
+                <th id="gameDateSortHeader" class="sortable-game-date">Jogo/Data <span id="gameDateSortArrow">↑</span></th>
                 <th>Casa</th>
                 <th>Esporte</th>
                 <th>Jogo</th>
@@ -746,14 +762,14 @@ document.addEventListener("DOMContentLoaded", ()=>{
             <tr class="bet-row"
                     data-id="{{ b.id }}"
                     data-jogo="{{ b.jogo }}"
-                    data-horario="{{ b.get('horario_jogo_iso', '') }}"
+                    data-horario="{{ (b.horario_jogo_iso || "") }}"
                     data-status-jogo="{{ espn_status_label_bet(b) if espn_status_label_bet is defined else (b.get('status_jogo') or b.get('horario_jogo') or '') }}"
-                    data-status-class="{{ espn_status_class_bet(b) if espn_status_class_bet is defined else ('live' if b.get('ao_vivo') else '') }}"
-                    data-data="{{ b.data }}" data-jogos-relacionados='{{ (b.get('jogos_relacionados', []) if b.get('jogos_relacionados', []) is defined else [])|tojson }}'>
+                    data-status-class="{{ espn_status_class_bet(b) if espn_status_class_bet is defined else ('live' if b.ao_vivo else '') }}"
+                    data-data="{{ b.data }}" data-jogos-relacionados='{{ ((b.jogos_relacionados || []) if (b.jogos_relacionados || []) is defined else [])|tojson }}'>
                 <td class="data-cell">{{ b.data }}</td>
                 <td class="casa-cell">{{ b.casa }}</td>
                 <td class="esporte-cell">{{ b.esporte }}</td>
-                <td class="jogo-cell">{{ b.jogo }}{% if b.get('status_jogo', '') or b.get('horario_jogo', '') %}<div class="game-time {{ 'live' if b.get('ao_vivo') else '' }}">⏰ {{ b.get('status_jogo', '') or b.get('horario_jogo', '') }}</div>{% endif %}</td>
+                <td class="jogo-cell">{{ b.jogo }}{% if (b.status_jogo || "") or (b.horario_jogo || "") %}<div class="game-time {{ 'live' if b.ao_vivo else '' }}">⏰ {{ (b.status_jogo || "") or (b.horario_jogo || "") }}</div>{% endif %}</td>
                 <td class="aposta-cell">{{ b.aposta_display if b.aposta_display is defined else b.aposta }}</td>
                 <td class="odd-cell">{{ b.odd }}</td>
                 <td class="valor-cell">{{ "%.2f"|format(b.valor) }}</td>
@@ -784,7 +800,7 @@ document.addEventListener("DOMContentLoaded", ()=>{
                         class="blue"
                         onclick="abrirEditar(this)"
                         data-id="{{ b.id }}"
-                        data-estado="{{ b.estado }}" data-horario="{{ b.get('horario_jogo_iso', '') }}"
+                        data-estado="{{ b.estado }}" data-horario="{{ (b.horario_jogo_iso || "") }}"
                     >✎</button>
                     <a href="/remover/{{ b.id }}"><button class="dark">🗑</button></a>
                 </td>
@@ -1872,16 +1888,16 @@ function v76AddBetToTable(b){
     const tr = document.createElement("tr")
     tr.dataset.id = id
     tr.dataset.jogo = b.jogo || ""
-    tr.dataset.horario = b.get('horario_jogo_iso', '') || ""
-    tr.dataset.statusJogo = b.get('status_jogo', '') || b.get('horario_jogo', '') || ""
-    tr.dataset.statusClass = b.get('ao_vivo') ? "live" : ""
+    tr.dataset.horario = (b.horario_jogo_iso || "") || ""
+    tr.dataset.statusJogo = (b.status_jogo || "") || (b.horario_jogo || "") || ""
+    tr.dataset.statusClass = b.ao_vivo ? "live" : ""
     tr.classList.add("v76-new-row")
 
     tr.innerHTML = `
         <td>${v76Escape(b.data || "")}</td>
         <td class="casa-cell">${v76Escape(b.casa || "")}</td>
         <td class="esporte-cell">${v76Escape(b.esporte || "")}</td>
-        <td class="jogo-cell">${v76Escape(b.jogo || "")}${(b.get('status_jogo', '') || b.get('horario_jogo', '')) ? `<div class="game-time ${b.get('ao_vivo') ? "live" : ""}">⏰ ${v76Escape(b.get('status_jogo', '') || b.get('horario_jogo', ''))}</div>` : ""}</td>
+        <td class="jogo-cell">${v76Escape(b.jogo || "")}${((b.status_jogo || "") || (b.horario_jogo || "")) ? `<div class="game-time ${b.ao_vivo ? "live" : ""}">⏰ ${v76Escape((b.status_jogo || "") || (b.horario_jogo || ""))}</div>` : ""}</td>
         <td class="aposta-cell">${v76Escape(b.aposta_display || b.aposta || "")}</td>
         <td class="odd-cell">${v76Escape(b.odd || "")}</td>
         <td class="valor-cell">${v76Escape(b.valor || "")}</td>
@@ -2280,7 +2296,7 @@ window.v92ToggleDay = v92ToggleDay
             if(toks.length){
                 jogos = jogos.map(j => ({...j, _localScore: scoreLocal(q, j.jogo || "")}))
                     .filter(j => j._localScore > 0)
-                    .sort((a,b) => (b._localScore - a._localScore) || String(a.horario_jogo_iso||"").localeCompare(String(b.get('horario_jogo_iso', '')||"")));
+                    .sort((a,b) => (b._localScore - a._localScore) || String(a.horario_jogo_iso||"").localeCompare(String((b.horario_jogo_iso || "")||"")));
             }
             if(!jogos.length){ show(input, `<div class="game-autocomplete-empty">Nenhum jogo encontrado.</div>`); return; }
             show(input, jogos.slice(0, 12).map(j => {
@@ -2348,63 +2364,29 @@ document.addEventListener("DOMContentLoaded", () => {
 
 
 
-<script id="v109-ordem-status-js">
+
+
+
+<script id="v111-tabela-status-limpa-js">
 (function(){
+    let sortAsc = true;
+    let lastSignature = "";
+
     function parseDateBR(txt){
         const m = String(txt || "").match(/(\d{2})\/(\d{2})\/(\d{4})\s+(\d{2}):(\d{2})/);
         if(!m) return null;
         return new Date(Number(m[3]), Number(m[2])-1, Number(m[1]), Number(m[4]), Number(m[5]));
     }
 
-    function rowId(row){
-        return row.dataset.id || row.getAttribute("data-id") || "";
-    }
-
     function getIso(row){
         return row.dataset.horarioJogoIso || row.dataset.horario || "";
     }
 
-    function getHorarioLabel(row){
+    function getStoredLabel(row){
         return row.dataset.horarioJogo || row.dataset.statusJogo || "";
     }
 
-    function fmtGameDate(row){
-        const iso = getIso(row);
-        const label = getHorarioLabel(row);
-
-        if(iso){
-            const d = new Date(iso);
-            if(!isNaN(d.getTime())){
-                const pad = n => String(n).padStart(2,"0");
-                return {
-                    main: `${pad(d.getDate())}/${pad(d.getMonth()+1)} ${pad(d.getHours())}:${pad(d.getMinutes())}`,
-                    sub: "Jogo"
-                };
-            }
-        }
-
-        if(label){
-            return {main: label, sub: "Jogo"};
-        }
-
-        const txt = row.children?.[0]?.innerText || "";
-        return {main: txt.split("\n")[0] || "-", sub: "Aposta"};
-    }
-
-    function ordemRow(row){
-        const iso = getIso(row);
-        if(iso){
-            const d = new Date(iso);
-            if(!isNaN(d.getTime())) return d.getTime();
-        }
-
-        const d2 = parseDateBR(row.children?.[0]?.innerText || "");
-        if(d2) return d2.getTime();
-
-        return 9999999999999;
-    }
-
-    function statusClassFromRow(row){
+    function statusFromRow(row){
         const raw = String(row.dataset.statusJogo || "").toLowerCase();
         const iso = getIso(row);
 
@@ -2423,19 +2405,64 @@ document.addEventListener("DOMContentLoaded", () => {
 
                 if(diffMin < -120) return {label:"Finalizado", cls:"finished"};
                 if(diffMin >= -15 && diffMin <= 130) return {label:"Ao vivo", cls:"live"};
-                if(diffMin >= 0 && diffMin <= 60) return {label:`Começa em ${Math.max(1, Math.floor(diffMin))}min`, cls:"soon"};
+                if(diffMin >= 0 && diffMin <= 60) return {label:`Falta ${Math.max(1, Math.floor(diffMin))}min`, cls:"soon"};
 
                 const today = new Date();
-                if(d.toDateString() === today.toDateString()){
-                    return {label:`Hoje ${String(d.getHours()).padStart(2,"0")}:${String(d.getMinutes()).padStart(2,"0")}`, cls:"today"};
-                }
+                if(d.toDateString() === today.toDateString()) return {label:"Hoje", cls:"today"};
 
-                return {label:`${String(d.getDate()).padStart(2,"0")}/${String(d.getMonth()+1).padStart(2,"0")} ${String(d.getHours()).padStart(2,"0")}:${String(d.getMinutes()).padStart(2,"0")}`, cls:"scheduled"};
+                return {label:"Agendado", cls:"scheduled"};
             }
         }
 
         if(raw) return {label: row.dataset.statusJogo, cls:"scheduled"};
-        return {label:"", cls:""};
+        return {label:"Sem horário", cls:"empty"};
+    }
+
+    function fmtGameDate(row){
+        const iso = getIso(row);
+        const label = getStoredLabel(row);
+
+        if(iso){
+            const d = new Date(iso);
+            if(!isNaN(d.getTime())){
+                const pad = n => String(n).padStart(2,"0");
+                return `${pad(d.getDate())}/${pad(d.getMonth()+1)} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+            }
+        }
+
+        if(label && /\d{2}\/\d{2}/.test(label)) return label;
+
+        const txt = row.children?.[0]?.innerText || "";
+        return txt.split("\n")[0] || "-";
+    }
+
+    function ordemRow(row){
+        const iso = getIso(row);
+        if(iso){
+            const d = new Date(iso);
+            if(!isNaN(d.getTime())) return d.getTime();
+        }
+
+        const d2 = parseDateBR(row.children?.[0]?.innerText || "");
+        if(d2) return d2.getTime();
+
+        return 9999999999999;
+    }
+
+    function limparBadgesDoJogo(){
+        document.querySelectorAll("tr.bet-row").forEach(row => {
+            const jogoCell = row.querySelector(".jogo-cell") || row.children?.[3];
+            if(!jogoCell) return;
+
+            jogoCell.querySelectorAll(".game-status-pill-v108, .game-time, .game-status-pill-v111").forEach(e => e.remove());
+
+            // remove textos soltos criados antes de badges quando possível
+            Array.from(jogoCell.childNodes).forEach(node => {
+                if(node.nodeType === Node.TEXT_NODE && !node.textContent.trim()){
+                    node.remove();
+                }
+            });
+        });
     }
 
     function renderDateCells(){
@@ -2443,61 +2470,73 @@ document.addEventListener("DOMContentLoaded", () => {
             const cell = row.children?.[0];
             if(!cell) return;
 
-            const dt = fmtGameDate(row);
-            cell.classList.add("game-date-cell");
-            cell.innerHTML = `<span class="game-date-main">${dt.main}</span><span class="game-date-sub">${dt.sub}</span>`;
+            const main = fmtGameDate(row);
+            const st = statusFromRow(row);
+            const html = `<span class="game-date-main">${main}</span><span class="game-date-status ${st.cls}">${st.label}</span>`;
+
+            if(cell.dataset.v111Html !== html){
+                cell.classList.add("game-date-cell");
+                cell.innerHTML = html;
+                cell.dataset.v111Html = html;
+            }
         });
     }
 
-    function renderGameStatusBadges(){
-        document.querySelectorAll("tr.bet-row").forEach(row => {
-            const jogoCell = row.querySelector(".jogo-cell") || row.children?.[3];
-            if(!jogoCell) return;
-
-            jogoCell.querySelectorAll(".game-status-pill-v108, .game-time").forEach(e => e.remove());
-
-            const st = statusClassFromRow(row);
-            if(!st.label) return;
-
-            const pill = document.createElement("span");
-            pill.className = `game-status-pill-v108 ${st.cls}`;
-            pill.textContent = st.label;
-            jogoCell.appendChild(document.createTextNode(" "));
-            jogoCell.appendChild(pill);
-        });
-    }
-
-    function sortRowsByGameTime(){
+    function sortRowsByGameTime(force=false){
         const tbody = document.querySelector(".table-panel tbody") || document.querySelector("table tbody");
         if(!tbody) return;
 
         const rows = Array.from(tbody.querySelectorAll("tr.bet-row"));
         if(!rows.length) return;
 
-        rows.sort((a,b) => ordemRow(a) - ordemRow(b));
+        const signature = rows.map(r => `${r.dataset.id || ""}:${getIso(r)}:${r.dataset.statusJogo || ""}`).join("|") + `:${sortAsc}`;
+        if(!force && signature === lastSignature) return;
+        lastSignature = signature;
+
+        rows.sort((a,b) => {
+            const diff = ordemRow(a) - ordemRow(b);
+            return sortAsc ? diff : -diff;
+        });
+
         rows.forEach(r => tbody.appendChild(r));
     }
 
-    function applyV109(){
+    function applyV111(force=false){
+        limparBadgesDoJogo();
         renderDateCells();
-        renderGameStatusBadges();
-        sortRowsByGameTime();
+        sortRowsByGameTime(force);
+    }
+
+    function setupSortHeader(){
+        const th = document.getElementById("gameDateSortHeader");
+        const arrow = document.getElementById("gameDateSortArrow");
+        if(!th || th.dataset.v111Ready === "1") return;
+
+        th.dataset.v111Ready = "1";
+        th.title = "Clique para inverter a ordem dos jogos";
+        th.addEventListener("click", () => {
+            sortAsc = !sortAsc;
+            if(arrow) arrow.textContent = sortAsc ? "↑" : "↓";
+            applyV111(true);
+        });
     }
 
     document.addEventListener("DOMContentLoaded", () => {
-        applyV109();
-        setInterval(applyV109, 60000);
+        setupSortHeader();
+        applyV111(true);
+        // Sem intervalo curto para não piscar a tela.
+        setInterval(() => applyV111(false), 5 * 60 * 1000);
     });
 
     document.addEventListener("click", e => {
         const txt = String(e.target?.innerText || "").toLowerCase();
         if(txt.includes("salvar apostas") || txt.includes("adicionar")){
-            setTimeout(applyV109, 800);
-            setTimeout(applyV109, 1800);
+            setTimeout(() => applyV111(true), 800);
+            setTimeout(() => applyV111(true), 1800);
         }
     });
 
-    window.v109ApplyOrderStatus = applyV109;
+    window.v111ApplyTableStatus = applyV111;
 })();
 </script>
 
