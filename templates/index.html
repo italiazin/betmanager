@@ -2227,11 +2227,14 @@ document.addEventListener("DOMContentLoaded", () => {
 
 
 
-<script id="v98-dropdown-jogo-js">
-let v98ActiveInput = null
-let v98Timer = null
 
-function v98Escape(v){
+
+
+<script id="v100-busca-somente-jogo-js">
+let v100ActiveInput = null
+let v100Timer = null
+
+function v100Escape(v){
     return String(v ?? "")
         .replaceAll("&","&amp;")
         .replaceAll("<","&lt;")
@@ -2239,63 +2242,73 @@ function v98Escape(v){
         .replaceAll('"',"&quot;")
 }
 
-function v98CampoJogo(input){
+function v100IsCampoJogo(input){
     if(!input || input.tagName !== "INPUT") return false
-    const ph = (input.getAttribute("placeholder") || "").toLowerCase()
+
     const id = input.id || ""
     const name = (input.name || "").toLowerCase()
+    const ph = (input.getAttribute("placeholder") || "").toLowerCase()
+    const cls = (input.className || "").toString().toLowerCase()
+    const aria = (input.getAttribute("aria-label") || "").toLowerCase()
+    const dataRole = (input.dataset.role || "").toLowerCase()
 
-    if(id.match(/^j\d+$/)) return true
-    if(name.includes("jogo")) return true
-    if(ph.includes("jogo") || ph.includes("time")) return true
+    // Preview OCR do app usa ids tipo j0, j1, j2 para campo Jogo.
+    if(/^j\d+$/.test(id)) return true
+
+    // Form manual ou outros templates explícitos
+    if(name === "jogo" || name === "game" || name.includes("jogo")) return true
+    if(dataRole === "jogo" || dataRole === "game") return true
+    if(cls.includes("jogo-input") || cls.includes("game-input")) return true
+
+    // Placeholder explícito
+    if(ph.includes("jogo") || ph.includes("jogo / times") || ph.includes("times")) return true
+    if(aria.includes("jogo") || aria.includes("times")) return true
 
     return false
 }
 
-function v98GetEsporte(input){
+function v100GetEsporte(input){
     try{
         const id = input.id || ""
         const idx = id.match(/^j(\d+)$/)?.[1]
-
         if(idx !== undefined){
             const esp = document.getElementById(`e${idx}`)
             if(esp) return esp.value || ""
         }
 
         const root = input.closest("form") || input.closest(".panel") || document
-        const esporteInput = root.querySelector('input[name="esporte"], input[placeholder*="Esporte"], input[placeholder*="esporte"]')
+        const esporteInput = root.querySelector('input[name="esporte"], input[placeholder*="Esporte"], input[placeholder*="esporte"], input[id^="e"]')
         return esporteInput ? esporteInput.value : ""
     }catch(e){
         return ""
     }
 }
 
-function v98Box(){
-    let box = document.getElementById("v98-jogos-dropdown")
+function v100Box(){
+    let box = document.getElementById("v100-jogos-dropdown")
     if(!box){
         box = document.createElement("div")
-        box.id = "v98-jogos-dropdown"
-        box.className = "v98-jogos-dropdown"
+        box.id = "v100-jogos-dropdown"
+        box.className = "v100-jogos-dropdown"
         document.body.appendChild(box)
     }
     return box
 }
 
-function v98PositionBox(input){
-    const box = v98Box()
+function v100Position(input){
+    const box = v100Box()
     const rect = input.getBoundingClientRect()
-
-    const width = Math.max(rect.width, 460)
-    const left = Math.min(rect.left, window.innerWidth - width - 12)
+    const width = Math.max(rect.width, 500)
+    const left = Math.min(Math.max(8, rect.left), window.innerWidth - width - 8)
     const top = rect.bottom + 6
 
-    box.style.left = `${Math.max(8, left)}px`
+    box.style.left = `${left}px`
     box.style.top = `${top}px`
     box.style.width = `${Math.min(width, window.innerWidth - 16)}px`
 }
 
-function v98FormatDateParts(txt, status){
-    const source = txt || status || ""
+function v100FormatParts(horario, status){
+    const source = horario || status || ""
     const m = String(source).match(/(\d{2})\/(\d{2})\/(\d{4})\s+(\d{2}):(\d{2})/)
     if(m) return {data:`${m[1]}/${m[2]}`, hora:`${m[4]}:${m[5]}`}
 
@@ -2307,43 +2320,44 @@ function v98FormatDateParts(txt, status){
     return {data:"DATA", hora: status || ""}
 }
 
-function v98RenderShell(input, q){
-    const box = v98Box()
-    v98PositionBox(input)
+function v100RenderShell(input, q){
+    const box = v100Box()
+    v100Position(input)
     box.style.display = "block"
     box.innerHTML = `
-        <div class="v98-search-head">
-            <span class="v98-search-icon">⌕</span>
-            <input class="v98-search-field" value="${v98Escape(q || "")}" placeholder="Time ou liga...">
+        <div class="v100-search-head">
+            <span>🔎</span>
+            <input class="v100-search-field" value="${v100Escape(q || "")}" placeholder="Time ou liga...">
         </div>
-        <div class="v98-results">
-            <div class="v98-loading">Buscando jogos...</div>
+        <div class="v100-results">
+            <div class="v100-loading">Buscando jogos...</div>
         </div>
     `
 
-    const field = box.querySelector(".v98-search-field")
+    const field = box.querySelector(".v100-search-field")
     field.focus()
     field.setSelectionRange(field.value.length, field.value.length)
 
     field.addEventListener("input", ()=>{
-        clearTimeout(v98Timer)
-        v98Timer = setTimeout(()=>v98BuscarComQuery(input, field.value), 220)
+        clearTimeout(v100Timer)
+        v100Timer = setTimeout(()=>v100Buscar(input, field.value), 220)
     })
 }
 
-async function v98AbrirDropdown(input){
-    v98ActiveInput = input
-    v98RenderShell(input, input.value.trim())
-    await v98BuscarComQuery(input, input.value.trim())
+async function v100Open(input){
+    if(!v100IsCampoJogo(input)) return
+    v100ActiveInput = input
+    v100RenderShell(input, input.value || "")
+    await v100Buscar(input, input.value || "")
 }
 
-async function v98BuscarComQuery(input, q, refresh=false){
-    const box = v98Box()
-    const results = box.querySelector(".v98-results") || box
-    const esporte = encodeURIComponent(v98GetEsporte(input))
+async function v100Buscar(input, q="", refresh=false){
+    const box = v100Box()
+    const results = box.querySelector(".v100-results") || box
+    const esporte = encodeURIComponent(v100GetEsporte(input))
     const url = `/api/buscar_jogos?q=${encodeURIComponent(q || "")}&esporte=${esporte}${refresh ? "&refresh=1" : ""}`
 
-    results.innerHTML = `<div class="v98-loading">Buscando jogos...</div>`
+    results.innerHTML = `<div class="v100-loading">Buscando jogos...</div>`
 
     try{
         const resp = await fetch(url, {cache:"no-store"})
@@ -2352,38 +2366,38 @@ async function v98BuscarComQuery(input, q, refresh=false){
 
         if(!jogos.length){
             results.innerHTML = `
-                <div class="v98-empty">
-                    Nenhum jogo encontrado no cache ESPN.
-                    <button type="button" class="v98-refresh">Recarregar lista</button>
+                <div class="v100-empty">
+                    Nenhum jogo encontrado.
+                    <button type="button" class="v100-refresh">Recarregar cache ESPN</button>
                 </div>`
-            results.querySelector(".v98-refresh").onclick = ()=>v98BuscarComQuery(input, q, true)
+            const b = results.querySelector(".v100-refresh")
+            if(b) b.onclick = ()=>v100Buscar(input, q, true)
             return
         }
 
         results.innerHTML = jogos.map(j=>{
-            const parts = v98FormatDateParts(j.horario_jogo, j.status_jogo)
+            const parts = v100FormatParts(j.horario_jogo, j.status_jogo)
             const liga = j.liga_nome || j.league || ""
             const status = j.status_jogo || j.horario_jogo || ""
 
             return `
-                <button type="button" class="v98-game-option"
-                    data-jogo="${v98Escape(j.jogo)}"
-                    data-horario="${v98Escape(j.horario_jogo_iso || '')}"
-                    data-status="${v98Escape(status)}"
+                <button type="button" class="v100-game-option"
+                    data-jogo="${v100Escape(j.jogo)}"
+                    data-horario="${v100Escape(j.horario_jogo_iso || '')}"
+                    data-status="${v100Escape(status)}"
                     data-live="${j.ao_vivo ? '1' : '0'}">
-                    <div class="v98-game-date">
-                        <span>${v98Escape(parts.data)}</span>
-                        <strong>${v98Escape(parts.hora)}</strong>
+                    <div class="v100-game-date">
+                        <span>${v100Escape(parts.data)}</span>
+                        <strong>${v100Escape(parts.hora)}</strong>
                     </div>
-                    <div class="v98-game-main">
-                        <small>${v98Escape(liga)}</small>
-                        <strong>${v98Escape(j.jogo)}</strong>
+                    <div class="v100-game-main">
+                        <small>${v100Escape(liga)}</small>
+                        <strong>${v100Escape(j.jogo)}</strong>
                     </div>
-                </button>
-            `
+                </button>`
         }).join("")
 
-        results.querySelectorAll(".v98-game-option").forEach(btn=>{
+        results.querySelectorAll(".v100-game-option").forEach(btn=>{
             btn.onclick = ()=>{
                 input.value = btn.dataset.jogo || input.value
                 input.dataset.horario = btn.dataset.horario || ""
@@ -2391,58 +2405,67 @@ async function v98BuscarComQuery(input, q, refresh=false){
                 input.dataset.aoVivo = btn.dataset.live || "0"
                 input.dataset.partidaSelecionada = "1"
 
-                v98FecharDropdown()
+                v100Close()
                 input.dispatchEvent(new Event("input", {bubbles:true}))
 
                 if(typeof v72Toast === "function") v72Toast("Partida selecionada")
             }
         })
+
     }catch(e){
-        results.innerHTML = `<div class="v98-empty">Erro ao buscar jogos.</div>`
+        console.error(e)
+        results.innerHTML = `<div class="v100-empty">Erro ao buscar jogos.</div>`
     }
 }
 
-function v98FecharDropdown(){
-    const box = document.getElementById("v98-jogos-dropdown")
+function v100Close(){
+    const box = document.getElementById("v100-jogos-dropdown")
     if(box) box.style.display = "none"
-    v98ActiveInput = null
+    v100ActiveInput = null
 }
 
-function v98Ativar(){
+function v100Ativar(){
     document.querySelectorAll("input").forEach(input=>{
-        if(!v98CampoJogo(input)) return
-        if(input.dataset.v98Ativo === "1") return
+        if(!v100IsCampoJogo(input)) return
+        if(input.dataset.v100Ativo === "1") return
 
-        input.dataset.v98Ativo = "1"
+        input.dataset.v100Ativo = "1"
 
-        input.addEventListener("focus", ()=>v98AbrirDropdown(input))
+        input.addEventListener("focus", ()=>{
+            v100Open(input)
+        })
 
         input.addEventListener("input", ()=>{
-            clearTimeout(v98Timer)
-            v98Timer = setTimeout(()=>{
-                if(document.activeElement === input) v98AbrirDropdown(input)
-            }, 260)
+            clearTimeout(v100Timer)
+            v100Timer = setTimeout(()=>{
+                if(document.activeElement === input && v100IsCampoJogo(input)) v100Open(input)
+            }, 300)
         })
     })
 }
 
 document.addEventListener("click", (e)=>{
-    if(e.target.closest("#v98-jogos-dropdown")) return
-    if(v98CampoJogo(e.target)) return
-    v98FecharDropdown()
+    if(e.target.closest("#v100-jogos-dropdown")) return
+    if(v100IsCampoJogo(e.target)) return
+    v100Close()
 })
 
 window.addEventListener("scroll", ()=>{
-    if(v98ActiveInput) v98PositionBox(v98ActiveInput)
+    if(v100ActiveInput) v100Position(v100ActiveInput)
 }, true)
 
 window.addEventListener("resize", ()=>{
-    if(v98ActiveInput) v98PositionBox(v98ActiveInput)
+    if(v100ActiveInput) v100Position(v100ActiveInput)
 })
 
 document.addEventListener("DOMContentLoaded", ()=>{
-    v98Ativar()
-    setInterval(v98Ativar, 1000)
+    v100Ativar()
+    setInterval(v100Ativar, 700)
+
+    fetch("/api/status_jogos_cache", {cache:"no-store"})
+        .then(r=>r.json())
+        .then(d=>console.log("ESPN cache jogos:", d.total))
+        .catch(()=>{})
 })
 </script>
 

@@ -218,7 +218,7 @@ API_KEY = CONFIG.get("API_KEY", "")
 
 print("CONFIG PATH:", CONFIG_PATH)
 print("API KEY:", API_KEY)
-print("VERSAO_CARREGADA: OCR_CLIENTE_V98_CACHE_DROPDOWN_FIX")
+print("VERSAO_CARREGADA: OCR_CLIENTE_V100_BUSCA_SOMENTE_CAMPO_JOGO")
 
 if os.name == "nt":
     tess_path = r"C:\Program Files\Tesseract-OCR\tesseract.exe"
@@ -5624,6 +5624,22 @@ def v97_garantir_cache_espn_minimo():
     except Exception as e:
         print("V97 garantir cache erro:", repr(e))
         return []
+
+
+
+@app.route("/api/status_jogos_cache")
+@login_required
+@assinatura_required
+def api_status_jogos_cache():
+    try:
+        total = len(JOGOS_ESPN_CACHE.get("items", [])) if "JOGOS_ESPN_CACHE" in globals() else 0
+        if total == 0 and "v94_cache_jogos_espn" in globals():
+            jogos = v94_cache_jogos_espn(forcar=True)
+            total = len(jogos)
+        return jsonify({"ok": True, "total": total})
+    except Exception as e:
+        print("api_status_jogos_cache erro:", repr(e))
+        return jsonify({"ok": False, "erro": str(e), "total": 0})
 
 
 @app.route("/api/buscar_jogos")
