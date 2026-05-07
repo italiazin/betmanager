@@ -218,7 +218,7 @@ API_KEY = CONFIG.get("API_KEY", "")
 
 print("CONFIG PATH:", CONFIG_PATH)
 print("API KEY:", API_KEY)
-print("VERSAO_CARREGADA: OCR_CLIENTE_V105_DROPDOWN_CAMPO_JOGO")
+print("VERSAO_CARREGADA: OCR_CLIENTE_V106_AJUSTES_FINAIS")
 
 if os.name == "nt":
     tess_path = r"C:\Program Files\Tesseract-OCR\tesseract.exe"
@@ -5438,6 +5438,51 @@ def v98_status_espn_seguro(comp):
 
     return "", None, False, 9
 
+
+# ============================================================
+# V106 - filtro restrito da busca de partidas
+# ============================================================
+
+def v106_time_tokens_busca(q):
+    qn = espn_normalizar_nome(q or "")
+    if not qn:
+        return []
+
+    aliases = {
+        "flumi": ["fluminense"],
+        "flu": ["fluminense"],
+        "fluminense": ["fluminense"],
+        "psg": ["paris", "saint", "germain"],
+        "paris": ["paris"],
+        "bayern": ["bayern"],
+        "bayern de munique": ["bayern"],
+        "bayern munique": ["bayern"],
+        "vasco": ["vasco"],
+        "rayo": ["rayo", "vallecano"],
+        "shaktar": ["shakhtar"],
+        "shakhtar": ["shakhtar"],
+        "atletico madrid": ["atletico", "madrid"],
+        "atletico de madrid": ["atletico", "madrid"],
+        "palmeiras sp": ["palmeiras"],
+    }
+
+    if qn in aliases:
+        return aliases[qn]
+
+    qn = re.sub(r"\s+[–—-]\s+", " x ", qn)
+    qn = re.sub(r"\s+(?:vs\\.?|versus|v\\.?|x)\\s+", " x ", qn, flags=re.I)
+
+    stop = {"jogo", "time", "times", "casa", "odd", "valor", "aposta", "futebol", "basquete", "x", "vs", "v", "de", "da", "do", "dos", "das", "fc", "sc", "sp", "cf", "club"}
+    return [t for t in qn.split() if len(t) >= 3 and t not in stop]
+
+
+def v106_jogo_tem_time_buscado(q, jogo):
+    tokens = v106_time_tokens_busca(q)
+    if not tokens:
+        return True
+    jn = espn_normalizar_nome(jogo or "")
+    return any(t in jn for t in tokens)
+
 # ============================================================
 # V94 - Busca manual de jogos ESPN com cache
 # ============================================================
@@ -5662,6 +5707,8 @@ def api_buscar_jogos():
     if q:
         scored = []
         for j in jogos:
+            if not v106_jogo_tem_time_buscado(q, j.get("jogo", "")):
+                continue
             s = v94_score_busca_jogo(q, j.get("jogo", ""))
             if s >= 35:
                 item = dict(j)
@@ -6112,6 +6159,16 @@ def editar_ajax():
     b["odd"] = float(payload.get("odd", 1))
     b["valor"] = float(payload.get("valor", 0))
     b["estado"] = payload.get("estado", b.get("estado", ""))
+
+    horario_manual = payload.get("horario_jogo") or payload.get("horario_jogo_iso") or ""
+    if horario_manual:
+        try:
+            dt = datetime.fromisoformat(horario_manual)
+            b["horario_jogo_iso"] = dt.isoformat()
+            b["horario_jogo"] = dt.strftime("%d/%m %H:%M")
+            b["status_jogo"] = dt.strftime("%d/%m %H:%M")
+        except Exception as e:
+            print("editar_ajax horario_jogo erro:", repr(e))
 
     classificacao = classificar_aposta(b["aposta"], b["jogo"])
     b["mercado"] = payload.get("mercado") or classificacao["mercado"]

@@ -48,7 +48,7 @@ function formatarLinhaApostaNova(b){
             <a href="/resultado/${b.id}/ganha"><button class="green">✔</button></a>
             <a href="/resultado/${b.id}/perdida"><button class="red">✖</button></a>
             <a href="/resultado/${b.id}/anulada"><button class="gray">↺</button></a>
-            <button class="blue" onclick="abrirEditar(this)" data-id="${b.id}" data-estado="">✎</button>
+            <button class="blue" onclick="abrirEditar(this)" data-id="${b.id}" data-estado="" data-horario="${b.horario_jogo_iso || ""}">✎</button>
             <a href="/remover/${b.id}"><button class="dark">🗑</button></a>
         </td>
     </tr>`
@@ -211,7 +211,7 @@ function formatarLinhaApostaNovaV39(b){
             <a href="/resultado/${b.id}/ganha"><button class="green">✔</button></a>
             <a href="/resultado/${b.id}/perdida"><button class="red">✖</button></a>
             <a href="/resultado/${b.id}/anulada"><button class="gray">↺</button></a>
-            <button class="blue" onclick="abrirEditar(this)" data-id="${b.id}" data-estado="">✎</button>
+            <button class="blue" onclick="abrirEditar(this)" data-id="${b.id}" data-estado="" data-horario="${b.horario_jogo_iso || ""}">✎</button>
             <a href="/remover/${b.id}"><button class="dark">🗑</button></a>
         </td>
     </tr>`
@@ -556,7 +556,7 @@ document.addEventListener("DOMContentLoaded", ()=>{
             <input type="hidden" name="copiada_comunidade" id="copiadaComunidade" value="0">
             <input type="hidden" name="source_original_id" id="sourceOriginalId" value="">
             <input type="hidden" name="horario_jogo" id="horarioJogo" value="">
-            <input name="aposta" placeholder="Nome da aposta" required>
+            <input type="hidden" name="aposta" id="manualApostaAuto" value="">
             <input name="casa" placeholder="Casa">
             <input name="esporte" placeholder="Esporte">
             <input name="jogo" placeholder="Jogo / Times">
@@ -784,7 +784,7 @@ document.addEventListener("DOMContentLoaded", ()=>{
                         class="blue"
                         onclick="abrirEditar(this)"
                         data-id="{{ b.id }}"
-                        data-estado="{{ b.estado }}"
+                        data-estado="{{ b.estado }}" data-horario="{{ b.horario_jogo_iso if b.horario_jogo_iso is defined else '' }}"
                     >✎</button>
                     <a href="/remover/{{ b.id }}"><button class="dark">🗑</button></a>
                 </td>
@@ -809,6 +809,9 @@ document.addEventListener("DOMContentLoaded", ()=>{
 
         <label>Jogo</label>
         <input id="editJogo">
+
+        <label>Data/Hora do Jogo</label>
+        <input id="editHorarioJogo" type="datetime-local">
 
         <label>Odd</label>
         <input id="editOdd" type="number" step="0.01">
@@ -1296,6 +1299,18 @@ function enviar(imgs){
 
 
 
+function v106ToDatetimeLocal(value){
+    if(!value) return ""
+    try{
+        const d = new Date(value)
+        if(isNaN(d.getTime())) return ""
+        const pad = n => String(n).padStart(2, "0")
+        return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`
+    }catch(e){
+        return ""
+    }
+}
+
 let editId = null
 
 function abrirEditar(btn){
@@ -1314,6 +1329,11 @@ function abrirEditar(btn){
     document.getElementById("editOdd").value = tr.querySelector(".odd-cell").innerText
     document.getElementById("editValor").value = tr.querySelector(".valor-cell").innerText
     document.getElementById("editEstado").value = btn.dataset.estado
+
+    const horarioInput = document.getElementById("editHorarioJogo")
+    if(horarioInput){
+        horarioInput.value = v106ToDatetimeLocal(tr.dataset.horario || btn.dataset.horario || "")
+    }
 
     document.getElementById("editModal").style.display="flex"
 }
@@ -1335,7 +1355,8 @@ function salvarEdicao(){
         periodo: document.getElementById("editPeriodo") ? document.getElementById("editPeriodo").value : "",
         odd: document.getElementById("editOdd").value,
         valor: document.getElementById("editValor").value,
-        estado: document.getElementById("editEstado").value
+        estado: document.getElementById("editEstado").value,
+        horario_jogo: document.getElementById("editHorarioJogo")?.value || ""
     }
 
     fetch("/editar_ajax",{
@@ -2170,56 +2191,6 @@ window.v92ToggleDay = v92ToggleDay
 </script>
 
 
-<script id="v92-manual-date-js">
-async function definirDataManual(btn){
-    const row = btn.closest("tr.bet-row")
-    if(!row) return
-
-    const atual = row.dataset.horario || ""
-    const valor = prompt("Digite a data/hora do jogo:\nFormato: 2026-05-10T16:00", atual)
-
-    if(!valor) return
-
-    try{
-        const resp = await fetch("/definir_data_jogo", {
-            method: "POST",
-            headers: {"Content-Type":"application/json"},
-            body: JSON.stringify({
-                id: row.dataset.id,
-                horario: valor
-            })
-        })
-
-        const data = await resp.json()
-
-        if(data.ok){
-            location.reload()
-        }else{
-            alert("Erro ao salvar data")
-        }
-    }catch(e){
-        alert("Erro ao salvar data")
-    }
-}
-
-document.addEventListener("DOMContentLoaded", () => {
-    document.querySelectorAll("tr.bet-row").forEach(row => {
-        if(row.querySelector(".manual-date-btn")) return
-
-        const actions = row.lastElementChild
-        if(!actions) return
-
-        const btn = document.createElement("button")
-        btn.type = "button"
-        btn.className = "manual-date-btn"
-        btn.innerHTML = "📅"
-        btn.title = "Definir data manual"
-        btn.onclick = function(){ definirDataManual(btn) }
-
-        actions.prepend(btn)
-    })
-})
-</script>
 
 
 
@@ -2240,13 +2211,32 @@ document.addEventListener("DOMContentLoaded", () => {
 
 
 
-<script id="v105-dropdown-campo-jogo-js">
+
+
+
+
+<script id="v106-dropdown-campo-jogo-js">
 (function(){
     let timer = null;
 
     function esc(v){
         return String(v ?? "")
             .replaceAll("&","&amp;").replaceAll("<","&lt;").replaceAll(">","&gt;").replaceAll('"',"&quot;");
+    }
+
+    function norm(v){
+        return String(v || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+    }
+
+    function tokensBusca(q){
+        let s = norm(q);
+        const aliases = {
+            "flumi":"fluminense", "flu":"fluminense", "psg":"paris",
+            "bayern de munique":"bayern", "bayern munique":"bayern",
+            "shaktar":"shakhtar"
+        };
+        s = aliases[s] || s;
+        return s.split(/[^a-z0-9]+/).filter(t => t.length >= 3 && !["jogo","time","times","casa","odd","valor","aposta","futebol","basquete"].includes(t));
     }
 
     function isGameInput(input){
@@ -2290,7 +2280,6 @@ document.addEventListener("DOMContentLoaded", () => {
         if(input.parentElement && input.parentElement.classList.contains("game-autocomplete-wrap")){
             return input.parentElement;
         }
-
         const wrap = document.createElement("div");
         wrap.className = "game-autocomplete-wrap";
         input.parentNode.insertBefore(wrap, input);
@@ -2333,13 +2322,20 @@ document.addEventListener("DOMContentLoaded", () => {
         if(!isGameInput(input)) return;
         const q = input.value || "";
         const esporte = encodeURIComponent(getSport(input));
-
         show(input, `<div class="game-autocomplete-loading">Buscando jogos...</div>`);
 
         try{
             const r = await fetch(`/api/buscar_jogos?q=${encodeURIComponent(q)}&esporte=${esporte}`, {cache:"no-store"});
             const data = await r.json();
-            const jogos = data.jogos || [];
+            let jogos = data.jogos || [];
+
+            const toks = tokensBusca(q);
+            if(toks.length){
+                jogos = jogos.filter(j => {
+                    const nome = norm(j.jogo || "");
+                    return toks.some(t => nome.includes(t));
+                });
+            }
 
             if(!jogos.length){
                 show(input, `<div class="game-autocomplete-empty">Nenhum jogo encontrado.</div>`);
@@ -2350,7 +2346,6 @@ document.addEventListener("DOMContentLoaded", () => {
                 const status = j.status_jogo || j.horario_jogo || "";
                 const p = fmt(j.horario_jogo, status);
                 const liga = j.liga_nome || j.league || "";
-
                 return `
                     <button type="button" class="game-autocomplete-option"
                         data-jogo="${esc(j.jogo)}"
@@ -2399,10 +2394,8 @@ document.addEventListener("DOMContentLoaded", () => {
         document.querySelectorAll("input").forEach(input => {
             if(!isGameInput(input)) return;
             if(input.dataset.gameAutocompleteReady === "1") return;
-
             input.dataset.gameAutocompleteReady = "1";
             wrapInput(input);
-
             input.addEventListener("focus", () => buscar(input));
             input.addEventListener("input", () => {
                 clearTimeout(timer);
@@ -2419,6 +2412,16 @@ document.addEventListener("DOMContentLoaded", () => {
     document.addEventListener("keydown", e => {
         if(e.key === "Escape") closeAll();
     });
+
+    document.addEventListener("submit", function(e){
+        const form = e.target;
+        if(!form || form.id !== "manualForm") return;
+        const aposta = form.querySelector('input[name="aposta"]');
+        const jogo = form.querySelector('input[name="jogo"]');
+        if(aposta && jogo && !aposta.value.trim()){
+            aposta.value = jogo.value.trim() || "Aposta manual";
+        }
+    }, true);
 
     document.addEventListener("DOMContentLoaded", () => {
         attach();

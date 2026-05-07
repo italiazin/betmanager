@@ -3852,3 +3852,32 @@ table {
     font-size: 12px !important;
     font-weight: 800 !important;
 }
+
+
+/* ============================================================
+   V106 - ajustes finais
+   ============================================================ */
+
+.manual-date-btn {
+    display: none !important;
+}
+
+.manual-form .game-autocomplete-wrap,
+.preview-card .game-autocomplete-wrap {
+    display: block !important;
+    width: 100% !important;
+    min-width: 0 !important;
+    overflow: visible !important;
+}
+
+.game-autocomplete-wrap > input {
+    width: 100% !important;
+}
+
+.game-autocomplete-dropdown {
+    min-width: 360px !important;
+}
+
+#editHorarioJogo {
+    width: 100% !important;
+}
