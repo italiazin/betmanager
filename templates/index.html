@@ -2230,11 +2230,15 @@ document.addEventListener("DOMContentLoaded", () => {
 
 
 
-<script id="v100-busca-somente-jogo-js">
-let v100ActiveInput = null
-let v100Timer = null
 
-function v100Escape(v){
+
+
+<script id="v101-dropdown-render-fix-js">
+let v101ActiveInput = null
+let v101Timer = null
+let v101LastController = null
+
+function v101Escape(v){
     return String(v ?? "")
         .replaceAll("&","&amp;")
         .replaceAll("<","&lt;")
@@ -2242,7 +2246,7 @@ function v100Escape(v){
         .replaceAll('"',"&quot;")
 }
 
-function v100IsCampoJogo(input){
+function v101IsCampoJogo(input){
     if(!input || input.tagName !== "INPUT") return false
 
     const id = input.id || ""
@@ -2250,24 +2254,19 @@ function v100IsCampoJogo(input){
     const ph = (input.getAttribute("placeholder") || "").toLowerCase()
     const cls = (input.className || "").toString().toLowerCase()
     const aria = (input.getAttribute("aria-label") || "").toLowerCase()
-    const dataRole = (input.dataset.role || "").toLowerCase()
+    const role = (input.dataset.role || "").toLowerCase()
 
-    // Preview OCR do app usa ids tipo j0, j1, j2 para campo Jogo.
     if(/^j\d+$/.test(id)) return true
-
-    // Form manual ou outros templates explícitos
     if(name === "jogo" || name === "game" || name.includes("jogo")) return true
-    if(dataRole === "jogo" || dataRole === "game") return true
+    if(role === "jogo" || role === "game") return true
     if(cls.includes("jogo-input") || cls.includes("game-input")) return true
-
-    // Placeholder explícito
-    if(ph.includes("jogo") || ph.includes("jogo / times") || ph.includes("times")) return true
-    if(aria.includes("jogo") || aria.includes("times")) return true
+    if(ph.includes("jogo") || ph.includes("time")) return true
+    if(aria.includes("jogo") || aria.includes("time")) return true
 
     return false
 }
 
-function v100GetEsporte(input){
+function v101GetEsporte(input){
     try{
         const id = input.id || ""
         const idx = id.match(/^j(\d+)$/)?.[1]
@@ -2276,191 +2275,197 @@ function v100GetEsporte(input){
             if(esp) return esp.value || ""
         }
 
+        const row = input.closest("tr, .preview-row, .ocr-row, .preview-item, .paste-preview, .preview-line")
+        if(row){
+            const espInput = row.querySelector('input[id^="e"], input[name*="esporte" i], input[placeholder*="Esporte"], input[placeholder*="esporte"]')
+            if(espInput) return espInput.value || ""
+        }
+
         const root = input.closest("form") || input.closest(".panel") || document
-        const esporteInput = root.querySelector('input[name="esporte"], input[placeholder*="Esporte"], input[placeholder*="esporte"], input[id^="e"]')
+        const esporteInput = root.querySelector('input[name*="esporte" i], input[placeholder*="Esporte"], input[placeholder*="esporte"], input[id^="e"]')
         return esporteInput ? esporteInput.value : ""
     }catch(e){
         return ""
     }
 }
 
-function v100Box(){
-    let box = document.getElementById("v100-jogos-dropdown")
+function v101Box(){
+    let box = document.getElementById("v101-jogos-dropdown")
     if(!box){
         box = document.createElement("div")
-        box.id = "v100-jogos-dropdown"
-        box.className = "v100-jogos-dropdown"
+        box.id = "v101-jogos-dropdown"
+        box.className = "v101-jogos-dropdown"
         document.body.appendChild(box)
     }
     return box
 }
 
-function v100Position(input){
-    const box = v100Box()
+function v101Position(input){
+    const box = v101Box()
     const rect = input.getBoundingClientRect()
-    const width = Math.max(rect.width, 500)
-    const left = Math.min(Math.max(8, rect.left), window.innerWidth - width - 8)
-    const top = rect.bottom + 6
+
+    const width = Math.min(Math.max(rect.width, 520), window.innerWidth - 16)
+    let left = rect.left
+    if(left + width > window.innerWidth - 8) left = window.innerWidth - width - 8
+    if(left < 8) left = 8
+
+    let top = rect.bottom + 6
+    const maxHeight = Math.min(360, window.innerHeight - top - 12)
+    if(maxHeight < 180){
+        top = Math.max(8, rect.top - 366)
+    }
 
     box.style.left = `${left}px`
     box.style.top = `${top}px`
-    box.style.width = `${Math.min(width, window.innerWidth - 16)}px`
+    box.style.width = `${width}px`
 }
 
-function v100FormatParts(horario, status){
+function v101FormatParts(horario, status){
     const source = horario || status || ""
-    const m = String(source).match(/(\d{2})\/(\d{2})\/(\d{4})\s+(\d{2}):(\d{2})/)
+    let m = String(source).match(/(\d{2})\/(\d{2})\/(\d{4})\s+(\d{2}):(\d{2})/)
     if(m) return {data:`${m[1]}/${m[2]}`, hora:`${m[4]}:${m[5]}`}
 
-    const m2 = String(source).match(/(\d{2})\/(\d{2})\s+(\d{1,2}):(\d{2})/)
-    if(m2) return {data:`${m2[1]}/${m2[2]}`, hora:`${String(m2[3]).padStart(2,"0")}:${m2[4]}`}
+    m = String(source).match(/(\d{2})\/(\d{2})\s+(\d{1,2}):(\d{2})/)
+    if(m) return {data:`${m[1]}/${m[2]}`, hora:`${String(m[3]).padStart(2,"0")}:${m[4]}`}
 
     if(String(status || "").toLowerCase().includes("ao vivo")) return {data:"AO VIVO", hora:"LIVE"}
-
     return {data:"DATA", hora: status || ""}
 }
 
-function v100RenderShell(input, q){
-    const box = v100Box()
-    v100Position(input)
+function v101ShowLoading(input){
+    const box = v101Box()
+    v101Position(input)
     box.style.display = "block"
-    box.innerHTML = `
-        <div class="v100-search-head">
-            <span>🔎</span>
-            <input class="v100-search-field" value="${v100Escape(q || "")}" placeholder="Time ou liga...">
-        </div>
-        <div class="v100-results">
-            <div class="v100-loading">Buscando jogos...</div>
-        </div>
-    `
+    box.innerHTML = `<div class="v101-loading">Buscando jogos...</div>`
+}
 
-    const field = box.querySelector(".v100-search-field")
-    field.focus()
-    field.setSelectionRange(field.value.length, field.value.length)
+function v101Hide(){
+    const box = document.getElementById("v101-jogos-dropdown")
+    if(box) box.style.display = "none"
+    v101ActiveInput = null
+}
 
-    field.addEventListener("input", ()=>{
-        clearTimeout(v100Timer)
-        v100Timer = setTimeout(()=>v100Buscar(input, field.value), 220)
+function v101Render(input, jogos, q){
+    const box = v101Box()
+    v101Position(input)
+    box.style.display = "block"
+
+    if(!jogos.length){
+        box.innerHTML = `
+            <div class="v101-empty">
+                Nenhum jogo encontrado para <b>${v101Escape(q || "")}</b>.
+                <button type="button" id="v101-refresh-cache">Recarregar cache ESPN</button>
+            </div>`
+        const btn = box.querySelector("#v101-refresh-cache")
+        if(btn) btn.onclick = ()=>v101Fetch(input, q, true)
+        return
+    }
+
+    box.innerHTML = jogos.map(j=>{
+        const parts = v101FormatParts(j.horario_jogo, j.status_jogo)
+        const liga = j.liga_nome || j.league || ""
+        const status = j.status_jogo || j.horario_jogo || ""
+
+        return `
+            <button type="button" class="v101-game-option"
+                data-jogo="${v101Escape(j.jogo)}"
+                data-horario="${v101Escape(j.horario_jogo_iso || '')}"
+                data-status="${v101Escape(status)}"
+                data-live="${j.ao_vivo ? '1' : '0'}">
+                <div class="v101-game-date">
+                    <span>${v101Escape(parts.data)}</span>
+                    <strong>${v101Escape(parts.hora)}</strong>
+                </div>
+                <div class="v101-game-main">
+                    <small>${v101Escape(liga)}</small>
+                    <strong>${v101Escape(j.jogo)}</strong>
+                </div>
+            </button>
+        `
+    }).join("")
+
+    box.querySelectorAll(".v101-game-option").forEach(btn=>{
+        btn.addEventListener("mousedown", e=>e.preventDefault())
+        btn.onclick = ()=>{
+            input.value = btn.dataset.jogo || input.value
+            input.dataset.horario = btn.dataset.horario || ""
+            input.dataset.statusJogo = btn.dataset.status || ""
+            input.dataset.aoVivo = btn.dataset.live || "0"
+            input.dataset.partidaSelecionada = "1"
+
+            v101Hide()
+            input.dispatchEvent(new Event("input", {bubbles:true}))
+            input.dispatchEvent(new Event("change", {bubbles:true}))
+
+            if(typeof v72Toast === "function") v72Toast("Partida selecionada")
+        }
     })
 }
 
-async function v100Open(input){
-    if(!v100IsCampoJogo(input)) return
-    v100ActiveInput = input
-    v100RenderShell(input, input.value || "")
-    await v100Buscar(input, input.value || "")
-}
+async function v101Fetch(input, q, refresh=false){
+    if(!v101IsCampoJogo(input)) return
 
-async function v100Buscar(input, q="", refresh=false){
-    const box = v100Box()
-    const results = box.querySelector(".v100-results") || box
-    const esporte = encodeURIComponent(v100GetEsporte(input))
-    const url = `/api/buscar_jogos?q=${encodeURIComponent(q || "")}&esporte=${esporte}${refresh ? "&refresh=1" : ""}`
+    v101ActiveInput = input
+    q = (q ?? input.value ?? "").trim()
 
-    results.innerHTML = `<div class="v100-loading">Buscando jogos...</div>`
+    v101ShowLoading(input)
+
+    if(v101LastController) v101LastController.abort()
+    v101LastController = new AbortController()
+
+    const esporte = encodeURIComponent(v101GetEsporte(input))
+    const url = `/api/buscar_jogos?q=${encodeURIComponent(q)}&esporte=${esporte}${refresh ? "&refresh=1" : ""}`
 
     try{
-        const resp = await fetch(url, {cache:"no-store"})
+        const resp = await fetch(url, {cache:"no-store", signal:v101LastController.signal})
         const data = await resp.json()
-        const jogos = data.jogos || []
-
-        if(!jogos.length){
-            results.innerHTML = `
-                <div class="v100-empty">
-                    Nenhum jogo encontrado.
-                    <button type="button" class="v100-refresh">Recarregar cache ESPN</button>
-                </div>`
-            const b = results.querySelector(".v100-refresh")
-            if(b) b.onclick = ()=>v100Buscar(input, q, true)
-            return
-        }
-
-        results.innerHTML = jogos.map(j=>{
-            const parts = v100FormatParts(j.horario_jogo, j.status_jogo)
-            const liga = j.liga_nome || j.league || ""
-            const status = j.status_jogo || j.horario_jogo || ""
-
-            return `
-                <button type="button" class="v100-game-option"
-                    data-jogo="${v100Escape(j.jogo)}"
-                    data-horario="${v100Escape(j.horario_jogo_iso || '')}"
-                    data-status="${v100Escape(status)}"
-                    data-live="${j.ao_vivo ? '1' : '0'}">
-                    <div class="v100-game-date">
-                        <span>${v100Escape(parts.data)}</span>
-                        <strong>${v100Escape(parts.hora)}</strong>
-                    </div>
-                    <div class="v100-game-main">
-                        <small>${v100Escape(liga)}</small>
-                        <strong>${v100Escape(j.jogo)}</strong>
-                    </div>
-                </button>`
-        }).join("")
-
-        results.querySelectorAll(".v100-game-option").forEach(btn=>{
-            btn.onclick = ()=>{
-                input.value = btn.dataset.jogo || input.value
-                input.dataset.horario = btn.dataset.horario || ""
-                input.dataset.statusJogo = btn.dataset.status || ""
-                input.dataset.aoVivo = btn.dataset.live || "0"
-                input.dataset.partidaSelecionada = "1"
-
-                v100Close()
-                input.dispatchEvent(new Event("input", {bubbles:true}))
-
-                if(typeof v72Toast === "function") v72Toast("Partida selecionada")
-            }
-        })
-
+        v101Render(input, data.jogos || [], q)
     }catch(e){
-        console.error(e)
-        results.innerHTML = `<div class="v100-empty">Erro ao buscar jogos.</div>`
+        if(e.name === "AbortError") return
+        console.error("Erro buscar jogos", e)
+        const box = v101Box()
+        box.style.display = "block"
+        box.innerHTML = `<div class="v101-empty">Erro ao buscar jogos. Veja o log do navegador.</div>`
     }
 }
 
-function v100Close(){
-    const box = document.getElementById("v100-jogos-dropdown")
-    if(box) box.style.display = "none"
-    v100ActiveInput = null
-}
-
-function v100Ativar(){
+function v101Attach(){
     document.querySelectorAll("input").forEach(input=>{
-        if(!v100IsCampoJogo(input)) return
-        if(input.dataset.v100Ativo === "1") return
+        if(!v101IsCampoJogo(input)) return
+        if(input.dataset.v101Ativo === "1") return
 
-        input.dataset.v100Ativo = "1"
+        input.dataset.v101Ativo = "1"
 
         input.addEventListener("focus", ()=>{
-            v100Open(input)
+            v101Fetch(input, input.value)
         })
 
         input.addEventListener("input", ()=>{
-            clearTimeout(v100Timer)
-            v100Timer = setTimeout(()=>{
-                if(document.activeElement === input && v100IsCampoJogo(input)) v100Open(input)
-            }, 300)
+            clearTimeout(v101Timer)
+            v101Timer = setTimeout(()=>{
+                if(document.activeElement === input) v101Fetch(input, input.value)
+            }, 250)
         })
     })
 }
 
-document.addEventListener("click", (e)=>{
-    if(e.target.closest("#v100-jogos-dropdown")) return
-    if(v100IsCampoJogo(e.target)) return
-    v100Close()
+document.addEventListener("click", e=>{
+    if(e.target.closest("#v101-jogos-dropdown")) return
+    if(v101IsCampoJogo(e.target)) return
+    v101Hide()
 })
 
 window.addEventListener("scroll", ()=>{
-    if(v100ActiveInput) v100Position(v100ActiveInput)
+    if(v101ActiveInput) v101Position(v101ActiveInput)
 }, true)
 
 window.addEventListener("resize", ()=>{
-    if(v100ActiveInput) v100Position(v100ActiveInput)
+    if(v101ActiveInput) v101Position(v101ActiveInput)
 })
 
 document.addEventListener("DOMContentLoaded", ()=>{
-    v100Ativar()
-    setInterval(v100Ativar, 700)
+    v101Attach()
+    setInterval(v101Attach, 700)
 
     fetch("/api/status_jogos_cache", {cache:"no-store"})
         .then(r=>r.json())

@@ -218,7 +218,7 @@ API_KEY = CONFIG.get("API_KEY", "")
 
 print("CONFIG PATH:", CONFIG_PATH)
 print("API KEY:", API_KEY)
-print("VERSAO_CARREGADA: OCR_CLIENTE_V100_BUSCA_SOMENTE_CAMPO_JOGO")
+print("VERSAO_CARREGADA: OCR_CLIENTE_V101_DROPDOWN_RENDER_FIX")
 
 if os.name == "nt":
     tess_path = r"C:\Program Files\Tesseract-OCR\tesseract.exe"
