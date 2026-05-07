@@ -218,7 +218,7 @@ API_KEY = CONFIG.get("API_KEY", "")
 
 print("CONFIG PATH:", CONFIG_PATH)
 print("API KEY:", API_KEY)
-print("VERSAO_CARREGADA: OCR_CLIENTE_V113_FIX_500_REAL
+print("VERSAO_CARREGADA: OCR_CLIENTE_V114_FIX_BOOT")
 
 if os.name == "nt":
     tess_path = r"C:\Program Files\Tesseract-OCR\tesseract.exe"
@@ -5935,8 +5935,8 @@ def api_horarios_bets():
                 "horario_jogo_iso": b.get("horario_jogo_iso", ""),
                 "status_jogo": b.get("status_jogo", ""),
                 "ao_vivo": bool(b.get("ao_vivo", False)),
-                "status_class": espn_status_class_bet(b) if "espn_status_class_bet" in globals() else ("live" if b.get("ao_vivo") else ""),
-                "status_label": espn_status_label_bet(b) if "espn_status_label_bet" in globals() else (b.get("status_jogo") or b.get("horario_jogo") or "")
+                "status_class": "" if "espn_status_class_bet" in globals() else ("live" if b.get("ao_vivo") else ""),
+                "status_label": "" if "espn_status_label_bet" in globals() else (b.get("status_jogo") or b.get("horario_jogo") or "")
             })
 
         except Exception as e:
