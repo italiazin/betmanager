@@ -218,7 +218,7 @@ API_KEY = CONFIG.get("API_KEY", "")
 
 print("CONFIG PATH:", CONFIG_PATH)
 print("API KEY:", API_KEY)
-print("VERSAO_CARREGADA: OCR_CLIENTE_V107_BUSCA_INTELIGENTE_MULTIPLAS")
+print("VERSAO_CARREGADA: OCR_CLIENTE_V108_ORDEM_HORARIO_STATUS")
 
 if os.name == "nt":
     tess_path = r"C:\Program Files\Tesseract-OCR\tesseract.exe"
@@ -5799,6 +5799,94 @@ def v107_aplicar_multiplas_na_bet(b):
     except Exception as e:
         print("v107_aplicar_multiplas erro:", repr(e))
         return b
+
+
+
+# ============================================================
+# V108 - ordenação por horário do jogo e status visual
+# ============================================================
+
+def v108_status_visual_bet(b):
+    try:
+        status = str(b.get("status_jogo") or "").strip()
+        iso = b.get("horario_jogo_iso") or ""
+
+        if b.get("ao_vivo") or "ao vivo" in status.lower() or "live" in status.lower():
+            return {"label": "Ao vivo", "class": "live"}
+
+        if "final" in status.lower() or "encerr" in status.lower():
+            return {"label": "Finalizado", "class": "finished"}
+
+        if iso:
+            dt = datetime.fromisoformat(iso)
+            agora = agora_brasil()
+            diff = (dt - agora).total_seconds() / 60
+
+            if diff < -120:
+                return {"label": "Finalizado", "class": "finished"}
+
+            if -15 <= diff <= 130:
+                return {"label": "Ao vivo", "class": "live"}
+
+            if 0 <= diff <= 60:
+                return {"label": f"Começa em {int(diff)}min", "class": "soon"}
+
+            if dt.date() == agora.date():
+                return {"label": "Hoje " + dt.strftime("%H:%M"), "class": "today"}
+
+            return {"label": dt.strftime("%d/%m %H:%M"), "class": "scheduled"}
+
+        if status:
+            return {"label": status, "class": "scheduled"}
+
+    except Exception as e:
+        print("v108_status_visual erro:", repr(e))
+
+    return {"label": "", "class": ""}
+
+
+def v108_ordem_jogo_bet(b):
+    try:
+        iso = b.get("horario_jogo_iso") or ""
+        if iso:
+            return datetime.fromisoformat(iso).timestamp()
+    except Exception:
+        pass
+
+    try:
+        return datetime.strptime(str(b.get("data", ""))[:16], "%d/%m/%Y %H:%M").timestamp()
+    except Exception:
+        return 9999999999
+
+
+@app.route("/api/ordenar_status_jogos", methods=["POST"])
+@login_required
+@assinatura_required
+def api_ordenar_status_jogos():
+    """
+    Atualiza status visual e devolve metadados para o frontend ordenar sem recarregar.
+    """
+    rows = []
+    try:
+        lista = bets_do_usuario()
+    except Exception:
+        lista = []
+
+    for b in lista:
+        try:
+            vis = v108_status_visual_bet(b)
+            rows.append({
+                "id": b.get("id", ""),
+                "horario_jogo_iso": b.get("horario_jogo_iso", ""),
+                "horario_jogo": b.get("horario_jogo", ""),
+                "status_label": vis.get("label", ""),
+                "status_class": vis.get("class", ""),
+                "ordem": v108_ordem_jogo_bet(b),
+            })
+        except Exception as e:
+            print("api_ordenar_status_jogos item erro:", repr(e))
+
+    return jsonify({"ok": True, "rows": rows})
 
 
 @app.route("/api/status_jogos_cache")

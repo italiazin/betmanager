@@ -33,7 +33,11 @@ function formatarLinhaApostaNova(b){
     const lucro = parseFloat(b.lucro || 0).toFixed(2)
 
     return `
-    <tr class="bet-row">
+    <tr class="bet-row"
+            data-horario-jogo-iso="{{ b.horario_jogo_iso if b.horario_jogo_iso is defined else '' }}"
+            data-horario-jogo="{{ b.horario_jogo if b.horario_jogo is defined else '' }}"
+            data-status-jogo="{{ b.status_jogo if b.status_jogo is defined else '' }}"
+            data-ao-vivo="{{ '1' if b.ao_vivo is defined and b.ao_vivo else '0' }}">
         <td class="data-cell">${b.data || ""}</td>
         <td class="casa-cell">${b.casa || ""}</td>
         <td class="esporte-cell">${b.esporte || ""}</td>
@@ -727,7 +731,7 @@ document.addEventListener("DOMContentLoaded", ()=>{
     <table>
         <thead>
             <tr>
-                <th>Data</th>
+                <th>Jogo/Data</th>
                 <th>Casa</th>
                 <th>Esporte</th>
                 <th>Jogo</th>
@@ -2344,5 +2348,169 @@ document.addEventListener("DOMContentLoaded", () => {
     });
 });
 </script>
+
+<script id="v108-ordem-status-js">
+(function(){
+    function parseDateBR(txt){
+        const m = String(txt || "").match(/(\d{2})\/(\d{2})\/(\d{4})\s+(\d{2}):(\d{2})/);
+        if(!m) return null;
+        return new Date(Number(m[3]), Number(m[2])-1, Number(m[1]), Number(m[4]), Number(m[5]));
+    }
+
+    function fmtGameDate(row){
+        const iso = row.dataset.horarioJogoIso || row.dataset.horario || "";
+        const label = row.dataset.horarioJogo || row.dataset.statusJogo || "";
+
+        if(iso){
+            const d = new Date(iso);
+            if(!isNaN(d.getTime())){
+                const pad = n => String(n).padStart(2,"0");
+                return {
+                    main: `${pad(d.getDate())}/${pad(d.getMonth()+1)} ${pad(d.getHours())}:${pad(d.getMinutes())}`,
+                    sub: "Jogo"
+                };
+            }
+        }
+
+        if(label){
+            return {main: label, sub: "Jogo"};
+        }
+
+        const firstCellText = row.children?.[0]?.innerText || "";
+        return {main: firstCellText.split("\n")[0] || "-", sub: "Aposta"};
+    }
+
+    function ordemRow(row){
+        const iso = row.dataset.horarioJogoIso || row.dataset.horario || "";
+        if(iso){
+            const d = new Date(iso);
+            if(!isNaN(d.getTime())) return d.getTime();
+        }
+
+        const text = row.children?.[0]?.innerText || "";
+        const d2 = parseDateBR(text);
+        if(d2) return d2.getTime();
+
+        return 9999999999999;
+    }
+
+    function statusClassFromRow(row){
+        const raw = String(row.dataset.statusJogo || "").toLowerCase();
+        const iso = row.dataset.horarioJogoIso || row.dataset.horario || "";
+
+        if(row.dataset.aoVivo === "1" || raw.includes("ao vivo") || raw.includes("live")){
+            return {label:"Ao vivo", cls:"live"};
+        }
+
+        if(raw.includes("final")){
+            return {label:"Finalizado", cls:"finished"};
+        }
+
+        if(iso){
+            const d = new Date(iso);
+            if(!isNaN(d.getTime())){
+                const diffMin = (d.getTime() - Date.now()) / 60000;
+
+                if(diffMin < -120) return {label:"Finalizado", cls:"finished"};
+                if(diffMin >= -15 && diffMin <= 130) return {label:"Ao vivo", cls:"live"};
+                if(diffMin >= 0 && diffMin <= 60) return {label:`Começa em ${Math.max(1, Math.floor(diffMin))}min`, cls:"soon"};
+
+                const today = new Date();
+                if(d.toDateString() === today.toDateString()){
+                    return {label:`Hoje ${String(d.getHours()).padStart(2,"0")}:${String(d.getMinutes()).padStart(2,"0")}`, cls:"today"};
+                }
+            }
+        }
+
+        if(raw) return {label: row.dataset.statusJogo, cls:"scheduled"};
+        return {label:"", cls:""};
+    }
+
+    function renderDateCells(){
+        document.querySelectorAll("tr.bet-row").forEach(row => {
+            const cell = row.children?.[0];
+            if(!cell) return;
+
+            const dt = fmtGameDate(row);
+            cell.classList.add("game-date-cell");
+            cell.innerHTML = `<span class="game-date-main">${dt.main}</span><span class="game-date-sub">${dt.sub}</span>`;
+        });
+    }
+
+    function renderGameStatusBadges(){
+        document.querySelectorAll("tr.bet-row").forEach(row => {
+            const jogoCell = row.querySelector(".jogo-cell") || row.children?.[3];
+            if(!jogoCell) return;
+
+            jogoCell.querySelectorAll(".game-status-pill-v108").forEach(e => e.remove());
+
+            const st = statusClassFromRow(row);
+            if(!st.label) return;
+
+            const pill = document.createElement("span");
+            pill.className = `game-status-pill-v108 ${st.cls}`;
+            pill.textContent = st.label;
+            jogoCell.appendChild(document.createTextNode(" "));
+            jogoCell.appendChild(pill);
+        });
+    }
+
+    function sortRowsByGameTime(){
+        const tbody = document.querySelector(".table-panel tbody") || document.querySelector("table tbody");
+        if(!tbody) return;
+
+        const rows = Array.from(tbody.querySelectorAll("tr.bet-row"));
+        if(!rows.length) return;
+
+        rows.sort((a,b) => ordemRow(a) - ordemRow(b));
+        rows.forEach(r => tbody.appendChild(r));
+    }
+
+    async function syncStatusFromServer(){
+        try{
+            const r = await fetch("/api/ordenar_status_jogos", {method:"POST", cache:"no-store"});
+            const data = await r.json();
+            const byId = {};
+            (data.rows || []).forEach(x => { if(x.id) byId[x.id] = x; });
+
+            document.querySelectorAll("tr.bet-row").forEach(row => {
+                const id = row.dataset.id || row.getAttribute("data-id") || "";
+                const x = byId[id];
+                if(!x) return;
+                if(x.horario_jogo_iso) row.dataset.horarioJogoIso = x.horario_jogo_iso;
+                if(x.horario_jogo) row.dataset.horarioJogo = x.horario_jogo;
+                if(x.status_label) row.dataset.statusJogo = x.status_label;
+                if(x.status_class === "live") row.dataset.aoVivo = "1";
+            });
+        }catch(e){
+            console.warn("V108 status sync falhou", e);
+        }
+    }
+
+    async function applyV108(){
+        await syncStatusFromServer();
+        renderDateCells();
+        renderGameStatusBadges();
+        sortRowsByGameTime();
+    }
+
+    document.addEventListener("DOMContentLoaded", () => {
+        applyV108();
+        setInterval(applyV108, 60000);
+    });
+
+    // Quando salvar preview/adicionar aposta criar linha nova, aplica após pequenos delays.
+    document.addEventListener("click", e => {
+        const txt = String(e.target?.innerText || "").toLowerCase();
+        if(txt.includes("salvar apostas") || txt.includes("adicionar")){
+            setTimeout(applyV108, 800);
+            setTimeout(applyV108, 1800);
+        }
+    });
+
+    window.v108ApplyOrderStatus = applyV108;
+})();
+</script>
+
 </body>
 </html>
