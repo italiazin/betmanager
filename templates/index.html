@@ -762,14 +762,14 @@ document.addEventListener("DOMContentLoaded", ()=>{
             <tr class="bet-row"
                     data-id="{{ b.id }}"
                     data-jogo="{{ b.jogo }}"
-                    data-horario="{{ (b.horario_jogo_iso || "") }}"
+                    data-horario=""""
                     data-status-jogo="{{ espn_status_label_bet(b) if espn_status_label_bet is defined else (b.get('status_jogo') or b.get('horario_jogo') or '') }}"
                     data-status-class="{{ espn_status_class_bet(b) if espn_status_class_bet is defined else ('live' if b.ao_vivo else '') }}"
                     data-data="{{ b.data }}" data-jogos-relacionados='[]'>
                 <td class="data-cell">{{ b.data }}</td>
                 <td class="casa-cell">{{ b.casa }}</td>
                 <td class="esporte-cell">{{ b.esporte }}</td>
-                <td class="jogo-cell">{{ b.jogo }}{% if (b.status_jogo || "") or (b.horario_jogo || "") %}<div class="game-time {{ 'live' if b.ao_vivo else '' }}">⏰ {{ (b.status_jogo || "") or (b.horario_jogo || "") }}</div>{% endif %}</td>
+                <td class="jogo-cell">""<div class="game-time """>⏰ ""</div></td>
                 <td class="aposta-cell">{{ b.aposta_display if b.aposta_display is defined else b.aposta }}</td>
                 <td class="odd-cell">{{ b.odd }}</td>
                 <td class="valor-cell">{{ "%.2f"|format(b.valor) }}</td>
@@ -800,7 +800,7 @@ document.addEventListener("DOMContentLoaded", ()=>{
                         class="blue"
                         onclick="abrirEditar(this)"
                         data-id="{{ b.id }}"
-                        data-estado="{{ b.estado }}" data-horario="{{ (b.horario_jogo_iso || "") }}"
+                        data-estado="""" data-horario=""""
                     >✎</button>
                     <a href="/remover/{{ b.id }}"><button class="dark">🗑</button></a>
                 </td>
