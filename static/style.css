@@ -3716,3 +3716,17 @@ table {
     border: 0 !important;
     cursor: pointer !important;
 }
+
+
+/* V103 - força dropdown por cima e evita sumir */
+#v102-jogos-dropdown {
+    position: fixed !important;
+    z-index: 2147483647 !important;
+    display: none;
+    visibility: visible !important;
+    opacity: 1 !important;
+    pointer-events: auto !important;
+    background: #071020 !important;
+    border: 1px solid rgba(96,165,250,.60) !important;
+    box-shadow: 0 30px 90px rgba(0,0,0,.80) !important;
+}

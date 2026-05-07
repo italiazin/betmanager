@@ -2378,10 +2378,13 @@ function v102FormatParts(horario, status){
     return {data:"DATA", hora: status || ""}
 }
 
-function v102Show(input, html){
+function console.log("V103 jogos encontrados:", jogos.length); v102Show(input, html){
     const box = v102Box()
     v102Position(input)
     box.style.display = "block"
+    box.style.visibility = "visible"
+    box.style.opacity = "1"
+    box.style.pointerEvents = "auto"
     box.innerHTML = html
 }
 
@@ -2440,7 +2443,7 @@ async function v102Fetch(input, q, refresh=false){
                 </button>`
         }).join("")
 
-        v102Show(input, html)
+        console.log("V103 jogos encontrados:", jogos.length); v102Show(input, html)
 
         const box = v102Box()
         box.querySelectorAll(".v102-game-option").forEach(btn => {
@@ -2485,11 +2488,14 @@ function v102MarkInputs(){
     })
 }
 
-document.addEventListener("click", e => {
-    if(e.target.closest("#v102-jogos-dropdown")) return
-    if(e.target.dataset && e.target.dataset.v102CampoJogo === "1") return
-    v102Close()
-})
+setTimeout(() => {
+    document.addEventListener("click", e => {
+        if(e.target.closest("#v102-jogos-dropdown")) return
+        if(e.target.dataset && e.target.dataset.v102CampoJogo === "1") return
+        if(v102ActiveInput && e.target === v102ActiveInput) return
+        v102Close()
+    })
+}, 150)
 
 window.addEventListener("scroll", () => {
     if(v102ActiveInput) v102Position(v102ActiveInput)
