@@ -218,7 +218,7 @@ API_KEY = CONFIG.get("API_KEY", "")
 
 print("CONFIG PATH:", CONFIG_PATH)
 print("API KEY:", API_KEY)
-print("VERSAO_CARREGADA: OCR_CLIENTE_V97_CACHE_ESPN_SERVIDOR")
+print("VERSAO_CARREGADA: OCR_CLIENTE_V98_CACHE_DROPDOWN_FIX")
 
 if os.name == "nt":
     tess_path = r"C:\Program Files\Tesseract-OCR\tesseract.exe"
@@ -5269,7 +5269,7 @@ def espn_buscar_jogo(jogo, esporte="Futebol", aposta=""):
                         continue
 
                 if score > melhor_score:
-                    label, dt_br, ao_vivo, ordem = espn_formatar_status(comp)
+                    label, dt_br, ao_vivo, ordem = v98_status_espn_seguro(comp)
                     melhor_score = score
                     melhor = {
                         "espn_event_id": ev.get("id", ""),
@@ -5415,6 +5415,29 @@ def v96_liga_label(league):
     }
     return labels.get(str(league or ""), str(league or "").upper())
 
+
+# ============================================================
+# V98 - status ESPN compatível com retorno 3 ou 4 valores
+# ============================================================
+
+def v98_status_espn_seguro(comp):
+    try:
+        res = espn_formatar_status(comp)
+
+        if isinstance(res, tuple):
+            if len(res) == 4:
+                return res
+            if len(res) == 3:
+                label, dt_br, ao_vivo = res
+                ordem = 0 if ao_vivo else 1
+                if str(label).lower().startswith("final"):
+                    ordem = 2
+                return label, dt_br, ao_vivo, ordem
+    except Exception as e:
+        print("V98 status ESPN erro:", repr(e))
+
+    return "", None, False, 9
+
 # ============================================================
 # V94 - Busca manual de jogos ESPN com cache
 # ============================================================
@@ -5456,7 +5479,7 @@ def v94_cache_jogos_espn(forcar=False):
                     if len(nomes) < 2:
                         continue
 
-                    label, dt_br, ao_vivo, ordem = espn_formatar_status(comp)
+                    label, dt_br, ao_vivo, ordem = v98_status_espn_seguro(comp)
                     jogo_nome = f"{nomes[0]} x {nomes[1]}"
 
                     jogos.append({
@@ -5475,7 +5498,7 @@ def v94_cache_jogos_espn(forcar=False):
                     })
 
             except Exception as e:
-                print("V94 cache ESPN erro:", sport, league, repr(e))
+                print("V98 cache ESPN liga ignorada:", sport, league, repr(e))
                 continue
 
     seen = set()
