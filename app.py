@@ -218,7 +218,7 @@ API_KEY = CONFIG.get("API_KEY", "")
 
 print("CONFIG PATH:", CONFIG_PATH)
 print("API KEY:", API_KEY)
-print("VERSAO_CARREGADA: OCR_CLIENTE_V106_AJUSTES_FINAIS")
+print("VERSAO_CARREGADA: OCR_CLIENTE_V107_BUSCA_INTELIGENTE_MULTIPLAS")
 
 if os.name == "nt":
     tess_path = r"C:\Program Files\Tesseract-OCR\tesseract.exe"
@@ -5672,6 +5672,135 @@ def v97_garantir_cache_espn_minimo():
 
 
 
+
+# ============================================================
+# V107 - busca inteligente e múltiplas
+# ============================================================
+
+def v107_normalizar_busca_time(q):
+    qn = espn_normalizar_nome(q or "")
+    mapa = {
+        "real": "real madrid", "real madrid": "real madrid",
+        "psg": "paris saint germain", "paris": "paris saint germain",
+        "bayern": "bayern munich", "bayern de munique": "bayern munich", "bayern munique": "bayern munich",
+        "flu": "fluminense", "flumi": "fluminense",
+        "cortinas": "corinthians", "curintia": "corinthians",
+        "shaktar": "shakhtar donetsk", "atletico de madrid": "atletico madrid",
+        "palmeiras sp": "palmeiras", "vasco": "vasco da gama",
+    }
+    return mapa.get(qn, qn)
+
+def v107_tokens_fortes(q):
+    qn = v107_normalizar_busca_time(q)
+    stop = {"x","vs","v","de","da","do","dos","das","fc","sc","sp","cf","club","jogo","time","times","futebol","basquete"}
+    return [t for t in qn.split() if len(t) >= 3 and t not in stop]
+
+def v107_liga_peso(league):
+    pesos = {"uefa.champions":100, "conmebol.libertadores":95, "eng.1":90, "esp.1":90, "ita.1":88, "ger.1":86, "fra.1":84, "bra.1":82, "conmebol.sudamericana":80, "nba":88}
+    return pesos.get(str(league or ""), 30)
+
+def v107_score_jogo_busca(q, item):
+    jogo = item.get("jogo", "") if isinstance(item, dict) else str(item or "")
+    jn = espn_normalizar_nome(jogo)
+    qn = v107_normalizar_busca_time(q)
+    tokens = v107_tokens_fortes(q)
+    if not qn:
+        return 1
+    score = 0
+    if qn in jn:
+        score += 1000
+    if tokens and all(t in jn for t in tokens):
+        score += 650
+    for t in tokens:
+        if t in jn:
+            score += 80
+    if len(tokens) >= 2 and not all(t in jn for t in tokens):
+        score -= 500
+    if isinstance(item, dict):
+        score += v107_liga_peso(item.get("league")) // 3
+    return score
+
+def v107_jogo_match_obrigatorio(q, item):
+    qn = v107_normalizar_busca_time(q)
+    if not qn:
+        return True
+    jogo = item.get("jogo", "") if isinstance(item, dict) else str(item or "")
+    jn = espn_normalizar_nome(jogo)
+    tokens = v107_tokens_fortes(q)
+    if qn in jn:
+        return True
+    if len(tokens) >= 2:
+        return all(t in jn for t in tokens)
+    if len(tokens) == 1:
+        return tokens[0] in jn
+    return True
+
+def v107_split_multiplas_texto(texto):
+    txt = str(texto or "").strip()
+    if not txt:
+        return []
+    partes = re.split(r"\s*(?:/|\||,|\n|\+)\s*", txt)
+    limpas = []
+    for p in partes:
+        p = p.strip(" -–—")
+        if len(p) < 5:
+            continue
+        if re.search(r"\s+(x|vs\\.?|v\\.?)\s+", p, re.I) or re.search(r"\s+[–—-]\s+", p):
+            limpas.append(p)
+    return limpas
+
+def v107_criar_jogos_relacionados(jogo, aposta=""):
+    candidatos = []
+    candidatos.extend(v107_split_multiplas_texto(jogo))
+    candidatos.extend(v107_split_multiplas_texto(aposta))
+    vistos = set()
+    relacionados = []
+    for c in candidatos:
+        key = espn_normalizar_nome(c)
+        if key in vistos:
+            continue
+        vistos.add(key)
+        item = {"jogo": c, "horario_jogo": "", "horario_jogo_iso": "", "status_jogo": "", "ao_vivo": False, "league": ""}
+        try:
+            info = espn_buscar_jogo(c, "Futebol", "")
+            if info:
+                item.update({
+                    "jogo": info.get("jogo_oficial") or info.get("jogo") or c,
+                    "horario_jogo": info.get("horario_jogo", ""),
+                    "horario_jogo_iso": info.get("horario_jogo_iso", ""),
+                    "status_jogo": info.get("status_jogo", ""),
+                    "ao_vivo": bool(info.get("ao_vivo", False)),
+                    "league": info.get("league", ""),
+                })
+        except Exception as e:
+            print("v107_criar_jogos_relacionados erro:", repr(e))
+        relacionados.append(item)
+    return relacionados
+
+def v107_aplicar_multiplas_na_bet(b):
+    try:
+        relacionados = v107_criar_jogos_relacionados(b.get("jogo", ""), b.get("aposta", ""))
+        if relacionados and len(relacionados) >= 2:
+            b["jogos_relacionados"] = relacionados
+            b["qtd_jogos_relacionados"] = len(relacionados)
+            horarios = [j.get("horario_jogo_iso") for j in relacionados if j.get("horario_jogo_iso")]
+            if horarios:
+                horarios.sort()
+                b["horario_jogo_iso"] = horarios[0]
+                try:
+                    dt = datetime.fromisoformat(horarios[0])
+                    b["horario_jogo"] = dt.strftime("%d/%m %H:%M")
+                    b["status_jogo"] = f"{len(relacionados)} jogos • próximo {dt.strftime('%d/%m %H:%M')}"
+                except Exception:
+                    b["status_jogo"] = f"{len(relacionados)} jogos"
+            else:
+                b["status_jogo"] = f"{len(relacionados)} jogos"
+        return b
+    except Exception as e:
+        print("v107_aplicar_multiplas erro:", repr(e))
+        return b
+
+
 @app.route("/api/status_jogos_cache")
 @login_required
 @assinatura_required
@@ -5707,9 +5836,9 @@ def api_buscar_jogos():
     if q:
         scored = []
         for j in jogos:
-            if not v106_jogo_tem_time_buscado(q, j.get("jogo", "")):
+            if not v107_jogo_match_obrigatorio(q, j):
                 continue
-            s = v94_score_busca_jogo(q, j.get("jogo", ""))
+            s = v107_score_jogo_busca(q, j)
             if s >= 35:
                 item = dict(j)
                 item["score"] = s
@@ -6018,6 +6147,7 @@ def adicionar_ajax():
 
         espn_aplicar_info_na_aposta(bet)
         registrar_nova_aposta_saldo(bet)
+        v107_aplicar_multiplas_na_bet(bet)
         dados["bets"].append(bet)
         salvar()
 
@@ -6042,6 +6172,7 @@ def index():
             bet["source_original_id"] = request.form.get("source_original_id", "") or bet.get("source_original_id", "")
         espn_aplicar_info_na_aposta(bet)
         registrar_nova_aposta_saldo(bet)
+        v107_aplicar_multiplas_na_bet(bet)
         dados["bets"].append(bet)
         salvar()
         return redirect("/")
@@ -6590,6 +6721,7 @@ def calculadora_planilhar():
             }
 
             registrar_nova_aposta_saldo(bet)
+            v107_aplicar_multiplas_na_bet(bet)
             dados["bets"].append(bet)
             salvas += 1
 

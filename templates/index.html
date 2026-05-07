@@ -749,7 +749,7 @@ document.addEventListener("DOMContentLoaded", ()=>{
                     data-horario="{{ b.horario_jogo_iso if b.horario_jogo_iso is defined else '' }}"
                     data-status-jogo="{{ espn_status_label_bet(b) if espn_status_label_bet is defined else (b.get('status_jogo') or b.get('horario_jogo') or '') }}"
                     data-status-class="{{ espn_status_class_bet(b) if espn_status_class_bet is defined else ('live' if b.get('ao_vivo') else '') }}"
-                    data-data="{{ b.data }}">
+                    data-data="{{ b.data }}" data-jogos-relacionados='{{ (b.jogos_relacionados if b.jogos_relacionados is defined else [])|tojson }}'>
                 <td class="data-cell">{{ b.data }}</td>
                 <td class="casa-cell">{{ b.casa }}</td>
                 <td class="esporte-cell">{{ b.esporte }}</td>
@@ -2215,156 +2215,78 @@ window.v92ToggleDay = v92ToggleDay
 
 
 
-<script id="v106-dropdown-campo-jogo-js">
+
+
+
+<script id="v107-dropdown-campo-jogo-js">
 (function(){
     let timer = null;
-
-    function esc(v){
-        return String(v ?? "")
-            .replaceAll("&","&amp;").replaceAll("<","&lt;").replaceAll(">","&gt;").replaceAll('"',"&quot;");
+    function esc(v){ return String(v ?? "").replaceAll("&","&amp;").replaceAll("<","&lt;").replaceAll(">","&gt;").replaceAll('"',"&quot;"); }
+    function norm(v){ return String(v || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, ""); }
+    function queryNorm(q){
+        const aliases = {"real":"real madrid","psg":"paris saint germain","paris":"paris saint germain","bayern":"bayern munich","bayern munique":"bayern munich","bayern de munique":"bayern munich","flumi":"fluminense","flu":"fluminense","cortinas":"corinthians","shaktar":"shakhtar donetsk"};
+        const s = norm(q).trim();
+        return aliases[s] || s;
     }
-
-    function norm(v){
-        return String(v || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+    function tokensBusca(q){ return queryNorm(q).split(/[^a-z0-9]+/).filter(t => t.length >= 3 && !["jogo","time","times","casa","odd","valor","aposta","futebol","basquete","club"].includes(t)); }
+    function scoreLocal(q, jogo){
+        const qn = queryNorm(q), jn = norm(jogo), toks = tokensBusca(q);
+        if(!qn) return 1;
+        let score = 0;
+        if(jn.includes(qn)) score += 1000;
+        if(toks.length && toks.every(t => jn.includes(t))) score += 600;
+        toks.forEach(t => { if(jn.includes(t)) score += 70; });
+        if(toks.length >= 2 && !toks.every(t => jn.includes(t))) score -= 500;
+        return score;
     }
-
-    function tokensBusca(q){
-        let s = norm(q);
-        const aliases = {
-            "flumi":"fluminense", "flu":"fluminense", "psg":"paris",
-            "bayern de munique":"bayern", "bayern munique":"bayern",
-            "shaktar":"shakhtar"
-        };
-        s = aliases[s] || s;
-        return s.split(/[^a-z0-9]+/).filter(t => t.length >= 3 && !["jogo","time","times","casa","odd","valor","aposta","futebol","basquete"].includes(t));
-    }
-
     function isGameInput(input){
         if(!input || input.tagName !== "INPUT") return false;
-        const id = input.id || "";
-        const name = (input.name || "").toLowerCase();
-        const ph = (input.getAttribute("placeholder") || "").toLowerCase();
-
-        if(name === "jogo" || name.includes("jogo")) return true;
-        if(ph.includes("jogo") || ph.includes("times")) return true;
-        if(/^j\d+$/.test(id)) return true;
-
-        return false;
+        const id = input.id || "", name = (input.name || "").toLowerCase(), ph = (input.getAttribute("placeholder") || "").toLowerCase();
+        return name === "jogo" || name.includes("jogo") || ph.includes("jogo") || ph.includes("times") || /^j\d+$/.test(id);
     }
-
     function getSport(input){
         try{
-            const id = input.id || "";
-            const n = id.match(/^j(\d+)$/)?.[1];
-            if(n !== undefined){
-                const esp = document.getElementById(`e${n}`);
-                if(esp) return esp.value || "";
-            }
-
-            const form = input.closest("form");
-            if(form){
-                const esp = form.querySelector('input[name="esporte"]');
-                if(esp) return esp.value || "";
-            }
-
-            const card = input.closest(".preview-card");
-            if(card){
-                const esp = card.querySelector('input[id^="e"]');
-                if(esp) return esp.value || "";
-            }
+            const id = input.id || "", n = id.match(/^j(\d+)$/)?.[1];
+            if(n !== undefined){ const esp = document.getElementById(`e${n}`); if(esp) return esp.value || ""; }
+            const form = input.closest("form"); if(form){ const esp = form.querySelector('input[name="esporte"]'); if(esp) return esp.value || ""; }
+            const card = input.closest(".preview-card"); if(card){ const esp = card.querySelector('input[id^="e"]'); if(esp) return esp.value || ""; }
         }catch(e){}
         return "";
     }
-
     function wrapInput(input){
-        if(input.parentElement && input.parentElement.classList.contains("game-autocomplete-wrap")){
-            return input.parentElement;
-        }
-        const wrap = document.createElement("div");
-        wrap.className = "game-autocomplete-wrap";
-        input.parentNode.insertBefore(wrap, input);
-        wrap.appendChild(input);
-        return wrap;
+        if(input.parentElement && input.parentElement.classList.contains("game-autocomplete-wrap")) return input.parentElement;
+        const wrap = document.createElement("div"); wrap.className = "game-autocomplete-wrap"; input.parentNode.insertBefore(wrap, input); wrap.appendChild(input); return wrap;
     }
-
-    function box(input){
-        const wrap = wrapInput(input);
-        let b = wrap.querySelector(".game-autocomplete-dropdown");
-        if(!b){
-            b = document.createElement("div");
-            b.className = "game-autocomplete-dropdown";
-            wrap.appendChild(b);
-        }
-        return b;
-    }
-
-    function closeAll(){
-        document.querySelectorAll(".game-autocomplete-dropdown.open").forEach(b => b.classList.remove("open"));
-    }
-
-    function show(input, html){
-        const b = box(input);
-        b.innerHTML = html;
-        b.classList.add("open");
-    }
-
+    function box(input){ const wrap = wrapInput(input); let b = wrap.querySelector(".game-autocomplete-dropdown"); if(!b){ b = document.createElement("div"); b.className = "game-autocomplete-dropdown"; wrap.appendChild(b); } return b; }
+    function closeAll(){ document.querySelectorAll(".game-autocomplete-dropdown.open").forEach(b => b.classList.remove("open")); }
+    function show(input, html){ const b = box(input); b.innerHTML = html; b.classList.add("open"); }
     function fmt(horario, status){
-        const src = horario || status || "";
-        let m = String(src).match(/(\d{2})\/(\d{2})\/(\d{4})\s+(\d{2}):(\d{2})/);
+        const src = horario || status || ""; let m = String(src).match(/(\d{2})\/(\d{2})\/(\d{4})\s+(\d{2}):(\d{2})/);
         if(m) return {data:`${m[1]}/${m[2]}`, hora:`${m[4]}:${m[5]}`};
         m = String(src).match(/(\d{2})\/(\d{2})\s+(\d{1,2}):(\d{2})/);
         if(m) return {data:`${m[1]}/${m[2]}`, hora:`${String(m[3]).padStart(2,"0")}:${m[4]}`};
         if(String(status || "").toLowerCase().includes("ao vivo")) return {data:"AO VIVO", hora:"LIVE"};
         return {data:"DATA", hora: status || ""};
     }
-
     async function buscar(input){
         if(!isGameInput(input)) return;
-        const q = input.value || "";
-        const esporte = encodeURIComponent(getSport(input));
+        const q = input.value || "", esporte = encodeURIComponent(getSport(input));
         show(input, `<div class="game-autocomplete-loading">Buscando jogos...</div>`);
-
         try{
             const r = await fetch(`/api/buscar_jogos?q=${encodeURIComponent(q)}&esporte=${esporte}`, {cache:"no-store"});
             const data = await r.json();
             let jogos = data.jogos || [];
-
             const toks = tokensBusca(q);
             if(toks.length){
-                jogos = jogos.filter(j => {
-                    const nome = norm(j.jogo || "");
-                    return toks.some(t => nome.includes(t));
-                });
+                jogos = jogos.map(j => ({...j, _localScore: scoreLocal(q, j.jogo || "")}))
+                    .filter(j => j._localScore > 0)
+                    .sort((a,b) => (b._localScore - a._localScore) || String(a.horario_jogo_iso||"").localeCompare(String(b.horario_jogo_iso||"")));
             }
-
-            if(!jogos.length){
-                show(input, `<div class="game-autocomplete-empty">Nenhum jogo encontrado.</div>`);
-                return;
-            }
-
-            const html = jogos.map(j => {
-                const status = j.status_jogo || j.horario_jogo || "";
-                const p = fmt(j.horario_jogo, status);
-                const liga = j.liga_nome || j.league || "";
-                return `
-                    <button type="button" class="game-autocomplete-option"
-                        data-jogo="${esc(j.jogo)}"
-                        data-horario="${esc(j.horario_jogo_iso || "")}"
-                        data-status="${esc(status)}"
-                        data-live="${j.ao_vivo ? "1" : "0"}">
-                        <span class="game-autocomplete-date">
-                            <small>${esc(p.data)}</small>
-                            <strong>${esc(p.hora)}</strong>
-                        </span>
-                        <span class="game-autocomplete-main">
-                            <small>${esc(liga)}</small>
-                            <strong>${esc(j.jogo)}</strong>
-                        </span>
-                    </button>`;
-            }).join("");
-
-            show(input, html);
-
+            if(!jogos.length){ show(input, `<div class="game-autocomplete-empty">Nenhum jogo encontrado.</div>`); return; }
+            show(input, jogos.slice(0, 12).map(j => {
+                const status = j.status_jogo || j.horario_jogo || "", p = fmt(j.horario_jogo, status), liga = j.liga_nome || j.league || "";
+                return `<button type="button" class="game-autocomplete-option" data-jogo="${esc(j.jogo)}" data-horario="${esc(j.horario_jogo_iso || "")}" data-status="${esc(status)}" data-live="${j.ao_vivo ? "1" : "0"}"><span class="game-autocomplete-date"><small>${esc(p.data)}</small><strong>${esc(p.hora)}</strong></span><span class="game-autocomplete-main"><small>${esc(liga)}</small><strong>${esc(j.jogo)}</strong></span></button>`;
+            }).join(""));
             box(input).querySelectorAll(".game-autocomplete-option").forEach(btn => {
                 btn.addEventListener("mousedown", e => e.preventDefault());
                 btn.onclick = () => {
@@ -2373,65 +2295,54 @@ window.v92ToggleDay = v92ToggleDay
                     input.dataset.statusJogo = btn.dataset.status || "";
                     input.dataset.aoVivo = btn.dataset.live || "0";
                     input.dataset.partidaSelecionada = "1";
-
-                    const hidden = document.getElementById("horarioJogo");
-                    if(hidden && input.name === "jogo") hidden.value = input.dataset.horario || "";
-
-                    input.dispatchEvent(new Event("input", {bubbles:true}));
-                    input.dispatchEvent(new Event("change", {bubbles:true}));
-                    closeAll();
-
-                    if(typeof v72Toast === "function") v72Toast("Partida selecionada");
+                    const hidden = document.getElementById("horarioJogo"); if(hidden && input.name === "jogo") hidden.value = input.dataset.horario || "";
+                    input.dispatchEvent(new Event("input", {bubbles:true})); input.dispatchEvent(new Event("change", {bubbles:true}));
+                    closeAll(); if(typeof v72Toast === "function") v72Toast("Partida selecionada");
                 };
             });
-        }catch(e){
-            console.error("Autocomplete jogos erro:", e);
-            show(input, `<div class="game-autocomplete-empty">Erro ao buscar jogos.</div>`);
-        }
+        }catch(e){ console.error("Autocomplete jogos erro:", e); show(input, `<div class="game-autocomplete-empty">Erro ao buscar jogos.</div>`); }
     }
-
     function attach(){
         document.querySelectorAll("input").forEach(input => {
             if(!isGameInput(input)) return;
             if(input.dataset.gameAutocompleteReady === "1") return;
-            input.dataset.gameAutocompleteReady = "1";
-            wrapInput(input);
+            input.dataset.gameAutocompleteReady = "1"; wrapInput(input);
             input.addEventListener("focus", () => buscar(input));
-            input.addEventListener("input", () => {
-                clearTimeout(timer);
-                timer = setTimeout(() => buscar(input), 250);
-            });
+            input.addEventListener("input", () => { clearTimeout(timer); timer = setTimeout(() => buscar(input), 250); });
         });
     }
-
-    document.addEventListener("click", e => {
-        if(e.target.closest(".game-autocomplete-wrap")) return;
-        closeAll();
-    });
-
-    document.addEventListener("keydown", e => {
-        if(e.key === "Escape") closeAll();
-    });
-
+    document.addEventListener("click", e => { if(e.target.closest(".game-autocomplete-wrap")) return; closeAll(); });
+    document.addEventListener("keydown", e => { if(e.key === "Escape") closeAll(); });
     document.addEventListener("submit", function(e){
-        const form = e.target;
-        if(!form || form.id !== "manualForm") return;
-        const aposta = form.querySelector('input[name="aposta"]');
-        const jogo = form.querySelector('input[name="jogo"]');
-        if(aposta && jogo && !aposta.value.trim()){
-            aposta.value = jogo.value.trim() || "Aposta manual";
-        }
+        const form = e.target; if(!form || form.id !== "manualForm") return;
+        const aposta = form.querySelector('input[name="aposta"]'), jogo = form.querySelector('input[name="jogo"]');
+        if(aposta && jogo && !aposta.value.trim()) aposta.value = jogo.value.trim() || "Aposta manual";
     }, true);
-
-    document.addEventListener("DOMContentLoaded", () => {
-        attach();
-        setInterval(attach, 500);
-        fetch("/api/status_jogos_cache", {cache:"no-store"}).catch(()=>{});
-    });
-
+    document.addEventListener("DOMContentLoaded", () => { attach(); setInterval(attach, 500); fetch("/api/status_jogos_cache", {cache:"no-store"}).catch(()=>{}); });
     window.gameAutocompleteAttach = attach;
 })();
 </script>
 
+
+<script id="v107-render-multiplas-js">
+document.addEventListener("DOMContentLoaded", () => {
+    document.querySelectorAll("tr.bet-row").forEach(row => {
+        try{
+            const raw = row.dataset.jogosRelacionados || "";
+            if(!raw) return;
+            const jogos = JSON.parse(raw);
+            if(!Array.isArray(jogos) || jogos.length < 2) return;
+            const cell = row.querySelector(".jogo-cell");
+            if(!cell || cell.querySelector(".multi-games-badge")) return;
+            const badge = document.createElement("span");
+            badge.className = "multi-games-badge";
+            badge.textContent = `${jogos.length} jogos`;
+            badge.title = jogos.map(j => `${j.jogo || ""} ${j.status_jogo || j.horario_jogo || ""}`).join("\n");
+            cell.appendChild(document.createTextNode(" "));
+            cell.appendChild(badge);
+        }catch(e){}
+    });
+});
+</script>
 </body>
 </html>
