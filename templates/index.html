@@ -37,7 +37,7 @@ function formatarLinhaApostaNova(b){
             data-horario-jogo-iso="{{ b.horario_jogo_iso if b.horario_jogo_iso is defined else '' }}"
             data-horario-jogo="{{ b.horario_jogo if b.horario_jogo is defined else '' }}"
             data-status-jogo="{{ b.status_jogo if b.status_jogo is defined else '' }}"
-            data-ao-vivo="{{ '1' if b.ao_vivo is defined and b.ao_vivo else '0' }}">
+            data-ao-vivo="{{ '1' if b.get('ao_vivo') else '0' }}">
         <td class="data-cell">${b.data || ""}</td>
         <td class="casa-cell">${b.casa || ""}</td>
         <td class="esporte-cell">${b.esporte || ""}</td>
@@ -2349,7 +2349,10 @@ document.addEventListener("DOMContentLoaded", () => {
 });
 </script>
 
-<script id="v108-ordem-status-js">
+
+
+
+<script id="v109-ordem-status-js">
 (function(){
     function parseDateBR(txt){
         const m = String(txt || "").match(/(\d{2})\/(\d{2})\/(\d{4})\s+(\d{2}):(\d{2})/);
@@ -2357,9 +2360,21 @@ document.addEventListener("DOMContentLoaded", () => {
         return new Date(Number(m[3]), Number(m[2])-1, Number(m[1]), Number(m[4]), Number(m[5]));
     }
 
+    function rowId(row){
+        return row.dataset.id || row.getAttribute("data-id") || "";
+    }
+
+    function getIso(row){
+        return row.dataset.horarioJogoIso || row.dataset.horario || "";
+    }
+
+    function getHorarioLabel(row){
+        return row.dataset.horarioJogo || row.dataset.statusJogo || "";
+    }
+
     function fmtGameDate(row){
-        const iso = row.dataset.horarioJogoIso || row.dataset.horario || "";
-        const label = row.dataset.horarioJogo || row.dataset.statusJogo || "";
+        const iso = getIso(row);
+        const label = getHorarioLabel(row);
 
         if(iso){
             const d = new Date(iso);
@@ -2376,19 +2391,18 @@ document.addEventListener("DOMContentLoaded", () => {
             return {main: label, sub: "Jogo"};
         }
 
-        const firstCellText = row.children?.[0]?.innerText || "";
-        return {main: firstCellText.split("\n")[0] || "-", sub: "Aposta"};
+        const txt = row.children?.[0]?.innerText || "";
+        return {main: txt.split("\n")[0] || "-", sub: "Aposta"};
     }
 
     function ordemRow(row){
-        const iso = row.dataset.horarioJogoIso || row.dataset.horario || "";
+        const iso = getIso(row);
         if(iso){
             const d = new Date(iso);
             if(!isNaN(d.getTime())) return d.getTime();
         }
 
-        const text = row.children?.[0]?.innerText || "";
-        const d2 = parseDateBR(text);
+        const d2 = parseDateBR(row.children?.[0]?.innerText || "");
         if(d2) return d2.getTime();
 
         return 9999999999999;
@@ -2396,13 +2410,13 @@ document.addEventListener("DOMContentLoaded", () => {
 
     function statusClassFromRow(row){
         const raw = String(row.dataset.statusJogo || "").toLowerCase();
-        const iso = row.dataset.horarioJogoIso || row.dataset.horario || "";
+        const iso = getIso(row);
 
         if(row.dataset.aoVivo === "1" || raw.includes("ao vivo") || raw.includes("live")){
             return {label:"Ao vivo", cls:"live"};
         }
 
-        if(raw.includes("final")){
+        if(raw.includes("final") || raw.includes("encerr")){
             return {label:"Finalizado", cls:"finished"};
         }
 
@@ -2419,6 +2433,8 @@ document.addEventListener("DOMContentLoaded", () => {
                 if(d.toDateString() === today.toDateString()){
                     return {label:`Hoje ${String(d.getHours()).padStart(2,"0")}:${String(d.getMinutes()).padStart(2,"0")}`, cls:"today"};
                 }
+
+                return {label:`${String(d.getDate()).padStart(2,"0")}/${String(d.getMonth()+1).padStart(2,"0")} ${String(d.getHours()).padStart(2,"0")}:${String(d.getMinutes()).padStart(2,"0")}`, cls:"scheduled"};
             }
         }
 
@@ -2442,7 +2458,7 @@ document.addEventListener("DOMContentLoaded", () => {
             const jogoCell = row.querySelector(".jogo-cell") || row.children?.[3];
             if(!jogoCell) return;
 
-            jogoCell.querySelectorAll(".game-status-pill-v108").forEach(e => e.remove());
+            jogoCell.querySelectorAll(".game-status-pill-v108, .game-time").forEach(e => e.remove());
 
             const st = statusClassFromRow(row);
             if(!st.label) return;
@@ -2466,49 +2482,26 @@ document.addEventListener("DOMContentLoaded", () => {
         rows.forEach(r => tbody.appendChild(r));
     }
 
-    async function syncStatusFromServer(){
-        try{
-            const r = await fetch("/api/ordenar_status_jogos", {method:"POST", cache:"no-store"});
-            const data = await r.json();
-            const byId = {};
-            (data.rows || []).forEach(x => { if(x.id) byId[x.id] = x; });
-
-            document.querySelectorAll("tr.bet-row").forEach(row => {
-                const id = row.dataset.id || row.getAttribute("data-id") || "";
-                const x = byId[id];
-                if(!x) return;
-                if(x.horario_jogo_iso) row.dataset.horarioJogoIso = x.horario_jogo_iso;
-                if(x.horario_jogo) row.dataset.horarioJogo = x.horario_jogo;
-                if(x.status_label) row.dataset.statusJogo = x.status_label;
-                if(x.status_class === "live") row.dataset.aoVivo = "1";
-            });
-        }catch(e){
-            console.warn("V108 status sync falhou", e);
-        }
-    }
-
-    async function applyV108(){
-        await syncStatusFromServer();
+    function applyV109(){
         renderDateCells();
         renderGameStatusBadges();
         sortRowsByGameTime();
     }
 
     document.addEventListener("DOMContentLoaded", () => {
-        applyV108();
-        setInterval(applyV108, 60000);
+        applyV109();
+        setInterval(applyV109, 60000);
     });
 
-    // Quando salvar preview/adicionar aposta criar linha nova, aplica após pequenos delays.
     document.addEventListener("click", e => {
         const txt = String(e.target?.innerText || "").toLowerCase();
         if(txt.includes("salvar apostas") || txt.includes("adicionar")){
-            setTimeout(applyV108, 800);
-            setTimeout(applyV108, 1800);
+            setTimeout(applyV109, 800);
+            setTimeout(applyV109, 1800);
         }
     });
 
-    window.v108ApplyOrderStatus = applyV108;
+    window.v109ApplyOrderStatus = applyV109;
 })();
 </script>
 
