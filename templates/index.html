@@ -765,7 +765,7 @@ document.addEventListener("DOMContentLoaded", ()=>{
                     data-horario="{{ (b.horario_jogo_iso || "") }}"
                     data-status-jogo="{{ espn_status_label_bet(b) if espn_status_label_bet is defined else (b.get('status_jogo') or b.get('horario_jogo') or '') }}"
                     data-status-class="{{ espn_status_class_bet(b) if espn_status_class_bet is defined else ('live' if b.ao_vivo else '') }}"
-                    data-data="{{ b.data }}" data-jogos-relacionados='{{ b.jogos_relacionados|default([], true)|tojson }}'>
+                    data-data="{{ b.data }}" data-jogos-relacionados='[]'>
                 <td class="data-cell">{{ b.data }}</td>
                 <td class="casa-cell">{{ b.casa }}</td>
                 <td class="esporte-cell">{{ b.esporte }}</td>
