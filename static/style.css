@@ -3615,3 +3615,104 @@ table {
     border: 0 !important;
     cursor: pointer !important;
 }
+
+
+/* V102 - busca no campo jogo real do layout */
+#v101-jogos-dropdown,
+#v100-jogos-dropdown,
+#v99-jogos-dropdown,
+#v98-jogos-dropdown,
+.v95-partida-picker,
+.v94-jogos-dropdown,
+.v96-jogos-dropdown {
+    display: none !important;
+}
+
+#v102-jogos-dropdown {
+    position: fixed !important;
+    z-index: 2147483647 !important;
+    background: #071020 !important;
+    border: 1px solid rgba(96,165,250,.40) !important;
+    border-radius: 14px !important;
+    box-shadow: 0 22px 70px rgba(0,0,0,.68) !important;
+    overflow-y: auto !important;
+    overflow-x: hidden !important;
+    display: none;
+    max-height: 360px !important;
+    padding: 6px !important;
+}
+
+.v102-game-option {
+    width: 100% !important;
+    display: grid !important;
+    grid-template-columns: 68px 1fr !important;
+    gap: 12px !important;
+    text-align: left !important;
+    padding: 10px !important;
+    border-radius: 12px !important;
+    border: 1px solid transparent !important;
+    background: transparent !important;
+    color: #fff !important;
+    cursor: pointer !important;
+}
+
+.v102-game-option:hover {
+    background: rgba(37,99,235,.24) !important;
+    border-color: rgba(96,165,250,.36) !important;
+}
+
+.v102-game-date {
+    display: flex !important;
+    flex-direction: column !important;
+    align-items: center !important;
+    justify-content: center !important;
+    color: #8aa4c7 !important;
+    font-weight: 800 !important;
+    font-size: 11px !important;
+    border-radius: 8px !important;
+    background: rgba(15,23,42,.65) !important;
+    min-height: 48px !important;
+}
+
+.v102-game-date strong {
+    color: #3b82f6 !important;
+    font-size: 16px !important;
+}
+
+.v102-game-main {
+    display: flex !important;
+    flex-direction: column !important;
+    justify-content: center !important;
+    min-width: 0 !important;
+}
+
+.v102-game-main small {
+    color: #8aa4c7 !important;
+    font-size: 10px !important;
+    font-weight: 900 !important;
+    text-transform: uppercase !important;
+}
+
+.v102-game-main strong {
+    color: #e5e7eb !important;
+    font-size: 14px !important;
+    white-space: normal !important;
+}
+
+.v102-loading,
+.v102-empty {
+    padding: 14px !important;
+    color: #bfdbfe !important;
+    font-size: 12px !important;
+    font-weight: 800 !important;
+}
+
+.v102-empty button {
+    margin-top: 8px !important;
+    padding: 7px 10px !important;
+    border-radius: 8px !important;
+    background: #2563eb !important;
+    color: #fff !important;
+    border: 0 !important;
+    cursor: pointer !important;
+}
