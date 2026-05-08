@@ -37,7 +37,7 @@ function formatarLinhaApostaNova(b){
         <td class="data-cell">${b.data || ""}</td>
         <td class="casa-cell">${b.casa || ""}</td>
         <td class="esporte-cell">${b.esporte || ""}</td>
-        <td class="jogo-cell">{{ b.get("jogo","-") }}</td>
+        <td class="jogo-cell"></td>
         <td class="aposta-cell" title="${b.aposta || ""}">${apostaVisual}</td>
         <td class="odd-cell">${b.odd || ""}</td>
         <td class="valor-cell">${valor}</td>
@@ -200,7 +200,7 @@ function formatarLinhaApostaNovaV39(b){
         <td class="data-cell">${b.data || ""}</td>
         <td class="casa-cell">${b.casa || ""}</td>
         <td class="esporte-cell">${b.esporte || ""}</td>
-        <td class="jogo-cell">{{ b.get("jogo","-") }}</td>
+        <td class="jogo-cell"></td>
         <td class="aposta-cell" title="${b.aposta || ""}">${apostaVisual}</td>
         <td class="odd-cell">${b.odd || ""}</td>
         <td class="valor-cell">${valor}</td>
@@ -758,21 +758,98 @@ document.addEventListener("DOMContentLoaded", ()=>{
         </thead>
 
         <tbody>
+            
+                    </div>
+                </div>
+            </div>
+
+            <div class="custom-filter">
+                <button type="button" class="custom-filter-btn" onclick="toggleDropdown('sportDropdown', 'sportSearch')">
+                    🎯 Buscar esporte
+                </button>
+
+                <div class="custom-dropdown" id="sportDropdown">
+                    <input 
+                        type="text" 
+                        id="sportSearch" 
+                        class="dropdown-search"
+                        placeholder="Buscar..."
+                        onkeyup="filtrarLista('.sport-linha', 'sportSearch')"
+                    >
+
+                    <label class="dropdown-item select-visible">
+                        <input type="checkbox" onchange="selecionarVisiveis('.sport-linha', this.checked)">
+                        <span>Selecionar Visíveis</span>
+                    </label>
+
+                    <div class="dropdown-list">
+                        {% for esporte in esportes %}
+                        <label class="dropdown-item sport-linha">
+                            <input 
+                                type="checkbox" 
+                                value="{{ esporte|lower }}"
+                                onchange="filtrarApostas()"
+                            >
+                            <span>{{ esporte }}</span>
+                        </label>
+                        {% endfor %}
+                    </div>
+                </div>
+            </div>
+
+            <input 
+                type="number" 
+                id="minValue" 
+                class="small-filter" 
+                placeholder="Valor mín."
+                onkeyup="filtrarApostas()"
+                onchange="filtrarApostas()"
+            >
+
+            <input 
+                type="number" 
+                id="maxValue" 
+                class="small-filter" 
+                placeholder="Valor máx."
+                onkeyup="filtrarApostas()"
+                onchange="filtrarApostas()"
+            >
+        </div>
+    </div>
+
+    <table>
+        <thead>
+            <tr>
+                <th id="gameDateSortHeader" class="sortable-game-date">Jogo/Data <span id="gameDateSortArrow">↑</span></th>
+                <th>Casa</th>
+                <th>Esporte</th>
+                <th>Jogo</th>
+                <th>Aposta</th>
+                <th>Odd</th>
+                <th>Valor</th>
+                <th>Status</th>
+                <th>Lucro</th>
+                <th>API</th>
+                <th>Ações</th>
+            </tr>
+        </thead>
+
+        <tbody>
             {% for b in bets %}
             <tr class="bet-row"
-                    data-id="{{ b.id }}"
-                    data-jogo="{{ b.jogo }}"
+                    data-id=""
+                    data-jogo=""
                     data-horario=""""
-                    data-status-jogo="{{ espn_status_label_bet(b) if espn_status_label_bet is defined else (b.get('status_jogo') or b.get('horario_jogo') or '') }}"
-                    data-status-class="{{ espn_status_class_bet(b) if espn_status_class_bet is defined else ('live' if b.ao_vivo else '') }}"
-                    data-data="{{ b.data }}" data-jogos-relacionados='[]'>
-                <td class="data-cell">{{ b.data }}</td>
-                <td class="casa-cell">{{ b.casa }}</td>
-                <td class="esporte-cell">{{ b.esporte }}</td>
-                <td class="jogo-cell">{{ b.get("jogo","-") }}</td>
-                <td class="aposta-cell">{{ b.aposta_display if b.aposta_display is defined else b.aposta }}</td>
-                <td class="odd-cell">{{ b.odd }}</td>
-                <td class="valor-cell">{{ "%.2f"|format(b.valor) }}</td>
+                    data-status-jogo=""
+                    data-status-class=""
+                    data-data="" data-jogos-relacionados='[]'>
+                <td class="data-cell"></td>
+                <td class="casa-cell"></td>
+                <td class="esporte-cell"></td>
+                <td class="jogo-cell"></td>
+                <td class="aposta-cell"></td>
+                <td class="odd-cell"></td>
+                <td class="valor-cell"></td>
 
                 <td class="status-cell">
                     {% if b.estado == "ganha" %}
@@ -786,23 +863,23 @@ document.addEventListener("DOMContentLoaded", ()=>{
                     {% endif %}
                 </td>
 
-                <td class="{{ 'green-text' if b.lucro > 0 else 'red-text' if b.lucro < 0 else '' }}">
-                    R$ {{ "%.2f"|format(b.lucro) }}
+                <td class="">
+                    R$ 
                 </td>
 
-                <td class="api-cell">{{ b.api_status }}</td>
+                <td class="api-cell"></td>
 
                 <td class="actions">
-                    <a href="/resultado/{{ b.id }}/ganha"><button class="green">✔</button></a>
-                    <a href="/resultado/{{ b.id }}/perdida"><button class="red">✖</button></a>
-                    <a href="/resultado/{{ b.id }}/anulada"><button class="gray">↺</button></a>
+                    <a href="/resultado//ganha"><button class="green">✔</button></a>
+                    <a href="/resultado//perdida"><button class="red">✖</button></a>
+                    <a href="/resultado//anulada"><button class="gray">↺</button></a>
                     <button 
                         class="blue"
                         onclick="abrirEditar(this)"
-                        data-id="{{ b.id }}"
+                        data-id=""
                         data-estado="""" data-horario=""""
                     >✎</button>
-                    <a href="/remover/{{ b.id }}"><button class="dark">🗑</button></a>
+                    <a href="/remover/"><button class="dark">🗑</button></a>
                 </td>
             </tr>
             {% endfor %}
@@ -1897,7 +1974,7 @@ function v76AddBetToTable(b){
         <td>${v76Escape(b.data || "")}</td>
         <td class="casa-cell">${v76Escape(b.casa || "")}</td>
         <td class="esporte-cell">${v76Escape(b.esporte || "")}</td>
-        <td class="jogo-cell">{{ b.get("jogo","-") }}</td>
+        <td class="jogo-cell"></td>
         <td class="aposta-cell">${v76Escape(b.aposta_display || b.aposta || "")}</td>
         <td class="odd-cell">${v76Escape(b.odd || "")}</td>
         <td class="valor-cell">${v76Escape(b.valor || "")}</td>
