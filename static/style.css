@@ -4056,3 +4056,21 @@ table {
 }
 #bancaInicialModal .modal-content { max-width: 420px !important; }
 #bancaInicialModal input { width: 100% !important; }
+
+/* V136 - separadores por dia e resumo financeiro no grupo */
+.day-separator-row-v136 td { background: linear-gradient(90deg, rgba(37,99,235,.26), rgba(15,23,42,.88)) !important; border-top: 1px solid rgba(96,165,250,.35) !important; border-bottom: 1px solid rgba(96,165,250,.20) !important; padding: 9px 12px !important; color: #dbeafe !important; font-weight: 950 !important; }
+.day-separator-row-v136 span { display: inline-flex !important; font-size: 13px !important; margin-right: 10px !important; }
+.day-separator-row-v136 strong { display: inline-flex !important; padding: 2px 8px !important; border-radius: 999px !important; background: rgba(15,23,42,.55) !important; color: #93c5fd !important; font-size: 11px !important; }
+.game-group-row-v136 td { background: rgba(15,23,42,.95) !important; border-top: 1px solid rgba(96,165,250,.22) !important; border-bottom: 1px solid rgba(96,165,250,.22) !important; padding: 7px 10px !important; }
+.group-child-v136 td:first-child { border-left: 3px solid rgba(96,165,250,.45) !important; }
+.group-highlight-v136 { background: rgba(37,99,235,.055) !important; }
+.group-collapsed-v136 { display: none !important; }
+.group-open-v136, .group-profit-v136, .group-mini-v136 { display: inline-flex !important; align-items: center !important; padding: 2px 8px !important; border-radius: 999px !important; background: rgba(30,41,59,.85) !important; color: #cbd5e1 !important; font-size: 11px !important; font-weight: 900 !important; }
+.group-profit-v136.pos { color: #22c55e !important; background: rgba(34,197,94,.13) !important; }
+.group-profit-v136.neg { color: #fb7185 !important; background: rgba(244,63,94,.13) !important; }
+.group-mini-v136 { color: #bfdbfe !important; }
+
+/* V137 - lucro total e ROI pela banca */
+.metric-positive-v137 { color: #22c55e !important; }
+.metric-negative-v137 { color: #fb7185 !important; }
+.metric-zero-v137 { color: #e5f0ff !important; }

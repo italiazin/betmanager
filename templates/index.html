@@ -2100,314 +2100,7 @@ function atualizarHorariosEspn(){
 
 
 
-<script id="v130-smart-table-js">
-(function(){
-    let sortAsc = true;
-    let groupMode = true;
-    let collapsedGroups = new Set();
 
-    function parseISO(v){
-        if(!v) return null;
-        const d = new Date(v);
-        return isNaN(d.getTime()) ? null : d;
-    }
-
-    function parseBR(v){
-        const m = String(v || "").match(/(\d{2})\/(\d{2})\/(\d{4})\s+(\d{2}):(\d{2})/);
-        if(!m) return null;
-        return new Date(Number(m[3]), Number(m[2])-1, Number(m[1]), Number(m[4]), Number(m[5]));
-    }
-
-    function cleanText(v){
-        return String(v || "")
-            .replace(/⏰|🏁|●/g, "")
-            .replace(/\bAo vivo\b/gi, "")
-            .replace(/\bFinalizado\b/gi, "")
-            .replace(/\bHoje\s+\d{1,2}:\d{2}\b/gi, "")
-            .replace(/\b\d{2}\/\d{2}\s+\d{1,2}:\d{2}\b/g, "")
-            .replace(/\b\d+\s+jogos\s*•?.*$/gi, "")
-            .replace(/\s{2,}/g, " ")
-            .trim();
-    }
-
-    function getCell(row, idx){ return row.children && row.children[idx] ? row.children[idx] : null; }
-    function getIso(row){ return row.dataset.horarioJogoIso || row.dataset.horario || ""; }
-    function getRaw(row){ return row.dataset.statusJogo || row.dataset.horarioJogo || ""; }
-    function getBetStatus(row){ return (getCell(row, 6)?.innerText || "").trim().toLowerCase(); }
-
-    function getGameName(row){
-        const cell = row.querySelector(".jogo-cell") || getCell(row, 3);
-        if(!cell) return "";
-        let name = row.dataset.jogo || "";
-        if(!name){
-            for(const node of Array.from(cell.childNodes)){
-                if(node.nodeType === Node.TEXT_NODE && node.textContent.trim()){
-                    name = node.textContent.trim();
-                    break;
-                }
-            }
-        }
-        if(!name) name = cell.textContent || "";
-        name = cleanText(name);
-        row.dataset.jogo = name;
-        cell.replaceChildren(document.createTextNode(name));
-        return name;
-    }
-
-    function hasSingleMatchInGameField(row){
-        const game = getGameName(row).toLowerCase();
-        if(!game || game === "múltipla" || game === "multipla") return false;
-        // Se o campo Jogo tem só uma partida, mesmo que a aposta tenha vários mercados com /, agrupa pelo jogo.
-        const separators = (game.match(/\s\/\s/g) || []).length;
-        const looksLikeMatch = /\s(x|vs\.?|v\.?)\s/.test(game);
-        return looksLikeMatch && separators === 0;
-    }
-
-    function isTrueMulti(row){
-        const game = getGameName(row).toLowerCase();
-        const raw = getRaw(row).toLowerCase();
-        if(hasSingleMatchInGameField(row)) return false;
-        if(game === "múltipla" || game === "multipla") return true;
-        if(raw.includes("jogos") || raw.includes("próximo") || raw.includes("proximo")) return true;
-        // Só considera múltipla pela aposta se o campo jogo não é uma partida simples.
-        const bet = (getCell(row,4)?.innerText || "").toLowerCase();
-        return !hasSingleMatchInGameField(row) && bet.split("/").length >= 4;
-    }
-
-    function dateLabel(row){
-        const d = parseISO(getIso(row));
-        if(d){
-            const p = n => String(n).padStart(2,"0");
-            return `${p(d.getDate())}/${p(d.getMonth()+1)} ${p(d.getHours())}:${p(d.getMinutes())}`;
-        }
-        const raw = getRaw(row);
-        if(raw && /\d{2}\/\d{2}/.test(raw)) return raw;
-        const old = row.dataset.data || getCell(row,0)?.innerText || "";
-        return old.split("\n")[0] || "-";
-    }
-
-    function gameStatus(row){
-        const raw = String(getRaw(row) || "").toLowerCase();
-        const d = parseISO(getIso(row));
-
-        if(isTrueMulti(row)) return ["Múltipla", "multi", 30];
-
-        if(row.dataset.aoVivo === "1" || raw.includes("ao vivo") || raw.includes("live")) return ["Ao vivo", "live", 0];
-        if(raw.includes("final") || raw.includes("encerr")) return ["Finalizado", "finished", 50];
-        if(raw.includes("em andamento")) return ["Em andamento", "playing", 1];
-        if(raw.includes("sem horário") || raw.includes("sem horario")) return ["Sem horário", "empty", 40];
-        if(raw.includes("agendado")) return ["Agendado", "scheduled", 4];
-
-        if(d){
-            const diff = (d.getTime() - Date.now()) / 60000;
-            if(diff < -120) return ["Finalizado", "finished", 50];
-            if(diff < 0) return ["Em andamento", "playing", 1];
-            if(diff <= 60) return [`Falta ${Math.max(1, Math.floor(diff))}min`, "soon", 2];
-            if(d.toDateString() === new Date().toDateString()) return ["Hoje", "today", 3];
-            return ["Futuro", "scheduled", 4];
-        }
-
-        return ["Sem horário", "empty", 40];
-    }
-
-    function baseTime(row){
-        const d = parseISO(getIso(row));
-        if(d) return d.getTime();
-        const br = parseBR(row.dataset.data || getCell(row,0)?.innerText || "");
-        if(br) return br.getTime();
-        return 9999999999999;
-    }
-
-    function sortKey(row){
-        const [, , priority] = gameStatus(row);
-        const time = baseTime(row);
-        let betAdjust = 0;
-        if(priority === 50){
-            const bs = getBetStatus(row);
-            if(bs.includes("ganha") || bs.includes("green")) betAdjust = 0;
-            else if(bs.includes("perdida") || bs.includes("red")) betAdjust = 1;
-            else if(bs.includes("anulada")) betAdjust = 2;
-            else betAdjust = 3;
-        }
-        return [priority, time, betAdjust];
-    }
-
-    function compareRows(a,b){
-        const ka = sortKey(a), kb = sortKey(b);
-        for(let i=0; i<ka.length; i++){
-            if(ka[i] !== kb[i]) return sortAsc ? ka[i] - kb[i] : kb[i] - ka[i];
-        }
-        return 0;
-    }
-
-    function renderLeft(row){
-        const cell = getCell(row,0);
-        if(!cell) return;
-        const [label, cls] = gameStatus(row);
-        const html = `<span class="game-date-main">${dateLabel(row)}</span><span class="game-date-status ${cls}">${label}</span>`;
-        if(cell.dataset.v130 !== html){
-            cell.classList.add("game-date-cell");
-            cell.innerHTML = html;
-            cell.dataset.v130 = html;
-        }
-    }
-
-    function groupKey(row){
-        if(isTrueMulti(row)) return `__multi__:${row.dataset.id || Math.random()}`;
-        const game = getGameName(row).toLowerCase();
-        return game || `__row__:${row.dataset.id || Math.random()}`;
-    }
-
-    function representativeRow(rows){
-        return rows.slice().sort(compareRows)[0];
-    }
-
-    function clearGroupHeaders(tbody){
-        tbody.querySelectorAll("tr.game-group-row-v129, tr.game-group-row-v130").forEach(r => r.remove());
-        tbody.querySelectorAll("tr.bet-row").forEach(r => {
-            r.classList.remove("group-child-v129", "group-collapsed-v129", "group-highlight-v129", "group-child-v130", "group-collapsed-v130", "group-highlight-v130");
-        });
-    }
-
-    function buildGroupHeader(key, rows){
-        const rep = representativeRow(rows);
-        const game = getGameName(rep);
-        const [label, cls] = gameStatus(rep);
-        const colCount = document.querySelectorAll("table thead th").length || 10;
-        const collapsed = collapsedGroups.has(key);
-        const count = rows.length;
-
-        const tr = document.createElement("tr");
-        tr.className = "game-group-row-v130";
-        tr.dataset.groupKey = key;
-        tr.innerHTML = `
-            <td colspan="${colCount}">
-                <button type="button" class="game-group-toggle-v129">
-                    <span class="group-arrow-v129">${collapsed ? "▶" : "▼"}</span>
-                    <strong>${game}</strong>
-                    <span class="group-count-v129">${count} aposta${count > 1 ? "s" : ""}</span>
-                    <span class="game-date-status ${cls}">${label}</span>
-                    <span class="group-time-v129">${dateLabel(rep)}</span>
-                </button>
-            </td>
-        `;
-
-        tr.querySelector("button").onclick = () => {
-            if(collapsedGroups.has(key)) collapsedGroups.delete(key);
-            else collapsedGroups.add(key);
-            apply(true);
-        };
-
-        return tr;
-    }
-
-    function setupToolbar(){
-        const panel = document.querySelector(".table-panel") || document.querySelector("table")?.parentElement;
-        if(!panel || panel.querySelector(".smart-table-toolbar-v129")) return;
-
-        const bar = document.createElement("div");
-        bar.className = "smart-table-toolbar-v129";
-        bar.innerHTML = `
-            <button type="button" id="toggleGroupV129" class="smart-table-btn-v129">📌 Agrupar jogos</button>
-            <button type="button" id="expandGroupsV129" class="smart-table-btn-v129 secondary">Expandir tudo</button>
-        `;
-        const table = panel.querySelector("table");
-        if(table) panel.insertBefore(bar, table);
-
-        bar.querySelector("#toggleGroupV129").onclick = () => {
-            groupMode = !groupMode;
-            bar.querySelector("#toggleGroupV129").textContent = groupMode ? "📌 Agrupar jogos" : "☰ Lista simples";
-            apply(true);
-        };
-        bar.querySelector("#expandGroupsV129").onclick = () => {
-            collapsedGroups.clear();
-            apply(true);
-        };
-    }
-
-    function setupSort(){
-        const th = document.getElementById("gameDateSortHeader");
-        const arrow = document.getElementById("gameDateSortArrow");
-        if(!th || th.dataset.v130Ready === "1") return;
-        th.dataset.v130Ready = "1";
-        th.onclick = () => {
-            sortAsc = !sortAsc;
-            if(arrow) arrow.textContent = sortAsc ? "↑" : "↓";
-            apply(true);
-        };
-    }
-
-    function preserveScroll(fn){
-        const y = window.scrollY;
-        fn();
-        requestAnimationFrame(() => window.scrollTo({top: y, behavior: "auto"}));
-    }
-
-    function apply(force=false){
-        const tbody = document.querySelector("table tbody");
-        if(!tbody) return;
-
-        setupToolbar();
-        setupSort();
-
-        let rows = Array.from(tbody.querySelectorAll("tr.bet-row"));
-        if(!rows.length) return;
-
-        rows.forEach(row => {
-            getGameName(row);
-            renderLeft(row);
-        });
-
-        rows.sort(compareRows);
-        clearGroupHeaders(tbody);
-
-        if(!groupMode){
-            rows.forEach(row => tbody.appendChild(row));
-            return;
-        }
-
-        const groups = new Map();
-        for(const row of rows){
-            const key = groupKey(row);
-            if(!groups.has(key)) groups.set(key, []);
-            groups.get(key).push(row);
-        }
-
-        const groupEntries = Array.from(groups.entries()).sort((a,b) => compareRows(representativeRow(a[1]), representativeRow(b[1])));
-
-        for(const [key, groupRows] of groupEntries){
-            if(groupRows.length > 1 && !key.startsWith("__multi__")){
-                tbody.appendChild(buildGroupHeader(key, groupRows));
-                const collapsed = collapsedGroups.has(key);
-                groupRows.forEach(row => {
-                    row.classList.add("group-child-v130");
-                    if(collapsed) row.classList.add("group-collapsed-v130");
-                    if(groupRows.length >= 3) row.classList.add("group-highlight-v130");
-                    tbody.appendChild(row);
-                });
-            } else {
-                groupRows.forEach(row => tbody.appendChild(row));
-            }
-        }
-    }
-
-    document.addEventListener("DOMContentLoaded", () => {
-        // Sem MutationObserver: evita tremedeira e scroll pulando.
-        apply(true);
-        setInterval(() => preserveScroll(() => apply(false)), 300000);
-    });
-
-    document.addEventListener("click", e => {
-        const t = String(e.target?.innerText || "").toLowerCase();
-        if(t.includes("salvar apostas") || t.includes("adicionar") || t.includes("salvar")){
-            setTimeout(()=>preserveScroll(() => apply(true)), 700);
-            setTimeout(()=>preserveScroll(() => apply(true)), 1600);
-        }
-    });
-
-    window.v130SmartTableApply = apply;
-})();
-</script>
 
 
 <div id="bancaInicialModal" class="modal" style="display:none;">
@@ -2618,6 +2311,304 @@ function fecharModalBancaInicial(){
             }
         });
     });
+})();
+</script>
+
+
+<script id="v136-smart-table-js">
+(function(){
+    let sortAsc = true;
+    let groupMode = true;
+    let collapsedGroups = new Set();
+    let initializedCollapse = false;
+
+    function parseISO(v){ if(!v) return null; const d = new Date(v); return isNaN(d.getTime()) ? null : d; }
+    function parseBR(v){ const m = String(v || "").match(/(\d{2})\/(\d{2})\/(\d{4})\s+(\d{2}):(\d{2})/); if(!m) return null; return new Date(Number(m[3]), Number(m[2])-1, Number(m[1]), Number(m[4]), Number(m[5])); }
+    function parseMoney(txt){
+        txt = String(txt || "").replace(/[^\d,.-]/g, "").trim();
+        if(txt.includes(",") && txt.includes(".")) txt = txt.replace(/\./g, "").replace(",", ".");
+        else if(txt.includes(",")) txt = txt.replace(",", ".");
+        const n = parseFloat(txt);
+        return isNaN(n) ? 0 : n;
+    }
+    function money(v){ return "R$ " + Number(v || 0).toFixed(2); }
+    function cleanText(v){
+        return String(v || "").replace(/⏰|🏁|●/g, "").replace(/\bAo vivo\b/gi, "").replace(/\bFinalizado\b/gi, "").replace(/\bHoje\s+\d{1,2}:\d{2}\b/gi, "").replace(/\b\d{2}\/\d{2}\s+\d{1,2}:\d{2}\b/g, "").replace(/\b\d+\s+jogos\s*•?.*$/gi, "").replace(/\s{2,}/g, " ").trim();
+    }
+    function col(label){
+        const ths = Array.from(document.querySelectorAll("table thead th"));
+        const target = String(label).toLowerCase();
+        for(let i=0;i<ths.length;i++){
+            const t = ths[i].innerText.trim().toLowerCase().replace(/\s+↑$/, "").replace(/\s+↓$/, "");
+            if(t === target) return i;
+        }
+        return -1;
+    }
+    function cell(row, i){ return row.children && row.children[i] ? row.children[i] : null; }
+    function iso(row){ return row.dataset.horarioJogoIso || row.dataset.horario || ""; }
+    function raw(row){ return row.dataset.statusJogo || row.dataset.horarioJogo || ""; }
+    function statusText(row){ const i = col("status"); return (i >= 0 ? row.children?.[i]?.innerText : row.querySelector(".status-badge")?.innerText || "").trim().toLowerCase(); }
+    function valor(row){ const i = col("valor"); return parseMoney(i >= 0 ? row.children?.[i]?.innerText : ""); }
+    function lucro(row){ const i = col("lucro"); return parseMoney(i >= 0 ? row.children?.[i]?.innerText : ""); }
+    function closed(row){ const s = statusText(row); return s.includes("ganha") || s.includes("green") || s.includes("perdida") || s.includes("red") || s.includes("anulada") || s.includes("void"); }
+
+    function game(row){
+        const c = row.querySelector(".jogo-cell") || cell(row, 3);
+        if(!c) return "";
+        let name = row.dataset.jogo || "";
+        if(!name){
+            for(const n of Array.from(c.childNodes)){
+                if(n.nodeType === Node.TEXT_NODE && n.textContent.trim()){ name = n.textContent.trim(); break; }
+            }
+        }
+        if(!name) name = c.textContent || "";
+        name = cleanText(name);
+        row.dataset.jogo = name;
+        c.replaceChildren(document.createTextNode(name));
+        return name;
+    }
+    function singleMatch(row){
+        const g = game(row).toLowerCase();
+        if(!g || g === "múltipla" || g === "multipla") return false;
+        return /\s(x|vs\.?|v\.?)\s/.test(g) && (g.match(/\s\/\s/g) || []).length === 0;
+    }
+    function trueMulti(row){
+        const g = game(row).toLowerCase();
+        const r = raw(row).toLowerCase();
+        if(singleMatch(row)) return false;
+        if(g === "múltipla" || g === "multipla") return true;
+        if(r.includes("jogos") || r.includes("próximo") || r.includes("proximo")) return true;
+        const bet = (cell(row,4)?.innerText || "").toLowerCase();
+        return !singleMatch(row) && bet.split("/").length >= 4;
+    }
+    function dateObj(row){ return parseISO(iso(row)) || parseBR(row.dataset.data || cell(row,0)?.innerText || "") || null; }
+    function dateLabel(row){
+        const d = parseISO(iso(row));
+        if(d){ const p = n => String(n).padStart(2,"0"); return `${p(d.getDate())}/${p(d.getMonth()+1)} ${p(d.getHours())}:${p(d.getMinutes())}`; }
+        const r = raw(row); if(r && /\d{2}\/\d{2}/.test(r)) return r;
+        return (row.dataset.data || cell(row,0)?.innerText || "-").split("\n")[0] || "-";
+    }
+    function dayKey(row){
+        const d = dateObj(row);
+        if(!d) return "sem-data";
+        const p = n => String(n).padStart(2,"0");
+        return `${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())}`;
+    }
+    function dayLabel(k){
+        if(k === "sem-data") return "Sem data";
+        const [y,m,d] = k.split("-").map(Number);
+        const dt = new Date(y,m-1,d);
+        const today = new Date(); today.setHours(0,0,0,0);
+        const cmp = new Date(dt); cmp.setHours(0,0,0,0);
+        const diff = Math.round((cmp - today)/86400000);
+        const dd = String(dt.getDate()).padStart(2,"0"), mm = String(dt.getMonth()+1).padStart(2,"0");
+        if(diff === 0) return `Hoje — ${dd}/${mm}`;
+        if(diff === 1) return `Amanhã — ${dd}/${mm}`;
+        if(diff === -1) return `Ontem — ${dd}/${mm}`;
+        const dias = ["Domingo","Segunda-feira","Terça-feira","Quarta-feira","Quinta-feira","Sexta-feira","Sábado"];
+        return `${dias[dt.getDay()]} — ${dd}/${mm}/${dt.getFullYear()}`;
+    }
+    function gStatus(row){
+        const r = String(raw(row) || "").toLowerCase();
+        const d = parseISO(iso(row));
+        if(trueMulti(row)) return ["Múltipla","multi",30];
+        if(row.dataset.aoVivo === "1" || r.includes("ao vivo") || r.includes("live")) return ["Ao vivo","live",0];
+        if(r.includes("final") || r.includes("encerr")) return ["Finalizado","finished",50];
+        if(r.includes("em andamento")) return ["Em andamento","playing",1];
+        if(r.includes("sem horário") || r.includes("sem horario")) return ["Sem horário","empty",40];
+        if(r.includes("agendado")) return ["Agendado","scheduled",4];
+        if(d){
+            const diff = (d.getTime() - Date.now())/60000;
+            if(diff < -120) return ["Finalizado","finished",50];
+            if(diff < 0) return ["Em andamento","playing",1];
+            if(diff <= 60) return [`Falta ${Math.max(1, Math.floor(diff))}min`,"soon",2];
+            if(d.toDateString() === new Date().toDateString()) return ["Hoje","today",3];
+            return ["Futuro","scheduled",4];
+        }
+        return ["Sem horário","empty",40];
+    }
+    function baseTime(row){ const d = dateObj(row); return d ? d.getTime() : 9999999999999; }
+    function sortKey(row){
+        const p = gStatus(row)[2];
+        let adj = 0;
+        if(p === 50){
+            const s = statusText(row);
+            if(s.includes("ganha") || s.includes("green")) adj = 0;
+            else if(s.includes("perdida") || s.includes("red")) adj = 1;
+            else if(s.includes("anulada")) adj = 2;
+            else adj = 3;
+        }
+        return [p, baseTime(row), adj];
+    }
+    function cmp(a,b){
+        const ka = sortKey(a), kb = sortKey(b);
+        for(let i=0;i<ka.length;i++) if(ka[i] !== kb[i]) return sortAsc ? ka[i]-kb[i] : kb[i]-ka[i];
+        return 0;
+    }
+    function renderLeft(row){
+        const c = cell(row,0); if(!c) return;
+        const st = gStatus(row);
+        const html = `<span class="game-date-main">${dateLabel(row)}</span><span class="game-date-status ${st[1]}">${st[0]}</span>`;
+        if(c.dataset.v136 !== html){ c.classList.add("game-date-cell"); c.innerHTML = html; c.dataset.v136 = html; }
+    }
+    function groupKey(row){ if(trueMulti(row)) return `__multi__:${row.dataset.id || Math.random()}`; return game(row).toLowerCase() || `__row__:${row.dataset.id || Math.random()}`; }
+    function rep(rows){ return rows.slice().sort(cmp)[0]; }
+    function clear(tbody){
+        tbody.querySelectorAll("tr.game-group-row-v129, tr.game-group-row-v130, tr.game-group-row-v136, tr.day-separator-row-v136").forEach(r => r.remove());
+        tbody.querySelectorAll("tr.bet-row").forEach(r => r.classList.remove("group-child-v129","group-collapsed-v129","group-highlight-v129","group-child-v130","group-collapsed-v130","group-highlight-v130","group-child-v136","group-collapsed-v136","group-highlight-v136"));
+    }
+    function summary(rows){
+        let aberto=0, luc=0, green=0, red=0, pend=0;
+        for(const r of rows){
+            if(!closed(r)) aberto += valor(r);
+            luc += lucro(r);
+            const s = statusText(r);
+            if(s.includes("ganha") || s.includes("green")) green++;
+            else if(s.includes("perdida") || s.includes("red")) red++;
+            else pend++;
+        }
+        return {aberto,luc,green,red,pend};
+    }
+    function dayRow(k,count){
+        const tr = document.createElement("tr");
+        tr.className = "day-separator-row-v136";
+        const cols = document.querySelectorAll("table thead th").length || 10;
+        tr.innerHTML = `<td colspan="${cols}"><span>${dayLabel(k)}</span><strong>${count} aposta${count!==1?"s":""}</strong></td>`;
+        return tr;
+    }
+    function groupHeader(k, rows){
+        const r = rep(rows), st = gStatus(r), s = summary(rows), cols = document.querySelectorAll("table thead th").length || 10;
+        const collapsed = collapsedGroups.has(k), lc = s.luc > 0 ? "pos" : s.luc < 0 ? "neg" : "";
+        const tr = document.createElement("tr");
+        tr.className = "game-group-row-v136";
+        tr.dataset.groupKey = k;
+        tr.innerHTML = `<td colspan="${cols}"><button type="button" class="game-group-toggle-v129"><span class="group-arrow-v129">${collapsed?"▶":"▼"}</span><strong>${game(r)}</strong><span class="group-count-v129">${rows.length} aposta${rows.length>1?"s":""}</span><span class="group-open-v136">Aberto ${money(s.aberto)}</span><span class="group-profit-v136 ${lc}">Lucro ${money(s.luc)}</span><span class="group-mini-v136">✅ ${s.green} ❌ ${s.red} ⏳ ${s.pend}</span><span class="game-date-status ${st[1]}">${st[0]}</span><span class="group-time-v129">${dateLabel(r)}</span></button></td>`;
+        tr.querySelector("button").onclick = () => { collapsedGroups.has(k) ? collapsedGroups.delete(k) : collapsedGroups.add(k); apply(true); };
+        return tr;
+    }
+    function setupToolbar(){
+        const panel = document.querySelector(".table-panel") || document.querySelector("table")?.parentElement;
+        if(!panel || panel.querySelector(".smart-table-toolbar-v129")) return;
+        const bar = document.createElement("div");
+        bar.className = "smart-table-toolbar-v129";
+        bar.innerHTML = `<button type="button" id="toggleGroupV129" class="smart-table-btn-v129">📌 Agrupar jogos</button><button type="button" id="expandGroupsV129" class="smart-table-btn-v129 secondary">Expandir tudo</button>`;
+        const table = panel.querySelector("table"); if(table) panel.insertBefore(bar, table);
+        bar.querySelector("#toggleGroupV129").onclick = () => { groupMode = !groupMode; bar.querySelector("#toggleGroupV129").textContent = groupMode ? "📌 Agrupar jogos" : "☰ Lista simples"; apply(true); };
+        bar.querySelector("#expandGroupsV129").onclick = () => { collapsedGroups.clear(); apply(true); };
+    }
+    function setupSort(){
+        const th = document.getElementById("gameDateSortHeader"), arrow = document.getElementById("gameDateSortArrow");
+        if(!th || th.dataset.v136Ready === "1") return;
+        th.dataset.v136Ready = "1";
+        th.onclick = () => { sortAsc = !sortAsc; if(arrow) arrow.textContent = sortAsc ? "↑" : "↓"; apply(true); };
+    }
+    function autoCollapse(groups){
+        if(initializedCollapse) return;
+        initializedCollapse = true;
+        for(const [k, rows] of groups.entries()) if(rows.length >= 3 && !k.startsWith("__multi__")) collapsedGroups.add(k);
+    }
+    function apply(force=false){
+        const tbody = document.querySelector("table tbody"); if(!tbody) return;
+        setupToolbar(); setupSort();
+        let rows = Array.from(tbody.querySelectorAll("tr.bet-row")); if(!rows.length) return;
+        rows.forEach(r => { game(r); renderLeft(r); });
+        rows.sort(cmp); clear(tbody);
+        const groups = new Map();
+        if(groupMode){
+            for(const r of rows){ const k = groupKey(r); if(!groups.has(k)) groups.set(k, []); groups.get(k).push(r); }
+            autoCollapse(groups);
+            const entries = Array.from(groups.entries()).sort((a,b) => cmp(rep(a[1]), rep(b[1])));
+            let currentDay = null;
+            for(const [k, rs] of entries){
+                const dk = dayKey(rep(rs));
+                if(dk !== currentDay){ currentDay = dk; let count = 0; for(const [,xs] of entries) if(dayKey(rep(xs)) === dk) count += xs.length; tbody.appendChild(dayRow(dk,count)); }
+                if(rs.length > 1 && !k.startsWith("__multi__")){
+                    tbody.appendChild(groupHeader(k,rs));
+                    const collapsed = collapsedGroups.has(k);
+                    rs.forEach(r => { r.classList.add("group-child-v136"); if(collapsed) r.classList.add("group-collapsed-v136"); if(rs.length >= 3) r.classList.add("group-highlight-v136"); tbody.appendChild(r); });
+                } else rs.forEach(r => tbody.appendChild(r));
+            }
+        } else {
+            let currentDay = null;
+            for(const r of rows){ const dk = dayKey(r); if(dk !== currentDay){ currentDay = dk; tbody.appendChild(dayRow(dk, rows.filter(x => dayKey(x) === dk).length)); } tbody.appendChild(r); }
+        }
+    }
+    function preserve(fn){ const y = window.scrollY; fn(); requestAnimationFrame(()=>window.scrollTo({top:y, behavior:"auto"})); }
+    document.addEventListener("DOMContentLoaded", () => { apply(true); setInterval(() => preserve(()=>apply(false)), 300000); });
+    document.addEventListener("click", e => { const t = String(e.target?.innerText || "").toLowerCase(); if(t.includes("salvar apostas") || t.includes("adicionar") || t.includes("salvar")){ setTimeout(()=>preserve(()=>apply(true)),700); setTimeout(()=>preserve(()=>apply(true)),1600); } });
+    window.v136SmartTableApply = apply;
+})();
+</script>
+
+
+<script id="v137-lucro-banca-js">
+(function(){
+    function parseMoney(txt){
+        const raw = String(txt || "");
+        let s = raw.replace(/[^\d,.-]/g, "").trim();
+        const negative = raw.includes("-");
+        if(s.includes(",") && s.includes(".")) s = s.replace(/\./g, "").replace(",", ".");
+        else if(s.includes(",")) s = s.replace(",", ".");
+        const n = parseFloat(s);
+        return isNaN(n) ? 0 : (negative ? -Math.abs(n) : n);
+    }
+
+    function money(v){
+        const n = Number(v || 0);
+        return (n < 0 ? "-R$ " : "R$ ") + Math.abs(n).toFixed(2);
+    }
+
+    function pct(v){
+        return Number(v || 0).toFixed(2) + "%";
+    }
+
+    function card(title){
+        title = title.toLowerCase();
+        return Array.from(document.querySelectorAll(".metric-card")).find(c =>
+            (c.querySelector("span")?.innerText || "").trim().toLowerCase() === title
+        );
+    }
+
+    function color(el, val){
+        if(!el) return;
+        el.classList.remove("metric-positive-v137", "metric-negative-v137", "metric-zero-v137");
+        if(val > 0) el.classList.add("metric-positive-v137");
+        else if(val < 0) el.classList.add("metric-negative-v137");
+        else el.classList.add("metric-zero-v137");
+    }
+
+    function atualizar(){
+        const bancaAtualEl = card("Banca Atual")?.querySelector("strong");
+        const bancaInicialEl = card("Banca Inicial")?.querySelector("strong");
+        const lucroEl = card("Lucro Total")?.querySelector("strong");
+        const roiEl = card("ROI")?.querySelector("strong");
+
+        const bancaAtual = parseMoney(bancaAtualEl?.innerText || "0");
+        const bancaInicial = parseMoney(bancaInicialEl?.innerText || "0");
+
+        if(!bancaInicial) return;
+
+        const lucro = bancaAtual - bancaInicial;
+        const roi = (lucro / bancaInicial) * 100;
+
+        if(lucroEl){
+            lucroEl.textContent = money(lucro);
+            color(lucroEl, lucro);
+        }
+
+        if(roiEl){
+            roiEl.textContent = pct(roi);
+            color(roiEl, lucro);
+        }
+    }
+
+    document.addEventListener("DOMContentLoaded", () => {
+        atualizar();
+        setInterval(atualizar, 3000);
+    });
+
+    document.addEventListener("click", () => setTimeout(atualizar, 400));
+    window.v137AtualizarLucroPorBanca = atualizar;
 })();
 </script>
 
