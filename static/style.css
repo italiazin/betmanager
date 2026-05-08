@@ -4074,3 +4074,97 @@ table {
 .metric-positive-v137 { color: #22c55e !important; }
 .metric-negative-v137 { color: #fb7185 !important; }
 .metric-zero-v137 { color: #e5f0ff !important; }
+
+
+/* V138 - tabela menos poluída */
+.day-separator-row-v136 td {
+    padding: 13px 16px !important;
+    background: linear-gradient(90deg, rgba(37,99,235,.34), rgba(15,23,42,.95)) !important;
+    border-top: 2px solid rgba(96,165,250,.45) !important;
+    border-bottom: 1px solid rgba(96,165,250,.22) !important;
+}
+
+.day-separator-row-v136 span {
+    font-size: 15px !important;
+    letter-spacing: .2px !important;
+}
+
+.day-separator-row-v136 strong {
+    margin-left: 8px !important;
+}
+
+.game-group-row-v136 td,
+.game-group-row-v130 td,
+.game-group-row-v129 td {
+    padding: 11px 14px !important;
+}
+
+.game-group-toggle-v129 {
+    gap: 12px !important;
+    min-height: 38px !important;
+    flex-wrap: wrap !important;
+}
+
+.game-group-toggle-v129 strong {
+    font-size: 13.5px !important;
+    min-width: 230px !important;
+}
+
+.group-count-v129 {
+    padding: 3px 9px !important;
+}
+
+.group-open-v136,
+.group-profit-v136,
+.group-mini-v136 {
+    display: none !important;
+}
+
+.group-summary-line-v138 {
+    width: 100% !important;
+    display: flex !important;
+    gap: 10px !important;
+    margin-left: 29px !important;
+    margin-top: 3px !important;
+    color: #94a3b8 !important;
+    font-size: 11px !important;
+    font-weight: 800 !important;
+}
+
+.group-summary-line-v138 span {
+    display: inline-flex !important;
+    padding: 2px 8px !important;
+    border-radius: 999px !important;
+    background: rgba(30,41,59,.72) !important;
+}
+
+.group-summary-line-v138 .pos {
+    color: #22c55e !important;
+    background: rgba(34,197,94,.12) !important;
+}
+
+.group-summary-line-v138 .neg {
+    color: #fb7185 !important;
+    background: rgba(244,63,94,.12) !important;
+}
+
+.group-time-v129 {
+    margin-left: auto !important;
+    opacity: .9 !important;
+}
+
+tr.bet-row td {
+    padding-top: 10px !important;
+    padding-bottom: 10px !important;
+}
+
+.group-child-v136 td:first-child,
+.group-child-v130 td:first-child,
+.group-child-v129 td:first-child {
+    border-left: 2px solid rgba(96,165,250,.35) !important;
+}
+
+/* reduz sensação de aperto nos textos longos */
+td:nth-child(5) {
+    line-height: 1.35 !important;
+}

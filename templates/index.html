@@ -2482,7 +2482,7 @@ function fecharModalBancaInicial(){
         const tr = document.createElement("tr");
         tr.className = "game-group-row-v136";
         tr.dataset.groupKey = k;
-        tr.innerHTML = `<td colspan="${cols}"><button type="button" class="game-group-toggle-v129"><span class="group-arrow-v129">${collapsed?"▶":"▼"}</span><strong>${game(r)}</strong><span class="group-count-v129">${rows.length} aposta${rows.length>1?"s":""}</span><span class="group-open-v136">Aberto ${money(s.aberto)}</span><span class="group-profit-v136 ${lc}">Lucro ${money(s.luc)}</span><span class="group-mini-v136">✅ ${s.green} ❌ ${s.red} ⏳ ${s.pend}</span><span class="game-date-status ${st[1]}">${st[0]}</span><span class="group-time-v129">${dateLabel(r)}</span></button></td>`;
+        tr.innerHTML = `<td colspan="${cols}"><button type="button" class="game-group-toggle-v129"><span class="group-arrow-v129">${collapsed?"▶":"▼"}</span><strong>${game(r)}</strong><span class="group-count-v129">${rows.length} aposta${rows.length>1?"s":""}</span><span class="game-date-status ${st[1]}">${st[0]}</span><span class="group-time-v129">${dateLabel(r)}</span><span class="group-summary-line-v138"><span>Aberto ${money(s.aberto)}</span><span class="${lc}">Lucro ${money(s.luc)}</span></span></button></td>`;
         tr.querySelector("button").onclick = () => { collapsedGroups.has(k) ? collapsedGroups.delete(k) : collapsedGroups.add(k); apply(true); };
         return tr;
     }
@@ -2541,7 +2541,10 @@ function fecharModalBancaInicial(){
 </script>
 
 
-<script id="v137-lucro-banca-js">
+
+
+
+<script id="v138-lucro-banca-js">
 (function(){
     function parseMoney(txt){
         const raw = String(txt || "");
@@ -2602,13 +2605,29 @@ function fecharModalBancaInicial(){
         }
     }
 
-    document.addEventListener("DOMContentLoaded", () => {
+    function start(){
         atualizar();
-        setInterval(atualizar, 3000);
-    });
 
-    document.addEventListener("click", () => setTimeout(atualizar, 400));
-    window.v137AtualizarLucroPorBanca = atualizar;
+        // A Banca Inicial às vezes chega por API depois do HTML.
+        // Então recalcula várias vezes nos primeiros segundos para não ficar mostrando lucro antigo.
+        [50,150,300,600,1000,1500,2500,3500].forEach(ms => setTimeout(atualizar, ms));
+
+        const target = document.body;
+        if(target && !target.dataset.v138LucroObs){
+            target.dataset.v138LucroObs = "1";
+            const obs = new MutationObserver(() => {
+                clearTimeout(window.__v138LucroTimer);
+                window.__v138LucroTimer = setTimeout(atualizar, 80);
+            });
+            obs.observe(target, {subtree:true, childList:true, characterData:true});
+        }
+
+        setInterval(atualizar, 30000);
+    }
+
+    document.addEventListener("DOMContentLoaded", start);
+    document.addEventListener("click", () => setTimeout(atualizar, 300));
+    window.v138AtualizarLucroPorBanca = atualizar;
 })();
 </script>
 
