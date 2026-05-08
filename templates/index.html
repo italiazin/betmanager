@@ -2492,16 +2492,35 @@ function fecharModalBancaInicial(){
         }
     }
 
+
+    function getColumnIndex(label){
+        const ths = Array.from(document.querySelectorAll("table thead th"));
+        const target = String(label || "").toLowerCase();
+        for(let i = 0; i < ths.length; i++){
+            const txt = ths[i].innerText.trim().toLowerCase();
+            if(txt === target) return i;
+        }
+        return -1;
+    }
+
     function calcularValorAberto(){
         let total = 0;
+
+        const valorIdx = getColumnIndex("valor");
+        const statusIdx = getColumnIndex("status");
+
         document.querySelectorAll("tr.bet-row").forEach(row => {
-            const statusTxt = (row.children?.[6]?.innerText || row.querySelector(".status-badge")?.innerText || "").toLowerCase();
+            const statusTxt = (
+                statusIdx >= 0 ? row.children?.[statusIdx]?.innerText : row.querySelector(".status-badge")?.innerText
+            || "").toLowerCase();
+
             const fechado = statusTxt.includes("ganha") || statusTxt.includes("green") ||
                             statusTxt.includes("perdida") || statusTxt.includes("red") ||
-                            statusTxt.includes("anulada") || statusTxt.includes("void");
+                            statusTxt.includes("anulada") || statusTxt.includes("void") ||
+                            statusTxt.includes("cancelada") || statusTxt.includes("cancelado");
 
             if(!fechado){
-                const valorCell = row.children?.[5]?.innerText || "";
+                const valorCell = valorIdx >= 0 ? row.children?.[valorIdx]?.innerText : "";
                 total += parseMoney(valorCell);
             }
         });
@@ -2509,6 +2528,7 @@ function fecharModalBancaInicial(){
         const el = document.getElementById("metric-valor-aberto");
         if(el) el.textContent = money(total);
     }
+
 
     async function carregarBancaInicial(){
         try{
