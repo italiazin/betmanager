@@ -227,7 +227,7 @@ function atualizarMetricasV43(m){
     if(!m) return
 
     const banca = document.getElementById("metric-banca")
-    const saldo = document.getElementById("metric-saldo-casas")
+    const saldo = document.getElementById("metric-valor-aberto")
     const lucro = document.getElementById("metric-lucro")
     const roi = document.getElementById("metric-roi")
     const taxa = document.getElementById("metric-taxa")
@@ -235,7 +235,7 @@ function atualizarMetricasV43(m){
     const pend = document.getElementById("metric-pendentes")
 
     if(banca) banca.innerText = dinheiroBR(m.banca_atual)
-    if(saldo) saldo.innerText = dinheiroBR(m.saldo_casas_total)
+    if(saldo) saldo.innerText = dinheiroBR(m.valor_em_aberto if m.valor_em_aberto is defined else 0)
     if(lucro){
         lucro.innerText = dinheiroBR(m.lucro_total)
         lucro.classList.remove("green-text", "red-text")
@@ -533,8 +533,8 @@ document.addEventListener("DOMContentLoaded", ()=>{
     </div>
 
     <div class="metric-card">
-        <span>Saldo nas Casas</span>
-        <strong id="metric-saldo-casas">R$ {{ "%.2f"|format(m.saldo_casas_total or 0) }}</strong>
+        <span>Valor em Aberto</span>
+        <strong id="metric-valor-aberto">R$ {{ "%.2f"|format(m.valor_em_aberto if m.valor_em_aberto is defined else 0) }}</strong>
     </div>
 
 </section>
@@ -1531,7 +1531,7 @@ function v72UpdateMetrics(m){
     if(!m) return
     const map = {
         "metric-banca": v72Money(m.banca_atual),
-        "metric-saldo-casas": v72Money(m.saldo_casas_total),
+        "metric-valor-aberto": v72Money(m.valor_em_aberto if m.valor_em_aberto is defined else 0),
         "metric-roi": Number(m.roi || 0).toFixed(2) + "%",
         "metric-taxa": Number(m.taxa || 0).toFixed(2) + "%",
         "metric-total": m.total,
@@ -2407,6 +2407,29 @@ function atualizarHorariosEspn(){
 
     window.v130SmartTableApply = apply;
 })();
+</script>
+
+
+<div id="bancaInicialModal" class="modal" style="display:none;">
+    <div class="modal-content">
+        <h3>Editar Banca Inicial</h3>
+        <form method="POST" action="/configurar_banca_inicial">
+            <label>Banca inicial</label>
+            <input type="number" step="0.01" name="banca_inicial" id="bancaInicialInput" value="{{ m.banca_inicial if m.banca_inicial is defined else 0 }}">
+            <button type="submit">Salvar</button>
+            <button type="button" onclick="fecharModalBancaInicial()">Cancelar</button>
+        </form>
+    </div>
+</div>
+<script id="v131-banca-inicial-js">
+function abrirModalBancaInicial(){
+    const modal = document.getElementById("bancaInicialModal");
+    if(modal) modal.style.display = "flex";
+}
+function fecharModalBancaInicial(){
+    const modal = document.getElementById("bancaInicialModal");
+    if(modal) modal.style.display = "none";
+}
 </script>
 
 </body>

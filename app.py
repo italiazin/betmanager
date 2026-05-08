@@ -218,7 +218,7 @@ API_KEY = CONFIG.get("API_KEY", "")
 
 print("CONFIG PATH:", CONFIG_PATH)
 print("API KEY:", API_KEY)
-print("VERSAO_CARREGADA: OCR_CLIENTE_V130_FIX_SCROLL_EDIT_STATUS_GROUP")
+print("VERSAO_CARREGADA: OCR_CLIENTE_V131_BANCA_INICIAL_VALOR_ABERTO")
 
 if os.name == "nt":
     tess_path = r"C:\Program Files\Tesseract-OCR\tesseract.exe"
@@ -5799,6 +5799,83 @@ def v107_aplicar_multiplas_na_bet(b):
     except Exception as e:
         print("v107_aplicar_multiplas erro:", repr(e))
         return b
+
+
+
+# ============================================================
+# V131 - banca inicial e valor em aberto
+# ============================================================
+
+def v131_float_seguro(v, padrao=0.0):
+    try:
+        if v is None:
+            return padrao
+        if isinstance(v, str):
+            v = v.replace("R$", "").replace(".", "").replace(",", ".").strip()
+        return float(v)
+    except Exception:
+        return padrao
+
+def v131_valor_em_aberto(lista=None):
+    try:
+        if lista is None:
+            lista = bets_do_usuario()
+    except Exception:
+        lista = []
+
+    fechados = {"ganha", "green", "perdida", "red", "anulada", "void", "cancelada", "cancelado"}
+    total = 0.0
+
+    for b in lista or []:
+        try:
+            estado = str(b.get("estado", "") or "").lower().strip()
+            status = str(b.get("status", "") or "").lower().strip()
+            if estado not in fechados and status not in fechados:
+                total += v131_float_seguro(b.get("valor", 0))
+        except Exception:
+            pass
+
+    return round(total, 2)
+
+def v131_banca_inicial_usuario():
+    try:
+        email = session.get("user")
+        u = dados.get("usuarios", {}).get(email, {})
+        return v131_float_seguro(u.get("banca_inicial", 0))
+    except Exception:
+        return 0.0
+
+def v131_aplicar_metricas_extras(m, lista=None):
+    try:
+        if isinstance(m, dict):
+            m["banca_inicial"] = v131_banca_inicial_usuario()
+            m["valor_em_aberto"] = v131_valor_em_aberto(lista)
+    except Exception as e:
+        print("v131_aplicar_metricas_extras erro:", repr(e))
+    return m
+
+@app.route("/configurar_banca_inicial", methods=["POST"])
+@login_required
+def configurar_banca_inicial():
+    try:
+        email = session.get("user")
+        if request.is_json:
+            valor = request.json.get("banca_inicial", 0)
+        else:
+            valor = request.form.get("banca_inicial", 0)
+
+        dados.setdefault("usuarios", {}).setdefault(email, {})
+        dados["usuarios"][email]["banca_inicial"] = round(v131_float_seguro(valor, 0), 2)
+        salvar()
+
+        if request.is_json:
+            return jsonify({"ok": True, "banca_inicial": dados["usuarios"][email]["banca_inicial"]})
+        return redirect(url_for("index"))
+    except Exception as e:
+        print("configurar_banca_inicial erro:", repr(e))
+        if request.is_json:
+            return jsonify({"ok": False, "erro": str(e)}), 500
+        return redirect(url_for("index"))
 
 
 @app.route("/api/status_jogos_cache")
