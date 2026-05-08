@@ -2441,8 +2441,15 @@ function fecharModalBancaInicial(){
     }
 
     function parseMoney(txt){
-        txt = String(txt || "").replace(/[^\d,.-]/g, "").replace(/\./g, "").replace(",", ".");
-        const n = Number(txt);
+        txt = String(txt || "").replace(/[^\d,.-]/g, "").trim();
+
+        if(txt.includes(",") && txt.includes(".")){
+            txt = txt.replace(/\./g, "").replace(",", ".");
+        } else if(txt.includes(",")){
+            txt = txt.replace(",", ".");
+        }
+
+        const n = parseFloat(txt);
         return isNaN(n) ? 0 : n;
     }
 
