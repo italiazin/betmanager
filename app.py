@@ -218,7 +218,7 @@ API_KEY = CONFIG.get("API_KEY", "")
 
 print("CONFIG PATH:", CONFIG_PATH)
 print("API KEY:", API_KEY)
-print("VERSAO_CARREGADA: OCR_CLIENTE_V138_TABELA_LIMPA_LUCRO_IMEDIATO")
+print("VERSAO_CARREGADA: OCR_CLIENTE_V139_BANCA_INICIAL_POR_USUARIO")
 
 if os.name == "nt":
     tess_path = r"C:\Program Files\Tesseract-OCR\tesseract.exe"
@@ -5861,16 +5861,22 @@ def api_v132_cards():
         email = (
             session.get("user")
             or session.get("email")
-            or session.get("usuario")
             or session.get("usuario_email")
             or session.get("logged_user")
             or ""
         )
-        if isinstance(email, dict):
-            email = email.get("email") or email.get("user") or ""
 
-        u = dados.get("usuarios", {}).get(email, {}) if email else {}
-        banca_inicial = u.get("banca_inicial", dados.get("banca_inicial_global", 0))
+        usuario_session = session.get("usuario")
+        if not email and isinstance(usuario_session, dict):
+            email = usuario_session.get("email") or usuario_session.get("user") or ""
+        elif not email and isinstance(usuario_session, str) and "@" in usuario_session:
+            email = usuario_session
+
+        if not email:
+            banca_inicial = 0.0
+        else:
+            u = dados.get("usuarios", {}).get(email, {})
+            banca_inicial = u.get("banca_inicial", 0)
 
         try:
             banca_inicial = float(str(banca_inicial).replace(",", ".") or 0)
@@ -5889,15 +5895,22 @@ def configurar_banca_inicial():
         email = (
             session.get("user")
             or session.get("email")
-            or session.get("usuario")
             or session.get("usuario_email")
             or session.get("logged_user")
             or ""
         )
 
-        # fallback: alguns códigos usam session["usuario"] como dict
-        if isinstance(email, dict):
-            email = email.get("email") or email.get("user") or ""
+        usuario_session = session.get("usuario")
+        if not email and isinstance(usuario_session, dict):
+            email = usuario_session.get("email") or usuario_session.get("user") or ""
+        elif not email and isinstance(usuario_session, str) and "@" in usuario_session:
+            email = usuario_session
+
+        if not email:
+            print("configurar_banca_inicial erro: usuario sem email na session")
+            if request.is_json:
+                return jsonify({"ok": False, "erro": "usuario_sem_email"}), 400
+            return redirect(url_for("index"))
 
         valor = request.form.get("banca_inicial", None)
         if valor is None and request.is_json:
@@ -5910,12 +5923,12 @@ def configurar_banca_inicial():
             valor = 0.0
 
         dados.setdefault("usuarios", {})
-        if email:
-            dados["usuarios"].setdefault(email, {})
-            dados["usuarios"][email]["banca_inicial"] = round(valor, 2)
+        dados["usuarios"].setdefault(email, {})
+        dados["usuarios"][email]["banca_inicial"] = round(valor, 2)
 
-        # fallback global por garantia, caso email/session esteja diferente
-        dados["banca_inicial_global"] = round(valor, 2)
+        # V139: não existe mais fallback global. Banca inicial é individual por usuário.
+        if "banca_inicial_global" in dados:
+            dados.pop("banca_inicial_global", None)
 
         salvar()
 
