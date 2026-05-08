@@ -2574,5 +2574,52 @@ function fecharModalBancaInicial(){
 })();
 </script>
 
+
+<script id="v135-banca-save-js">
+(function(){
+    function money(v){
+        const n = Number(v || 0);
+        return "R$ " + n.toFixed(2);
+    }
+
+    document.addEventListener("DOMContentLoaded", () => {
+        const modal = document.getElementById("bancaInicialModal");
+        const form = modal ? modal.querySelector('form[action="/configurar_banca_inicial"]') : null;
+        if(!form || form.dataset.v135Ready === "1") return;
+
+        form.dataset.v135Ready = "1";
+
+        form.addEventListener("submit", async function(e){
+            e.preventDefault();
+
+            const input = document.getElementById("bancaInicialInput");
+            const valor = input ? input.value : 0;
+
+            try{
+                const r = await fetch("/configurar_banca_inicial", {
+                    method: "POST",
+                    headers: {"Content-Type": "application/json"},
+                    body: JSON.stringify({banca_inicial: valor})
+                });
+
+                const data = await r.json();
+                if(data && data.ok){
+                    const el = document.getElementById("metric-banca-inicial");
+                    if(el) el.textContent = money(data.banca_inicial || 0);
+
+                    if(typeof fecharModalBancaInicial === "function") fecharModalBancaInicial();
+                    if(typeof v72Toast === "function") v72Toast("Banca inicial salva");
+                }else{
+                    alert("Erro ao salvar banca inicial");
+                }
+            }catch(err){
+                console.error(err);
+                alert("Erro ao salvar banca inicial");
+            }
+        });
+    });
+})();
+</script>
+
 </body>
 </html>

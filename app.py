@@ -218,7 +218,7 @@ API_KEY = CONFIG.get("API_KEY", "")
 
 print("CONFIG PATH:", CONFIG_PATH)
 print("API KEY:", API_KEY)
-print("VERSAO_CARREGADA: OCR_CLIENTE_V134_FIX_PARSE_MONEY")
+print("VERSAO_CARREGADA: OCR_CLIENTE_V135_FIX_SALVAR_BANCA_INICIAL")
 
 if os.name == "nt":
     tess_path = r"C:\Program Files\Tesseract-OCR\tesseract.exe"
@@ -5858,11 +5858,27 @@ def v131_aplicar_metricas_extras(m, lista=None):
 @login_required
 def api_v132_cards():
     try:
-        email = session.get("user") or session.get("email") or session.get("usuario") or ""
-        u = dados.get("usuarios", {}).get(email, {})
-        banca_inicial = float(str(u.get("banca_inicial", 0)).replace(",", ".") or 0)
+        email = (
+            session.get("user")
+            or session.get("email")
+            or session.get("usuario")
+            or session.get("usuario_email")
+            or session.get("logged_user")
+            or ""
+        )
+        if isinstance(email, dict):
+            email = email.get("email") or email.get("user") or ""
+
+        u = dados.get("usuarios", {}).get(email, {}) if email else {}
+        banca_inicial = u.get("banca_inicial", dados.get("banca_inicial_global", 0))
+
+        try:
+            banca_inicial = float(str(banca_inicial).replace(",", ".") or 0)
+        except Exception:
+            banca_inicial = 0.0
     except Exception:
         banca_inicial = 0.0
+
     return jsonify({"ok": True, "banca_inicial": banca_inicial})
 
 
@@ -5870,18 +5886,42 @@ def api_v132_cards():
 @login_required
 def configurar_banca_inicial():
     try:
-        email = session.get("user")
-        if request.is_json:
-            valor = request.json.get("banca_inicial", 0)
-        else:
-            valor = request.form.get("banca_inicial", 0)
+        email = (
+            session.get("user")
+            or session.get("email")
+            or session.get("usuario")
+            or session.get("usuario_email")
+            or session.get("logged_user")
+            or ""
+        )
 
-        dados.setdefault("usuarios", {}).setdefault(email, {})
-        dados["usuarios"][email]["banca_inicial"] = round(v131_float_seguro(valor, 0), 2)
+        # fallback: alguns códigos usam session["usuario"] como dict
+        if isinstance(email, dict):
+            email = email.get("email") or email.get("user") or ""
+
+        valor = request.form.get("banca_inicial", None)
+        if valor is None and request.is_json:
+            valor = request.json.get("banca_inicial", 0)
+
+        valor = str(valor or "0").replace("R$", "").replace(".", "").replace(",", ".").strip()
+        try:
+            valor = float(valor)
+        except Exception:
+            valor = 0.0
+
+        dados.setdefault("usuarios", {})
+        if email:
+            dados["usuarios"].setdefault(email, {})
+            dados["usuarios"][email]["banca_inicial"] = round(valor, 2)
+
+        # fallback global por garantia, caso email/session esteja diferente
+        dados["banca_inicial_global"] = round(valor, 2)
+
         salvar()
 
         if request.is_json:
-            return jsonify({"ok": True, "banca_inicial": dados["usuarios"][email]["banca_inicial"]})
+            return jsonify({"ok": True, "banca_inicial": round(valor, 2)})
+
         return redirect(url_for("index"))
     except Exception as e:
         print("configurar_banca_inicial erro:", repr(e))
