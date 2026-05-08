@@ -33,16 +33,11 @@ function formatarLinhaApostaNova(b){
     const lucro = parseFloat(b.lucro || 0).toFixed(2)
 
     return `
-    <tr class="bet-row"
-        data-id="${b.id || ""}"
-        data-horario="${b.horario_jogo_iso || ""}"
-        data-status-jogo="${b.status_jogo || b.horario_jogo || ""}"
-        data-status-class="${b.ao_vivo ? "live" : ""}"
-        data-data="${b.data || ""}">
+    <tr class="bet-row">
         <td class="data-cell">${b.data || ""}</td>
         <td class="casa-cell">${b.casa || ""}</td>
         <td class="esporte-cell">${b.esporte || ""}</td>
-        <td class="jogo-cell">{{ b.jogo }}</td>
+        <td class="jogo-cell">${b.jogo || ""}${(b.status_jogo || b.horario_jogo) ? `<div class="game-time ${b.ao_vivo ? "live" : ""}">⏰ ${b.status_jogo || b.horario_jogo}</div>` : ""}</td>
         <td class="aposta-cell" title="${b.aposta || ""}">${apostaVisual}</td>
         <td class="odd-cell">${b.odd || ""}</td>
         <td class="valor-cell">${valor}</td>
@@ -201,16 +196,11 @@ function formatarLinhaApostaNovaV39(b){
     const apostaVisual = b.aposta_display || b.aposta || ""
 
     return `
-    <tr class="bet-row"
-        data-id="${b.id || ""}"
-        data-horario="${b.horario_jogo_iso || ""}"
-        data-status-jogo="${b.status_jogo || b.horario_jogo || ""}"
-        data-status-class="${b.ao_vivo ? "live" : ""}"
-        data-data="${b.data || ""}">
+    <tr class="bet-row">
         <td class="data-cell">${b.data || ""}</td>
         <td class="casa-cell">${b.casa || ""}</td>
         <td class="esporte-cell">${b.esporte || ""}</td>
-        <td class="jogo-cell">{{ b.jogo }}</td>
+        <td class="jogo-cell">${b.jogo || ""}${(b.status_jogo || b.horario_jogo) ? `<div class="game-time ${b.ao_vivo ? "live" : ""}">⏰ ${b.status_jogo || b.horario_jogo}</div>` : ""}</td>
         <td class="aposta-cell" title="${b.aposta || ""}">${apostaVisual}</td>
         <td class="odd-cell">${b.odd || ""}</td>
         <td class="valor-cell">${valor}</td>
@@ -757,9 +747,9 @@ document.addEventListener("DOMContentLoaded", ()=>{
                     data-id="{{ b.id }}"
                     data-jogo="{{ b.jogo }}"
                     data-horario="{{ b.horario_jogo_iso if b.horario_jogo_iso is defined else '' }}"
-                    data-status-jogo="{{ b.status_jogo if b.status_jogo is defined else (b.horario_jogo if b.horario_jogo is defined else '') }}"
-                    data-status-class="{{ 'live' if b.ao_vivo is defined and b.ao_vivo else '' }}"
-                    data-data="{{ b.data }}" data-jogos-relacionados='{{ (b.jogos_relacionados if b.jogos_relacionados is defined else [])|tojson }}'>
+                    data-status-jogo="{{ espn_status_label_bet(b) if espn_status_label_bet is defined else (b.get('status_jogo') or b.get('horario_jogo') or '') }}"
+                    data-status-class="{{ espn_status_class_bet(b) if espn_status_class_bet is defined else ('live' if b.get('ao_vivo') else '') }}"
+                    data-data="{{ b.data }}" data-jogos-relacionados='{{ (b.jogos_relacionados if b.jogos_relacionados is defined else [])|tojson }}' data-horario-jogo-iso="{{ b.horario_jogo_iso if b.horario_jogo_iso is defined else '' }}" data-ao-vivo="{{ '1' if b.ao_vivo is defined and b.ao_vivo else '0' }}">
                 <td class="data-cell">{{ b.data }}</td>
                 <td class="casa-cell">{{ b.casa }}</td>
                 <td class="esporte-cell">{{ b.esporte }}</td>
@@ -1891,7 +1881,7 @@ function v76AddBetToTable(b){
         <td>${v76Escape(b.data || "")}</td>
         <td class="casa-cell">${v76Escape(b.casa || "")}</td>
         <td class="esporte-cell">${v76Escape(b.esporte || "")}</td>
-        <td class="jogo-cell">{{ b.jogo }}</td>
+        <td class="jogo-cell">${v76Escape(b.jogo || "")}${(b.status_jogo || b.horario_jogo) ? `<div class="game-time ${b.ao_vivo ? "live" : ""}">⏰ ${v76Escape(b.status_jogo || b.horario_jogo)}</div>` : ""}</td>
         <td class="aposta-cell">${v76Escape(b.aposta_display || b.aposta || "")}</td>
         <td class="odd-cell">${v76Escape(b.odd || "")}</td>
         <td class="valor-cell">${v76Escape(b.valor || "")}</td>
@@ -2334,186 +2324,157 @@ window.v92ToggleDay = v92ToggleDay
 </script>
 
 
+<script id="v107-render-multiplas-js">
+document.addEventListener("DOMContentLoaded", () => {
+    document.querySelectorAll("tr.bet-row").forEach(row => {
+        try{
+            const raw = row.dataset.jogosRelacionados || "";
+            if(!raw) return;
+            const jogos = JSON.parse(raw);
+            if(!Array.isArray(jogos) || jogos.length < 2) return;
+            const cell = row.querySelector(".jogo-cell");
+            if(!cell || cell.querySelector(".multi-games-badge")) return;
+            const badge = document.createElement("span");
+            badge.className = "multi-games-badge";
+            badge.textContent = `${jogos.length} jogos`;
+            badge.title = jogos.map(j => `${j.jogo || ""} ${j.status_jogo || j.horario_jogo || ""}`).join("\n");
+            cell.appendChild(document.createTextNode(" "));
+            cell.appendChild(badge);
+        }catch(e){}
+    });
+});
+</script>
 
-
-
-
-
-<script id="v123-tabela-limpa-js">
+<script id="v124-table-status-left-js">
 (function(){
     let sortAsc = true;
     let lastSignature = "";
 
-    function parseDateBR(txt){
+    function parseISO(iso){
+        if(!iso) return null;
+        const d = new Date(iso);
+        return isNaN(d.getTime()) ? null : d;
+    }
+
+    function parseBR(txt){
         const m = String(txt || "").match(/(\d{2})\/(\d{2})\/(\d{4})\s+(\d{2}):(\d{2})/);
         if(!m) return null;
         return new Date(Number(m[3]), Number(m[2])-1, Number(m[1]), Number(m[4]), Number(m[5]));
     }
 
-    function getIso(row){
-        return row.dataset.horario || row.dataset.horarioJogoIso || "";
-    }
+    function iso(row){ return row.dataset.horarioJogoIso || row.dataset.horario || ""; }
+    function rawStatus(row){ return row.dataset.statusJogo || row.dataset.horarioJogo || ""; }
 
-    function getStatusRaw(row){
-        return row.dataset.statusJogo || row.dataset.horarioJogo || "";
-    }
-
-    function gameDateText(row){
-        const iso = getIso(row);
-        if(iso){
-            const d = new Date(iso);
-            if(!isNaN(d.getTime())){
-                const pad = n => String(n).padStart(2, "0");
-                return `${pad(d.getDate())}/${pad(d.getMonth()+1)} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
-            }
+    function dateText(row){
+        const d = parseISO(iso(row));
+        if(d){
+            const p = n => String(n).padStart(2,"0");
+            return `${p(d.getDate())}/${p(d.getMonth()+1)} ${p(d.getHours())}:${p(d.getMinutes())}`;
         }
-
-        const raw = getStatusRaw(row);
+        const raw = rawStatus(row);
         if(raw && /\d{2}\/\d{2}/.test(raw)) return raw;
-
         const data = row.dataset.data || "";
         if(data) return data;
-
-        const first = row.children?.[0]?.innerText || "";
-        return first.split("\n")[0] || "-";
+        return (row.children?.[0]?.innerText || "-").split("\n")[0] || "-";
     }
 
-    function statusInfo(row){
-        const rawOriginal = String(getStatusRaw(row) || "");
-        const raw = rawOriginal.toLowerCase();
-        const iso = getIso(row);
-        const statusClass = row.dataset.statusClass || "";
-
-        // Só considera AO VIVO se veio explicitamente da ESPN/backend.
-        if(statusClass === "live" || row.dataset.aoVivo === "1" || raw.includes("ao vivo") || raw.includes("live")){
-            return {label:"Ao vivo", cls:"live"};
+    function status(row){
+        const raw = String(rawStatus(row) || "").toLowerCase();
+        const d = parseISO(iso(row));
+        if(row.dataset.aoVivo === "1" || raw.includes("ao vivo") || raw.includes("live")) return ["Ao vivo","live"];
+        if(raw.includes("final") || raw.includes("encerr")) return ["Finalizado","finished"];
+        if(raw.includes("jogos") || raw.includes("próximo") || raw.includes("proximo")) return ["Múltipla","multi"];
+        if(d){
+            const diff = (d.getTime() - Date.now()) / 60000;
+            if(diff < -120) return ["Finalizado","finished"];
+            if(diff < 0) return ["Em andamento","playing"];
+            if(diff <= 60) return [`Falta ${Math.max(1, Math.floor(diff))}min`,"soon"];
+            if(d.toDateString() === new Date().toDateString()) return ["Hoje","today"];
+            return ["Agendado","scheduled"];
         }
-
-        if(raw.includes("final") || raw.includes("encerr")){
-            return {label:"Finalizado", cls:"finished"};
-        }
-
-        if(iso){
-            const d = new Date(iso);
-            if(!isNaN(d.getTime())){
-                const diffMin = (d.getTime() - Date.now()) / 60000;
-
-                if(diffMin < -120) return {label:"Finalizado", cls:"finished"};
-                if(diffMin < 0 && diffMin >= -120) return {label:"Em andamento", cls:"playing"};
-                if(diffMin >= 0 && diffMin <= 60) return {label:`Falta ${Math.max(1, Math.floor(diffMin))}min`, cls:"soon"};
-
-                const now = new Date();
-                if(d.toDateString() === now.toDateString()) return {label:"Hoje", cls:"today"};
-
-                return {label:"Agendado", cls:"scheduled"};
-            }
-        }
-
-        // Não exibe textos tipo "2 jogos • próximo..." como status, porque isso é meta de múltipla.
-        if(raw.includes("jogos") || raw.includes("próximo") || raw.includes("proximo")){
-            return {label:"Múltipla", cls:"multi"};
-        }
-
-        return {label:"Sem horário", cls:"empty"};
+        return ["Sem horário","empty"];
     }
 
-    function orderValue(row){
-        const iso = getIso(row);
-        if(iso){
-            const d = new Date(iso);
-            if(!isNaN(d.getTime())) return d.getTime();
-        }
-
-        const d2 = parseDateBR(row.dataset.data || row.children?.[0]?.innerText || "");
-        if(d2) return d2.getTime();
-
+    function order(row){
+        const d = parseISO(iso(row));
+        if(d) return d.getTime();
+        const br = parseBR(row.dataset.data || row.children?.[0]?.innerText || "");
+        if(br) return br.getTime();
         return 9999999999999;
     }
 
-    function cleanGameColumn(){
-        document.querySelectorAll("tr.bet-row").forEach(row => {
-            const jogoCell = row.querySelector(".jogo-cell") || row.children?.[3];
-            if(!jogoCell) return;
-
-            // Pega só o texto do jogo antes de qualquer badge/status antigo.
-            const original = row.dataset.jogo || jogoCell.childNodes[0]?.textContent?.trim() || jogoCell.textContent.trim();
-
-            jogoCell.querySelectorAll(".game-time, .game-status-pill-v108, .game-status-pill-v111, .game-date-status, .multi-games-badge, span, div").forEach(e => e.remove());
-            jogoCell.textContent = original;
-        });
-    }
-
-    function renderLeftColumn(){
-        document.querySelectorAll("tr.bet-row").forEach(row => {
-            const cell = row.children?.[0];
-            if(!cell) return;
-
-            const st = statusInfo(row);
-            const main = gameDateText(row);
-
-            const html = `<span class="game-date-main">${main}</span><span class="game-date-status ${st.cls}">${st.label}</span>`;
-            if(cell.dataset.v123Html !== html){
-                cell.classList.add("game-date-cell");
-                cell.innerHTML = html;
-                cell.dataset.v123Html = html;
+    function cleanGameCell(row){
+        const cell = row.querySelector(".jogo-cell") || row.children?.[3];
+        if(!cell) return;
+        // save first clean text before badges
+        let name = row.dataset.jogo || "";
+        if(!name){
+            for(const node of Array.from(cell.childNodes)){
+                if(node.nodeType === Node.TEXT_NODE && node.textContent.trim()){
+                    name = node.textContent.trim();
+                    break;
+                }
             }
-        });
+        }
+        if(!name) name = cell.textContent.trim();
+        cell.innerHTML = "";
+        cell.textContent = name;
     }
 
-    function sortRows(force=false){
-        const tbody = document.querySelector("table tbody");
-        if(!tbody) return;
-
-        const rows = Array.from(tbody.querySelectorAll("tr.bet-row"));
-        if(!rows.length) return;
-
-        const signature = rows.map(r => `${r.dataset.id || ""}:${getIso(r)}:${getStatusRaw(r)}`).join("|") + `:${sortAsc}`;
-        if(!force && signature === lastSignature) return;
-        lastSignature = signature;
-
-        rows.sort((a,b) => {
-            const diff = orderValue(a) - orderValue(b);
-            return sortAsc ? diff : -diff;
-        });
-
-        rows.forEach(r => tbody.appendChild(r));
+    function renderLeft(row){
+        const cell = row.children?.[0];
+        if(!cell) return;
+        const [label, cls] = status(row);
+        const html = `<span class="game-date-main">${dateText(row)}</span><span class="game-date-status ${cls}">${label}</span>`;
+        if(cell.dataset.v124 !== html){
+            cell.classList.add("game-date-cell");
+            cell.innerHTML = html;
+            cell.dataset.v124 = html;
+        }
     }
 
     function apply(force=false){
-        cleanGameColumn();
-        renderLeftColumn();
-        sortRows(force);
+        const rows = Array.from(document.querySelectorAll("tr.bet-row"));
+        rows.forEach(r => { cleanGameCell(r); renderLeft(r); });
+
+        const tbody = document.querySelector("table tbody");
+        if(tbody){
+            const sig = rows.map(r => `${r.dataset.id||""}:${iso(r)}:${rawStatus(r)}`).join("|") + ":" + sortAsc;
+            if(force || sig !== lastSignature){
+                lastSignature = sig;
+                rows.sort((a,b) => sortAsc ? order(a)-order(b) : order(b)-order(a));
+                rows.forEach(r => tbody.appendChild(r));
+            }
+        }
     }
 
-    function setupSort(){
+    function setup(){
         const th = document.getElementById("gameDateSortHeader");
         const arrow = document.getElementById("gameDateSortArrow");
-        if(!th || th.dataset.v123Ready === "1") return;
-
-        th.dataset.v123Ready = "1";
-        th.title = "Clique para inverter a ordem dos jogos";
-        th.addEventListener("click", () => {
-            sortAsc = !sortAsc;
-            if(arrow) arrow.textContent = sortAsc ? "↑" : "↓";
-            apply(true);
-        });
+        if(th && th.dataset.v124 !== "1"){
+            th.dataset.v124 = "1";
+            th.style.cursor = "pointer";
+            th.onclick = () => {
+                sortAsc = !sortAsc;
+                if(arrow) arrow.textContent = sortAsc ? "↑" : "↓";
+                apply(true);
+            };
+        }
     }
 
     document.addEventListener("DOMContentLoaded", () => {
-        setupSort();
+        setup();
         apply(true);
-        setInterval(() => apply(false), 5 * 60 * 1000);
+        setInterval(() => apply(false), 300000);
     });
-
     document.addEventListener("click", e => {
-        const txt = String(e.target?.innerText || "").toLowerCase();
-        if(txt.includes("salvar apostas") || txt.includes("adicionar")){
-            setTimeout(() => apply(true), 800);
-            setTimeout(() => apply(true), 1800);
+        const t = String(e.target?.innerText || "").toLowerCase();
+        if(t.includes("salvar apostas") || t.includes("adicionar")){
+            setTimeout(()=>apply(true), 700);
+            setTimeout(()=>apply(true), 1600);
         }
     });
-
-    window.v123ApplyTable = apply;
+    window.v124ApplyTable = apply;
 })();
 </script>
 
