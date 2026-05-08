@@ -2039,6 +2039,10 @@ function atualizarHorariosEspn(){
     async function buscar(input){
         if(!isGameInput(input)) return;
         const q = input.value || "", esporte = encodeURIComponent(getSport(input));
+        if((q || "").trim().length < 2){
+            show(input, `<div class="game-autocomplete-empty">Digite pelo menos 2 letras.</div>`);
+            return;
+        }
         show(input, `<div class="game-autocomplete-loading">Buscando jogos...</div>`);
         try{
             const r = await fetch(`/api/buscar_jogos?q=${encodeURIComponent(q)}&esporte=${esporte}`, {cache:"no-store"});
@@ -2086,7 +2090,10 @@ function atualizarHorariosEspn(){
         const aposta = form.querySelector('input[name="aposta"]'), jogo = form.querySelector('input[name="jogo"]');
         if(aposta && jogo && !aposta.value.trim()) aposta.value = jogo.value.trim() || "Aposta manual";
     }, true);
-    document.addEventListener("DOMContentLoaded", () => { attach(); setInterval(attach, 500); fetch("/api/status_jogos_cache", {cache:"no-store"}).catch(()=>{}); });
+    document.addEventListener("DOMContentLoaded", () => { attach(); setInterval(attach, 5000); if(!sessionStorage.getItem("statusJogosCacheWarm")){
+        sessionStorage.setItem("statusJogosCacheWarm","1");
+        setTimeout(()=>fetch("/api/status_jogos_cache", {cache:"no-store"}).catch(()=>{}), 3000);
+    } });
     window.gameAutocompleteAttach = attach;
 })();
 </script>
@@ -2260,7 +2267,7 @@ function fecharModalBancaInicial(){
 
     document.addEventListener("DOMContentLoaded", () => {
         apply();
-        setInterval(calcularValorAberto, 5000);
+        setInterval(calcularValorAberto, 30000);
     });
 
     document.addEventListener("click", () => setTimeout(calcularValorAberto, 400));
@@ -2535,7 +2542,13 @@ function fecharModalBancaInicial(){
     }
     function preserve(fn){ const y = window.scrollY; fn(); requestAnimationFrame(()=>window.scrollTo({top:y, behavior:"auto"})); }
     document.addEventListener("DOMContentLoaded", () => { apply(true); setInterval(() => preserve(()=>apply(false)), 300000); });
-    document.addEventListener("click", e => { const t = String(e.target?.innerText || "").toLowerCase(); if(t.includes("salvar apostas") || t.includes("adicionar") || t.includes("salvar")){ setTimeout(()=>preserve(()=>apply(true)),700); setTimeout(()=>preserve(()=>apply(true)),1600); } });
+    document.addEventListener("click", e => {
+        const t = String(e.target?.innerText || "").toLowerCase();
+        if(t.includes("salvar apostas") || t.includes("adicionar") || t.includes("salvar") || t.includes("excluir") || t.includes("editar")){
+            setTimeout(()=>preserve(()=>apply(true)),700);
+            setTimeout(()=>preserve(()=>apply(true)),1600);
+        }
+    });
     window.v136SmartTableApply = apply;
 })();
 </script>
@@ -2633,6 +2646,18 @@ function fecharModalBancaInicial(){
     document.addEventListener("DOMContentLoaded", start);
     document.addEventListener("click", () => setTimeout(atualizar, 300));
     window.v141AtualizarLucroPorBanca = atualizar;
+})();
+</script>
+
+
+<script id="v142-performance-guard-js">
+(function(){
+    // Evita múltiplas chamadas seguidas do mesmo refresh pesado.
+    window.v142Debounce = function(key, fn, wait){
+        window.__v142Timers = window.__v142Timers || {};
+        clearTimeout(window.__v142Timers[key]);
+        window.__v142Timers[key] = setTimeout(fn, wait || 250);
+    };
 })();
 </script>
 
