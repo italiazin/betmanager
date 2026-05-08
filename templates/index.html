@@ -33,7 +33,7 @@ function formatarLinhaApostaNova(b){
     const lucro = parseFloat(b.lucro || 0).toFixed(2)
 
     return `
-    <tr class="bet-row"><td class="game-date-cell"></td><td>{{ b.casa }}</td><td>{{ b.esporte }}</td><td class="jogo-cell">{{ b.jogo }}</td><td>{{ b.aposta }}</td><td>{{ b.odd }}</td><td>{{ b.valor }}</td><td class="status-cell"><span class="badge yellow">Pendente</span></td><td>R$ ${lucro}</td><td class="api-cell">${b.api_status || ""}</td><td class="actions">
+    <tr class="bet-row"><td class="game-date-cell"></td><td>${b.casa || ""}</td><td>${b.esporte || ""}</td><td class="jogo-cell">${b.jogo || ""}</td><td>${b.aposta || ""}</td><td>${b.odd || ""}</td><td>${b.valor || ""}</td><td class="status-cell"><span class="badge yellow">Pendente</span></td><td>R$ ${lucro}</td><td class="api-cell">${b.api_status || ""}</td><td class="actions">
             <a href="/resultado/${b.id}/ganha"><button class="green">✔</button></a>
             <a href="/resultado/${b.id}/perdida"><button class="red">✖</button></a>
             <a href="/resultado/${b.id}/anulada"><button class="gray">↺</button></a>
@@ -184,7 +184,7 @@ function formatarLinhaApostaNovaV39(b){
     const apostaVisual = b.aposta_display || b.aposta || ""
 
     return `
-    <tr class="bet-row"><td class="game-date-cell"></td><td>{{ b.casa }}</td><td>{{ b.esporte }}</td><td class="jogo-cell">{{ b.jogo }}</td><td>{{ b.aposta }}</td><td>{{ b.odd }}</td><td>{{ b.valor }}</td><td class="status-cell"><span class="badge yellow">Pendente</span></td><td>R$ ${lucro}</td><td class="api-cell">${b.api_status || ""}</td><td class="actions">
+    <tr class="bet-row"><td class="game-date-cell"></td><td>${b.casa || ""}</td><td>${b.esporte || ""}</td><td class="jogo-cell">${b.jogo || ""}</td><td>${b.aposta || ""}</td><td>${b.odd || ""}</td><td>${b.valor || ""}</td><td class="status-cell"><span class="badge yellow">Pendente</span></td><td>R$ ${lucro}</td><td class="api-cell">${b.api_status || ""}</td><td class="actions">
             <a href="/resultado/${b.id}/ganha"><button class="green">✔</button></a>
             <a href="/resultado/${b.id}/perdida"><button class="red">✖</button></a>
             <a href="/resultado/${b.id}/anulada"><button class="gray">↺</button></a>
@@ -812,7 +812,7 @@ document.addEventListener("DOMContentLoaded", ()=>{
 
         <tbody>
             {% for b in bets %}
-            <tr class="bet-row"><td class="game-date-cell"></td><td>{{ b.casa }}</td><td>{{ b.esporte }}</td><td class="jogo-cell">{{ b.jogo }}</td><td>{{ b.aposta }}</td><td>{{ b.odd }}</td><td>{{ b.valor }}</td><td class="status-cell">
+            <tr class="bet-row"><td class="game-date-cell"></td><td>${b.casa || ""}</td><td>${b.esporte || ""}</td><td class="jogo-cell">${b.jogo || ""}</td><td>${b.aposta || ""}</td><td>${b.odd || ""}</td><td>${b.valor || ""}</td><td class="status-cell">
                     {% if b.estado == "ganha" %}
                         <span class="badge green">Ganha</span>
                     {% elif b.estado == "perdida" %}
