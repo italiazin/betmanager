@@ -42,7 +42,7 @@ function formatarLinhaApostaNova(b){
         <td class="data-cell">${b.data || ""}</td>
         <td class="casa-cell">${b.casa || ""}</td>
         <td class="esporte-cell">${b.esporte || ""}</td>
-        <td class="jogo-cell">${b.jogo || ""}</td>
+        <td class="jogo-cell">{{ b.jogo }}</td>
         <td class="aposta-cell" title="${b.aposta || ""}">${apostaVisual}</td>
         <td class="odd-cell">${b.odd || ""}</td>
         <td class="valor-cell">${valor}</td>
@@ -210,7 +210,7 @@ function formatarLinhaApostaNovaV39(b){
         <td class="data-cell">${b.data || ""}</td>
         <td class="casa-cell">${b.casa || ""}</td>
         <td class="esporte-cell">${b.esporte || ""}</td>
-        <td class="jogo-cell">${b.jogo || ""}</td>
+        <td class="jogo-cell">{{ b.jogo }}</td>
         <td class="aposta-cell" title="${b.aposta || ""}">${apostaVisual}</td>
         <td class="odd-cell">${b.odd || ""}</td>
         <td class="valor-cell">${valor}</td>
@@ -1891,7 +1891,7 @@ function v76AddBetToTable(b){
         <td>${v76Escape(b.data || "")}</td>
         <td class="casa-cell">${v76Escape(b.casa || "")}</td>
         <td class="esporte-cell">${v76Escape(b.esporte || "")}</td>
-        <td class="jogo-cell">${v76Escape(b.jogo || "")}${(b.status_jogo || b.horario_jogo) ? `<div class="game-time ${b.ao_vivo ? "live" : ""}">⏰ ${v76Escape(b.status_jogo || b.horario_jogo)}</div>` : ""}</td>
+        <td class="jogo-cell">{{ b.jogo }}</td>
         <td class="aposta-cell">${v76Escape(b.aposta_display || b.aposta || "")}</td>
         <td class="odd-cell">${v76Escape(b.odd || "")}</td>
         <td class="valor-cell">${v76Escape(b.valor || "")}</td>
@@ -2334,28 +2334,12 @@ window.v92ToggleDay = v92ToggleDay
 </script>
 
 
-<script id="v107-render-multiplas-js">
-document.addEventListener("DOMContentLoaded", () => {
-    document.querySelectorAll("tr.bet-row").forEach(row => {
-        try{
-            const raw = row.dataset.jogosRelacionados || "";
-            if(!raw) return;
-            const jogos = JSON.parse(raw);
-            if(!Array.isArray(jogos) || jogos.length < 2) return;
-            const cell = row.querySelector(".jogo-cell");
-            if(!cell || cell.querySelector(".multi-games-badge")) return;
-            const badge = document.createElement("span");
-            badge.className = "multi-games-badge";
-            badge.textContent = `${jogos.length} jogos`;
-            badge.title = jogos.map(j => `${j.jogo || ""} ${j.status_jogo || j.horario_jogo || ""}`).join("\n");
-            cell.appendChild(document.createTextNode(" "));
-            cell.appendChild(badge);
-        }catch(e){}
-    });
-});
-</script>
 
-<script id="v122-tabela-limpa-js">
+
+
+
+
+<script id="v123-tabela-limpa-js">
 (function(){
     let sortAsc = true;
     let lastSignature = "";
@@ -2395,10 +2379,12 @@ document.addEventListener("DOMContentLoaded", () => {
     }
 
     function statusInfo(row){
-        const raw = String(getStatusRaw(row) || "").toLowerCase();
+        const rawOriginal = String(getStatusRaw(row) || "");
+        const raw = rawOriginal.toLowerCase();
         const iso = getIso(row);
         const statusClass = row.dataset.statusClass || "";
 
+        // Só considera AO VIVO se veio explicitamente da ESPN/backend.
         if(statusClass === "live" || row.dataset.aoVivo === "1" || raw.includes("ao vivo") || raw.includes("live")){
             return {label:"Ao vivo", cls:"live"};
         }
@@ -2413,7 +2399,7 @@ document.addEventListener("DOMContentLoaded", () => {
                 const diffMin = (d.getTime() - Date.now()) / 60000;
 
                 if(diffMin < -120) return {label:"Finalizado", cls:"finished"};
-                if(diffMin >= -15 && diffMin <= 130) return {label:"Ao vivo", cls:"live"};
+                if(diffMin < 0 && diffMin >= -120) return {label:"Em andamento", cls:"playing"};
                 if(diffMin >= 0 && diffMin <= 60) return {label:`Falta ${Math.max(1, Math.floor(diffMin))}min`, cls:"soon"};
 
                 const now = new Date();
@@ -2421,6 +2407,11 @@ document.addEventListener("DOMContentLoaded", () => {
 
                 return {label:"Agendado", cls:"scheduled"};
             }
+        }
+
+        // Não exibe textos tipo "2 jogos • próximo..." como status, porque isso é meta de múltipla.
+        if(raw.includes("jogos") || raw.includes("próximo") || raw.includes("proximo")){
+            return {label:"Múltipla", cls:"multi"};
         }
 
         return {label:"Sem horário", cls:"empty"};
@@ -2444,12 +2435,11 @@ document.addEventListener("DOMContentLoaded", () => {
             const jogoCell = row.querySelector(".jogo-cell") || row.children?.[3];
             if(!jogoCell) return;
 
-            jogoCell.querySelectorAll(".game-time, .game-status-pill-v108, .game-status-pill-v111, .game-date-status").forEach(e => e.remove());
+            // Pega só o texto do jogo antes de qualquer badge/status antigo.
+            const original = row.dataset.jogo || jogoCell.childNodes[0]?.textContent?.trim() || jogoCell.textContent.trim();
 
-            const original = row.dataset.jogo || jogoCell.textContent.trim();
-            if(original && jogoCell.textContent.trim() !== original){
-                jogoCell.textContent = original;
-            }
+            jogoCell.querySelectorAll(".game-time, .game-status-pill-v108, .game-status-pill-v111, .game-date-status, .multi-games-badge, span, div").forEach(e => e.remove());
+            jogoCell.textContent = original;
         });
     }
 
@@ -2462,10 +2452,10 @@ document.addEventListener("DOMContentLoaded", () => {
             const main = gameDateText(row);
 
             const html = `<span class="game-date-main">${main}</span><span class="game-date-status ${st.cls}">${st.label}</span>`;
-            if(cell.dataset.v122Html !== html){
+            if(cell.dataset.v123Html !== html){
                 cell.classList.add("game-date-cell");
                 cell.innerHTML = html;
-                cell.dataset.v122Html = html;
+                cell.dataset.v123Html = html;
             }
         });
     }
@@ -2498,9 +2488,9 @@ document.addEventListener("DOMContentLoaded", () => {
     function setupSort(){
         const th = document.getElementById("gameDateSortHeader");
         const arrow = document.getElementById("gameDateSortArrow");
-        if(!th || th.dataset.v122Ready === "1") return;
+        if(!th || th.dataset.v123Ready === "1") return;
 
-        th.dataset.v122Ready = "1";
+        th.dataset.v123Ready = "1";
         th.title = "Clique para inverter a ordem dos jogos";
         th.addEventListener("click", () => {
             sortAsc = !sortAsc;
@@ -2523,7 +2513,7 @@ document.addEventListener("DOMContentLoaded", () => {
         }
     });
 
-    window.v122ApplyTable = apply;
+    window.v123ApplyTable = apply;
 })();
 </script>
 
