@@ -4038,3 +4038,21 @@ table {
 }
 #bancaInicialModal .modal-content { max-width: 420px !important; }
 #bancaInicialModal input { width: 100% !important; }
+
+/* V132 - cards fix */
+.banca-inicial-card { position: relative !important; }
+.mini-edit-btn {
+    position: absolute !important;
+    right: 10px !important;
+    bottom: 10px !important;
+    width: 28px !important;
+    height: 28px !important;
+    border-radius: 999px !important;
+    border: 1px solid rgba(148,163,184,.35) !important;
+    background: rgba(15,23,42,.65) !important;
+    color: #e5f0ff !important;
+    cursor: pointer !important;
+    font-weight: 900 !important;
+}
+#bancaInicialModal .modal-content { max-width: 420px !important; }
+#bancaInicialModal input { width: 100% !important; }

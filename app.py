@@ -218,7 +218,7 @@ API_KEY = CONFIG.get("API_KEY", "")
 
 print("CONFIG PATH:", CONFIG_PATH)
 print("API KEY:", API_KEY)
-print("VERSAO_CARREGADA: OCR_CLIENTE_V131_BANCA_INICIAL_VALOR_ABERTO")
+print("VERSAO_CARREGADA: OCR_CLIENTE_V132_CARDS_FRONT_FIX")
 
 if os.name == "nt":
     tess_path = r"C:\Program Files\Tesseract-OCR\tesseract.exe"
@@ -5853,6 +5853,18 @@ def v131_aplicar_metricas_extras(m, lista=None):
     except Exception as e:
         print("v131_aplicar_metricas_extras erro:", repr(e))
     return m
+
+@app.route("/api/v132_cards")
+@login_required
+def api_v132_cards():
+    try:
+        email = session.get("user") or session.get("email") or session.get("usuario") or ""
+        u = dados.get("usuarios", {}).get(email, {})
+        banca_inicial = float(str(u.get("banca_inicial", 0)).replace(",", ".") or 0)
+    except Exception:
+        banca_inicial = 0.0
+    return jsonify({"ok": True, "banca_inicial": banca_inicial})
+
 
 @app.route("/configurar_banca_inicial", methods=["POST"])
 @login_required

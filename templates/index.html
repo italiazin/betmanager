@@ -2432,5 +2432,120 @@ function fecharModalBancaInicial(){
 }
 </script>
 
+
+<script id="v132-cards-fix-js">
+(function(){
+    function money(v){
+        const n = Number(v || 0);
+        return "R$ " + n.toFixed(2);
+    }
+
+    function parseMoney(txt){
+        txt = String(txt || "").replace(/[^\d,.-]/g, "").replace(/\./g, "").replace(",", ".");
+        const n = Number(txt);
+        return isNaN(n) ? 0 : n;
+    }
+
+    function findMetricsGrid(){
+        return document.querySelector(".metrics-grid") ||
+               document.querySelector(".metric-grid") ||
+               document.querySelector(".cards") ||
+               document.querySelector(".dashboard-cards") ||
+               document.querySelector(".stats-grid") ||
+               document.querySelector(".top-cards");
+    }
+
+    function makeCard(id, title, value, editable){
+        const div = document.createElement("div");
+        div.className = "metric-card";
+        if(editable) div.classList.add("banca-inicial-card");
+        div.innerHTML = `
+            <span>${title}</span>
+            <strong id="${id}">${value}</strong>
+            ${editable ? '<button type="button" class="mini-edit-btn" onclick="abrirModalBancaInicial()">✎</button>' : ''}
+        `;
+        return div;
+    }
+
+    function ensureCards(){
+        const grid = findMetricsGrid();
+        if(!grid) return;
+
+        if(!document.getElementById("metric-banca-inicial")){
+            const card = makeCard("metric-banca-inicial", "Banca Inicial", "R$ 0.00", true);
+            const bancaAtual = document.getElementById("metric-banca")?.closest(".metric-card");
+            if(bancaAtual && bancaAtual.nextSibling) grid.insertBefore(card, bancaAtual.nextSibling);
+            else grid.insertBefore(card, grid.firstChild);
+        }
+
+        let va = document.getElementById("metric-valor-aberto");
+        if(!va){
+            const oldSaldo = document.getElementById("metric-saldo-casas");
+            if(oldSaldo){
+                oldSaldo.id = "metric-valor-aberto";
+                const card = oldSaldo.closest(".metric-card");
+                const title = card?.querySelector("span");
+                if(title) title.textContent = "Valor em Aberto";
+            }else{
+                grid.appendChild(makeCard("metric-valor-aberto", "Valor em Aberto", "R$ 0.00", false));
+            }
+        }
+    }
+
+    function calcularValorAberto(){
+        let total = 0;
+        document.querySelectorAll("tr.bet-row").forEach(row => {
+            const statusTxt = (row.children?.[6]?.innerText || row.querySelector(".status-badge")?.innerText || "").toLowerCase();
+            const fechado = statusTxt.includes("ganha") || statusTxt.includes("green") ||
+                            statusTxt.includes("perdida") || statusTxt.includes("red") ||
+                            statusTxt.includes("anulada") || statusTxt.includes("void");
+
+            if(!fechado){
+                const valorCell = row.children?.[5]?.innerText || "";
+                total += parseMoney(valorCell);
+            }
+        });
+
+        const el = document.getElementById("metric-valor-aberto");
+        if(el) el.textContent = money(total);
+    }
+
+    async function carregarBancaInicial(){
+        try{
+            const r = await fetch("/api/v132_cards", {cache:"no-store"});
+            const data = await r.json();
+            const val = Number(data.banca_inicial || 0);
+            const el = document.getElementById("metric-banca-inicial");
+            if(el) el.textContent = money(val);
+            const inp = document.getElementById("bancaInicialInput");
+            if(inp) inp.value = val.toFixed(2);
+        }catch(e){}
+    }
+
+    window.abrirModalBancaInicial = function(){
+        const modal = document.getElementById("bancaInicialModal");
+        if(modal) modal.style.display = "flex";
+    };
+
+    window.fecharModalBancaInicial = function(){
+        const modal = document.getElementById("bancaInicialModal");
+        if(modal) modal.style.display = "none";
+    };
+
+    function apply(){
+        ensureCards();
+        calcularValorAberto();
+        carregarBancaInicial();
+    }
+
+    document.addEventListener("DOMContentLoaded", () => {
+        apply();
+        setInterval(calcularValorAberto, 5000);
+    });
+
+    document.addEventListener("click", () => setTimeout(calcularValorAberto, 400));
+})();
+</script>
+
 </body>
 </html>
