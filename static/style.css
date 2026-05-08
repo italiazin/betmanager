@@ -4005,3 +4005,18 @@ table {
 .group-collapsed-v129 {
     display: none !important;
 }
+
+
+/* V130 */
+.group-child-v130 td:first-child { border-left: 3px solid rgba(96,165,250,.45) !important; }
+.group-highlight-v130 { background: rgba(37,99,235,.055) !important; }
+.group-collapsed-v130 { display: none !important; }
+.game-group-row-v130 td {
+    background: rgba(15,23,42,.95) !important;
+    border-top: 1px solid rgba(96,165,250,.22) !important;
+    border-bottom: 1px solid rgba(96,165,250,.22) !important;
+    padding: 7px 10px !important;
+}
+#editStatusJogoManual {
+    width: 100% !important;
+}

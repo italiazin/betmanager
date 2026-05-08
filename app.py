@@ -218,7 +218,7 @@ API_KEY = CONFIG.get("API_KEY", "")
 
 print("CONFIG PATH:", CONFIG_PATH)
 print("API KEY:", API_KEY)
-print("VERSAO_CARREGADA: OCR_CLIENTE_V129_TABELA_INTELIGENTE")
+print("VERSAO_CARREGADA: OCR_CLIENTE_V130_FIX_SCROLL_EDIT_STATUS_GROUP")
 
 if os.name == "nt":
     tess_path = r"C:\Program Files\Tesseract-OCR\tesseract.exe"
@@ -6290,6 +6290,14 @@ def editar_ajax():
     b["odd"] = float(payload.get("odd", 1))
     b["valor"] = float(payload.get("valor", 0))
     b["estado"] = payload.get("estado", b.get("estado", ""))
+
+    status_jogo_manual = payload.get("status_jogo_manual") or payload.get("status_jogo") or ""
+    if status_jogo_manual:
+        b["status_jogo"] = status_jogo_manual
+        if status_jogo_manual.lower() in ["ao vivo", "live"]:
+            b["ao_vivo"] = True
+        else:
+            b["ao_vivo"] = False
 
     horario_manual = payload.get("horario_jogo") or payload.get("horario_jogo_iso") or ""
     if horario_manual:

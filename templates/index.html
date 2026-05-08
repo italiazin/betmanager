@@ -784,7 +784,7 @@ document.addEventListener("DOMContentLoaded", ()=>{
                         class="blue"
                         onclick="abrirEditar(this)"
                         data-id="{{ b.id }}"
-                        data-estado="{{ b.estado }}" data-horario="{{ b.horario_jogo_iso if b.horario_jogo_iso is defined else '' }}"
+                        data-estado="{{ b.estado }}" data-status-jogo="{{ b.status_jogo if b.status_jogo is defined else '' }}" data-horario="{{ b.horario_jogo_iso if b.horario_jogo_iso is defined else '' }}"
                     >✎</button>
                     <a href="/remover/{{ b.id }}"><button class="dark">🗑</button></a>
                 </td>
@@ -819,7 +819,7 @@ document.addEventListener("DOMContentLoaded", ()=>{
         <label>Valor</label>
         <input id="editValor" type="number" step="0.01">
 
-        <label>Status</label>
+        <label>Status da aposta</label>
         <select id="editEstado">
             <option value="">Pendente</option>
             <option value="ganha">Ganha</option>
@@ -828,7 +828,17 @@ document.addEventListener("DOMContentLoaded", ()=>{
         </select>
 
         <div class="modal-actions">
-            <button onclick="salvarEdicao()">Salvar</button>
+            <label>Status do jogo</label>
+        <select id="editStatusJogoManual">
+            <option value="">Automático</option>
+            <option value="Ao vivo">Ao vivo</option>
+            <option value="Em andamento">Em andamento</option>
+            <option value="Finalizado">Finalizado</option>
+            <option value="Sem horário">Sem horário</option>
+            <option value="Agendado">Agendado</option>
+        </select>
+
+        <button onclick="salvarEdicao()">Salvar</button>
             <button class="dark" onclick="fecharModal()">Cancelar</button>
         </div>
     </div>
@@ -1329,6 +1339,8 @@ function abrirEditar(btn){
     document.getElementById("editOdd").value = tr.querySelector(".odd-cell").innerText
     document.getElementById("editValor").value = tr.querySelector(".valor-cell").innerText
     document.getElementById("editEstado").value = btn.dataset.estado
+    const sj = document.getElementById("editStatusJogoManual")
+    if(sj) sj.value = btn.dataset.statusJogo || ""
 
     const horarioInput = document.getElementById("editHorarioJogo")
     if(horarioInput){
@@ -1356,7 +1368,8 @@ function salvarEdicao(){
         odd: document.getElementById("editOdd").value,
         valor: document.getElementById("editValor").value,
         estado: document.getElementById("editEstado").value,
-        horario_jogo: document.getElementById("editHorarioJogo")?.value || ""
+        horario_jogo: document.getElementById("editHorarioJogo")?.value || "",
+        status_jogo_manual: document.getElementById("editStatusJogoManual")?.value || ""
     }
 
     fetch("/editar_ajax",{
@@ -2084,7 +2097,10 @@ function atualizarHorariosEspn(){
 
 
 
-<script id="v129-smart-table-js">
+
+
+
+<script id="v130-smart-table-js">
 (function(){
     let sortAsc = true;
     let groupMode = true;
@@ -2138,11 +2154,24 @@ function atualizarHorariosEspn(){
         return name;
     }
 
-    function isMulti(row){
+    function hasSingleMatchInGameField(row){
         const game = getGameName(row).toLowerCase();
-        const bet = (getCell(row,4)?.innerText || "").toLowerCase();
+        if(!game || game === "múltipla" || game === "multipla") return false;
+        // Se o campo Jogo tem só uma partida, mesmo que a aposta tenha vários mercados com /, agrupa pelo jogo.
+        const separators = (game.match(/\s\/\s/g) || []).length;
+        const looksLikeMatch = /\s(x|vs\.?|v\.?)\s/.test(game);
+        return looksLikeMatch && separators === 0;
+    }
+
+    function isTrueMulti(row){
+        const game = getGameName(row).toLowerCase();
         const raw = getRaw(row).toLowerCase();
-        return game === "múltipla" || game === "multipla" || raw.includes("jogos") || bet.split("/").length >= 3;
+        if(hasSingleMatchInGameField(row)) return false;
+        if(game === "múltipla" || game === "multipla") return true;
+        if(raw.includes("jogos") || raw.includes("próximo") || raw.includes("proximo")) return true;
+        // Só considera múltipla pela aposta se o campo jogo não é uma partida simples.
+        const bet = (getCell(row,4)?.innerText || "").toLowerCase();
+        return !hasSingleMatchInGameField(row) && bet.split("/").length >= 4;
     }
 
     function dateLabel(row){
@@ -2161,26 +2190,20 @@ function atualizarHorariosEspn(){
         const raw = String(getRaw(row) || "").toLowerCase();
         const d = parseISO(getIso(row));
 
-        if(isMulti(row)) return ["Múltipla", "multi", 30];
+        if(isTrueMulti(row)) return ["Múltipla", "multi", 30];
 
-        if(row.dataset.aoVivo === "1" || raw.includes("ao vivo") || raw.includes("live")){
-            return ["Ao vivo", "live", 0];
-        }
-
-        if(raw.includes("final") || raw.includes("encerr")){
-            return ["Finalizado", "finished", 50];
-        }
+        if(row.dataset.aoVivo === "1" || raw.includes("ao vivo") || raw.includes("live")) return ["Ao vivo", "live", 0];
+        if(raw.includes("final") || raw.includes("encerr")) return ["Finalizado", "finished", 50];
+        if(raw.includes("em andamento")) return ["Em andamento", "playing", 1];
+        if(raw.includes("sem horário") || raw.includes("sem horario")) return ["Sem horário", "empty", 40];
+        if(raw.includes("agendado")) return ["Agendado", "scheduled", 4];
 
         if(d){
             const diff = (d.getTime() - Date.now()) / 60000;
-
             if(diff < -120) return ["Finalizado", "finished", 50];
             if(diff < 0) return ["Em andamento", "playing", 1];
             if(diff <= 60) return [`Falta ${Math.max(1, Math.floor(diff))}min`, "soon", 2];
-
-            const today = new Date();
-            if(d.toDateString() === today.toDateString()) return ["Hoje", "today", 3];
-
+            if(d.toDateString() === new Date().toDateString()) return ["Hoje", "today", 3];
             return ["Futuro", "scheduled", 4];
         }
 
@@ -2196,10 +2219,9 @@ function atualizarHorariosEspn(){
     }
 
     function sortKey(row){
-        const [, cls, priority] = gameStatus(row);
+        const [, , priority] = gameStatus(row);
         const time = baseTime(row);
         let betAdjust = 0;
-
         if(priority === 50){
             const bs = getBetStatus(row);
             if(bs.includes("ganha") || bs.includes("green")) betAdjust = 0;
@@ -2207,7 +2229,6 @@ function atualizarHorariosEspn(){
             else if(bs.includes("anulada")) betAdjust = 2;
             else betAdjust = 3;
         }
-
         return [priority, time, betAdjust];
     }
 
@@ -2224,15 +2245,15 @@ function atualizarHorariosEspn(){
         if(!cell) return;
         const [label, cls] = gameStatus(row);
         const html = `<span class="game-date-main">${dateLabel(row)}</span><span class="game-date-status ${cls}">${label}</span>`;
-        if(cell.dataset.v129 !== html){
+        if(cell.dataset.v130 !== html){
             cell.classList.add("game-date-cell");
             cell.innerHTML = html;
-            cell.dataset.v129 = html;
+            cell.dataset.v130 = html;
         }
     }
 
     function groupKey(row){
-        if(isMulti(row)) return `__multi__:${row.dataset.id || Math.random()}`;
+        if(isTrueMulti(row)) return `__multi__:${row.dataset.id || Math.random()}`;
         const game = getGameName(row).toLowerCase();
         return game || `__row__:${row.dataset.id || Math.random()}`;
     }
@@ -2242,22 +2263,22 @@ function atualizarHorariosEspn(){
     }
 
     function clearGroupHeaders(tbody){
-        tbody.querySelectorAll("tr.game-group-row-v129").forEach(r => r.remove());
+        tbody.querySelectorAll("tr.game-group-row-v129, tr.game-group-row-v130").forEach(r => r.remove());
         tbody.querySelectorAll("tr.bet-row").forEach(r => {
-            r.classList.remove("group-child-v129", "group-collapsed-v129", "group-highlight-v129");
+            r.classList.remove("group-child-v129", "group-collapsed-v129", "group-highlight-v129", "group-child-v130", "group-collapsed-v130", "group-highlight-v130");
         });
     }
 
     function buildGroupHeader(key, rows){
         const rep = representativeRow(rows);
-        const game = isMulti(rep) ? "Múltiplas" : getGameName(rep);
+        const game = getGameName(rep);
         const [label, cls] = gameStatus(rep);
         const colCount = document.querySelectorAll("table thead th").length || 10;
         const collapsed = collapsedGroups.has(key);
         const count = rows.length;
 
         const tr = document.createElement("tr");
-        tr.className = "game-group-row-v129";
+        tr.className = "game-group-row-v130";
         tr.dataset.groupKey = key;
         tr.innerHTML = `
             <td colspan="${colCount}">
@@ -2290,7 +2311,6 @@ function atualizarHorariosEspn(){
             <button type="button" id="toggleGroupV129" class="smart-table-btn-v129">📌 Agrupar jogos</button>
             <button type="button" id="expandGroupsV129" class="smart-table-btn-v129 secondary">Expandir tudo</button>
         `;
-
         const table = panel.querySelector("table");
         if(table) panel.insertBefore(bar, table);
 
@@ -2299,7 +2319,6 @@ function atualizarHorariosEspn(){
             bar.querySelector("#toggleGroupV129").textContent = groupMode ? "📌 Agrupar jogos" : "☰ Lista simples";
             apply(true);
         };
-
         bar.querySelector("#expandGroupsV129").onclick = () => {
             collapsedGroups.clear();
             apply(true);
@@ -2309,13 +2328,19 @@ function atualizarHorariosEspn(){
     function setupSort(){
         const th = document.getElementById("gameDateSortHeader");
         const arrow = document.getElementById("gameDateSortArrow");
-        if(!th || th.dataset.v129Ready === "1") return;
-        th.dataset.v129Ready = "1";
+        if(!th || th.dataset.v130Ready === "1") return;
+        th.dataset.v130Ready = "1";
         th.onclick = () => {
             sortAsc = !sortAsc;
             if(arrow) arrow.textContent = sortAsc ? "↑" : "↓";
             apply(true);
         };
+    }
+
+    function preserveScroll(fn){
+        const y = window.scrollY;
+        fn();
+        requestAnimationFrame(() => window.scrollTo({top: y, behavior: "auto"}));
     }
 
     function apply(force=false){
@@ -2355,9 +2380,9 @@ function atualizarHorariosEspn(){
                 tbody.appendChild(buildGroupHeader(key, groupRows));
                 const collapsed = collapsedGroups.has(key);
                 groupRows.forEach(row => {
-                    row.classList.add("group-child-v129");
-                    if(collapsed) row.classList.add("group-collapsed-v129");
-                    if(groupRows.length >= 3) row.classList.add("group-highlight-v129");
+                    row.classList.add("group-child-v130");
+                    if(collapsed) row.classList.add("group-collapsed-v130");
+                    if(groupRows.length >= 3) row.classList.add("group-highlight-v130");
                     tbody.appendChild(row);
                 });
             } else {
@@ -2366,31 +2391,21 @@ function atualizarHorariosEspn(){
         }
     }
 
-    function observe(){
-        const tbody = document.querySelector("table tbody");
-        if(!tbody || tbody.dataset.v129Obs === "1") return;
-        tbody.dataset.v129Obs = "1";
-        new MutationObserver(() => {
-            clearTimeout(window.__v129Timer);
-            window.__v129Timer = setTimeout(() => apply(false), 120);
-        }).observe(tbody, {childList:true, subtree:true});
-    }
-
     document.addEventListener("DOMContentLoaded", () => {
+        // Sem MutationObserver: evita tremedeira e scroll pulando.
         apply(true);
-        observe();
-        setInterval(() => apply(false), 300000);
+        setInterval(() => preserveScroll(() => apply(false)), 300000);
     });
 
     document.addEventListener("click", e => {
         const t = String(e.target?.innerText || "").toLowerCase();
-        if(t.includes("salvar apostas") || t.includes("adicionar")){
-            setTimeout(()=>apply(true), 700);
-            setTimeout(()=>apply(true), 1600);
+        if(t.includes("salvar apostas") || t.includes("adicionar") || t.includes("salvar")){
+            setTimeout(()=>preserveScroll(() => apply(true)), 700);
+            setTimeout(()=>preserveScroll(() => apply(true)), 1600);
         }
     });
 
-    window.v129SmartTableApply = apply;
+    window.v130SmartTableApply = apply;
 })();
 </script>
 
