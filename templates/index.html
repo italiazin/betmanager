@@ -2544,7 +2544,10 @@ function fecharModalBancaInicial(){
 
 
 
-<script id="v138-lucro-banca-js">
+
+
+
+<script id="v141-lucro-banca-js">
 (function(){
     function parseMoney(txt){
         const raw = String(txt || "");
@@ -2583,15 +2586,19 @@ function fecharModalBancaInicial(){
     function atualizar(){
         const bancaAtualEl = card("Banca Atual")?.querySelector("strong");
         const bancaInicialEl = card("Banca Inicial")?.querySelector("strong");
+        const valorAbertoEl = card("Valor em Aberto")?.querySelector("strong");
         const lucroEl = card("Lucro Total")?.querySelector("strong");
         const roiEl = card("ROI")?.querySelector("strong");
 
         const bancaAtual = parseMoney(bancaAtualEl?.innerText || "0");
         const bancaInicial = parseMoney(bancaInicialEl?.innerText || "0");
+        const valorAberto = parseMoney(valorAbertoEl?.innerText || "0");
 
         if(!bancaInicial) return;
 
-        const lucro = bancaAtual - bancaInicial;
+        // V141: valor em aberto NÃO é red.
+        // A banca atual já descontou a stake aberta, então somamos de volta.
+        const lucro = bancaAtual + valorAberto - bancaInicial;
         const roi = (lucro / bancaInicial) * 100;
 
         if(lucroEl){
@@ -2608,16 +2615,14 @@ function fecharModalBancaInicial(){
     function start(){
         atualizar();
 
-        // A Banca Inicial às vezes chega por API depois do HTML.
-        // Então recalcula várias vezes nos primeiros segundos para não ficar mostrando lucro antigo.
         [50,150,300,600,1000,1500,2500,3500].forEach(ms => setTimeout(atualizar, ms));
 
         const target = document.body;
-        if(target && !target.dataset.v138LucroObs){
-            target.dataset.v138LucroObs = "1";
+        if(target && !target.dataset.v141LucroObs){
+            target.dataset.v141LucroObs = "1";
             const obs = new MutationObserver(() => {
-                clearTimeout(window.__v138LucroTimer);
-                window.__v138LucroTimer = setTimeout(atualizar, 80);
+                clearTimeout(window.__v141LucroTimer);
+                window.__v141LucroTimer = setTimeout(atualizar, 80);
             });
             obs.observe(target, {subtree:true, childList:true, characterData:true});
         }
@@ -2627,7 +2632,7 @@ function fecharModalBancaInicial(){
 
     document.addEventListener("DOMContentLoaded", start);
     document.addEventListener("click", () => setTimeout(atualizar, 300));
-    window.v138AtualizarLucroPorBanca = atualizar;
+    window.v141AtualizarLucroPorBanca = atualizar;
 })();
 </script>
 

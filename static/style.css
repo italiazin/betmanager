@@ -4168,3 +4168,8 @@ tr.bet-row td {
 td:nth-child(5) {
     line-height: 1.35 !important;
 }
+
+/* V141 - lucro sem contar valor em aberto como red */
+.metric-positive-v137 { color: #22c55e !important; }
+.metric-negative-v137 { color: #fb7185 !important; }
+.metric-zero-v137 { color: #e5f0ff !important; }
