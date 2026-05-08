@@ -218,7 +218,7 @@ API_KEY = CONFIG.get("API_KEY", "")
 
 print("CONFIG PATH:", CONFIG_PATH)
 print("API KEY:", API_KEY)
-print("VERSAO_CARREGADA: OCR_CLIENTE_V117_JINJA_VALIDADO")
+print("VERSAO_CARREGADA: OCR_CLIENTE_V122_V107_TABELA_LIMPA")
 
 if os.name == "nt":
     tess_path = r"C:\Program Files\Tesseract-OCR\tesseract.exe"
@@ -5801,39 +5801,6 @@ def v107_aplicar_multiplas_na_bet(b):
         return b
 
 
-
-# V109: V108 backend route removed; ordering/status handled safely in frontend.
-
-@app.route("/api/ordenar_status_jogos", methods=["POST"])
-@login_required
-@assinatura_required
-def api_ordenar_status_jogos():
-    """
-    Atualiza status visual e devolve metadados para o frontend ordenar sem recarregar.
-    """
-    rows = []
-    try:
-        lista = bets_do_usuario()
-    except Exception:
-        lista = []
-
-    for b in lista:
-        try:
-            vis = v108_status_visual_bet(b)
-            rows.append({
-                "id": b.get("id", ""),
-                "horario_jogo_iso": b.get("horario_jogo_iso", ""),
-                "horario_jogo": b.get("horario_jogo", ""),
-                "status_label": vis.get("label", ""),
-                "status_class": vis.get("class", ""),
-                "ordem": v108_ordem_jogo_bet(b),
-            })
-        except Exception as e:
-            print("api_ordenar_status_jogos item erro:", repr(e))
-
-    return jsonify({"ok": True, "rows": rows})
-
-
 @app.route("/api/status_jogos_cache")
 @login_required
 @assinatura_required
@@ -5935,8 +5902,8 @@ def api_horarios_bets():
                 "horario_jogo_iso": b.get("horario_jogo_iso", ""),
                 "status_jogo": b.get("status_jogo", ""),
                 "ao_vivo": bool(b.get("ao_vivo", False)),
-                "status_class": "" if "espn_status_class_bet" in globals() else ("live" if b.get("ao_vivo") else ""),
-                "status_label": "" if "espn_status_label_bet" in globals() else (b.get("status_jogo") or b.get("horario_jogo") or "")
+                "status_class": espn_status_class_bet(b) if "espn_status_class_bet" in globals() else ("live" if b.get("ao_vivo") else ""),
+                "status_label": espn_status_label_bet(b) if "espn_status_label_bet" in globals() else (b.get("status_jogo") or b.get("horario_jogo") or "")
             })
 
         except Exception as e:

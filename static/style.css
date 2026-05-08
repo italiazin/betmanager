@@ -3899,96 +3899,7 @@ table {
 
 
 /* ============================================================
-   V108 - data do jogo, ordenação e status ao vivo/finalizado
-   ============================================================ */
-
-.game-date-cell {
-    min-width: 92px !important;
-    white-space: nowrap !important;
-}
-
-.game-date-main {
-    display: block !important;
-    font-weight: 900 !important;
-    color: #e5f0ff !important;
-    font-size: 12px !important;
-}
-
-.game-date-sub {
-    display: inline-flex !important;
-    margin-top: 3px !important;
-    padding: 2px 6px !important;
-    border-radius: 999px !important;
-    background: rgba(37,99,235,.20) !important;
-    color: #93c5fd !important;
-    font-size: 9.5px !important;
-    font-weight: 900 !important;
-    text-transform: uppercase !important;
-}
-
-.game-status-pill-v108 {
-    display: inline-flex !important;
-    align-items: center !important;
-    gap: 4px !important;
-    margin-left: 6px !important;
-    padding: 3px 8px !important;
-    border-radius: 999px !important;
-    font-size: 10.5px !important;
-    font-weight: 900 !important;
-    white-space: nowrap !important;
-    border: 1px solid rgba(96,165,250,.35) !important;
-    background: rgba(59,130,246,.16) !important;
-    color: #dbeafe !important;
-}
-
-.game-status-pill-v108.live {
-    background: rgba(239,68,68,.22) !important;
-    border-color: rgba(248,113,113,.55) !important;
-    color: #fecaca !important;
-    animation: livePulseV108 1.1s infinite ease-in-out;
-}
-
-.game-status-pill-v108.live::before {
-    content: "●";
-    color: #ef4444;
-    animation: liveDotV108 .8s infinite alternate;
-}
-
-.game-status-pill-v108.finished {
-    background: rgba(100,116,139,.20) !important;
-    border-color: rgba(148,163,184,.45) !important;
-    color: #cbd5e1 !important;
-}
-
-.game-status-pill-v108.finished::before {
-    content: "🏁";
-}
-
-.game-status-pill-v108.soon {
-    background: rgba(250,204,21,.16) !important;
-    border-color: rgba(250,204,21,.40) !important;
-    color: #fef3c7 !important;
-}
-
-.game-status-pill-v108.today {
-    background: rgba(34,197,94,.16) !important;
-    border-color: rgba(34,197,94,.35) !important;
-    color: #bbf7d0 !important;
-}
-
-@keyframes livePulseV108 {
-    0%,100% { box-shadow: 0 0 0 rgba(239,68,68,0); transform: translateY(0); }
-    50% { box-shadow: 0 0 18px rgba(239,68,68,.45); transform: translateY(-1px); }
-}
-
-@keyframes liveDotV108 {
-    from { opacity: .45; }
-    to { opacity: 1; }
-}
-
-
-/* ============================================================
-   V111 - tabela limpa: status na esquerda, jogo sem badges duplicados
+   V122 - tabela limpa baseada na V107
    ============================================================ */
 
 .sortable-game-date {
@@ -4018,10 +3929,6 @@ table {
     line-height: 1.15 !important;
 }
 
-.game-date-sub {
-    display: none !important;
-}
-
 .game-date-status {
     display: inline-flex !important;
     align-items: center !important;
@@ -4040,13 +3947,13 @@ table {
     background: rgba(239,68,68,.22) !important;
     border-color: rgba(248,113,113,.55) !important;
     color: #fecaca !important;
-    animation: livePulseV111 1.1s infinite ease-in-out;
+    animation: livePulseV122 1.1s infinite ease-in-out;
 }
 
 .game-date-status.live::before {
     content: "●";
     color: #ef4444;
-    animation: liveDotV111 .8s infinite alternate;
+    animation: liveDotV122 .8s infinite alternate;
 }
 
 .game-date-status.finished {
@@ -4077,18 +3984,19 @@ table {
     color: #94a3b8 !important;
 }
 
-.game-status-pill-v108,
+.jogo-cell .game-time,
 .game-time,
+.game-status-pill-v108,
 .game-status-pill-v111 {
     display: none !important;
 }
 
-@keyframes livePulseV111 {
+@keyframes livePulseV122 {
     0%,100% { box-shadow: 0 0 0 rgba(239,68,68,0); }
     50% { box-shadow: 0 0 14px rgba(239,68,68,.42); }
 }
 
-@keyframes liveDotV111 {
+@keyframes liveDotV122 {
     from { opacity: .45; }
     to { opacity: 1; }
 }
