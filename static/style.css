@@ -3915,3 +3915,24 @@ table {
 .game-date-status.empty { background:rgba(51,65,85,.35) !important; border-color:rgba(100,116,139,.35) !important; color:#94a3b8 !important; }
 .jogo-cell .game-time, .jogo-cell .game-status-pill-v108, .jogo-cell .game-status-pill-v111, .jogo-cell .multi-games-badge { display:none !important; }
 @keyframes livePulseV124 { 0%,100% { box-shadow:0 0 0 rgba(239,68,68,0); } 50% { box-shadow:0 0 14px rgba(239,68,68,.42); } }
+
+
+/* V125 - limpeza final: nada de status dentro da coluna Jogo */
+.jogo-cell .game-time,
+.jogo-cell .multi-games-badge,
+.jogo-cell .game-status-pill-v108,
+.jogo-cell .game-status-pill-v109,
+.jogo-cell .game-status-pill-v111,
+.jogo-cell .game-date-status,
+.jogo-cell span[class*="game"],
+.jogo-cell div[class*="game"],
+.jogo-cell span[class*="status"],
+.jogo-cell div[class*="status"] {
+    display: none !important;
+    visibility: hidden !important;
+    width: 0 !important;
+    height: 0 !important;
+    overflow: hidden !important;
+    margin: 0 !important;
+    padding: 0 !important;
+}

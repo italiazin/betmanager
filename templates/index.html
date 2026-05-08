@@ -37,7 +37,7 @@ function formatarLinhaApostaNova(b){
         <td class="data-cell">${b.data || ""}</td>
         <td class="casa-cell">${b.casa || ""}</td>
         <td class="esporte-cell">${b.esporte || ""}</td>
-        <td class="jogo-cell">${b.jogo || ""}${(b.status_jogo || b.horario_jogo) ? `<div class="game-time ${b.ao_vivo ? "live" : ""}">⏰ ${b.status_jogo || b.horario_jogo}</div>` : ""}</td>
+        <td class="jogo-cell">{{ b.jogo }}</td>
         <td class="aposta-cell" title="${b.aposta || ""}">${apostaVisual}</td>
         <td class="odd-cell">${b.odd || ""}</td>
         <td class="valor-cell">${valor}</td>
@@ -200,7 +200,7 @@ function formatarLinhaApostaNovaV39(b){
         <td class="data-cell">${b.data || ""}</td>
         <td class="casa-cell">${b.casa || ""}</td>
         <td class="esporte-cell">${b.esporte || ""}</td>
-        <td class="jogo-cell">${b.jogo || ""}${(b.status_jogo || b.horario_jogo) ? `<div class="game-time ${b.ao_vivo ? "live" : ""}">⏰ ${b.status_jogo || b.horario_jogo}</div>` : ""}</td>
+        <td class="jogo-cell">${b.jogo || ""}</td>
         <td class="aposta-cell" title="${b.aposta || ""}">${apostaVisual}</td>
         <td class="odd-cell">${b.odd || ""}</td>
         <td class="valor-cell">${valor}</td>
@@ -1881,7 +1881,7 @@ function v76AddBetToTable(b){
         <td>${v76Escape(b.data || "")}</td>
         <td class="casa-cell">${v76Escape(b.casa || "")}</td>
         <td class="esporte-cell">${v76Escape(b.esporte || "")}</td>
-        <td class="jogo-cell">${v76Escape(b.jogo || "")}${(b.status_jogo || b.horario_jogo) ? `<div class="game-time ${b.ao_vivo ? "live" : ""}">⏰ ${v76Escape(b.status_jogo || b.horario_jogo)}</div>` : ""}</td>
+        <td class="jogo-cell">${v76Escape(b.jogo || "")}</td>
         <td class="aposta-cell">${v76Escape(b.aposta_display || b.aposta || "")}</td>
         <td class="odd-cell">${v76Escape(b.odd || "")}</td>
         <td class="valor-cell">${v76Escape(b.valor || "")}</td>
@@ -2324,26 +2324,7 @@ window.v92ToggleDay = v92ToggleDay
 </script>
 
 
-<script id="v107-render-multiplas-js">
-document.addEventListener("DOMContentLoaded", () => {
-    document.querySelectorAll("tr.bet-row").forEach(row => {
-        try{
-            const raw = row.dataset.jogosRelacionados || "";
-            if(!raw) return;
-            const jogos = JSON.parse(raw);
-            if(!Array.isArray(jogos) || jogos.length < 2) return;
-            const cell = row.querySelector(".jogo-cell");
-            if(!cell || cell.querySelector(".multi-games-badge")) return;
-            const badge = document.createElement("span");
-            badge.className = "multi-games-badge";
-            badge.textContent = `${jogos.length} jogos`;
-            badge.title = jogos.map(j => `${j.jogo || ""} ${j.status_jogo || j.horario_jogo || ""}`).join("\n");
-            cell.appendChild(document.createTextNode(" "));
-            cell.appendChild(badge);
-        }catch(e){}
-    });
-});
-</script>
+
 
 <script id="v124-table-status-left-js">
 (function(){
@@ -2406,8 +2387,9 @@ document.addEventListener("DOMContentLoaded", () => {
     function cleanGameCell(row){
         const cell = row.querySelector(".jogo-cell") || row.children?.[3];
         if(!cell) return;
-        // save first clean text before badges
+
         let name = row.dataset.jogo || "";
+
         if(!name){
             for(const node of Array.from(cell.childNodes)){
                 if(node.nodeType === Node.TEXT_NODE && node.textContent.trim()){
@@ -2416,9 +2398,22 @@ document.addEventListener("DOMContentLoaded", () => {
                 }
             }
         }
-        if(!name) name = cell.textContent.trim();
+
+        if(!name) {
+            name = cell.textContent
+                .replace(/⏰/g, "")
+                .replace(/🏁/g, "")
+                .replace(/●/g, "")
+                .replace(/Ao vivo/gi, "")
+                .replace(/Finalizado/gi, "")
+                .replace(/Hoje\s+\d{1,2}:\d{2}/gi, "")
+                .replace(/\d+\s+jogos.*$/gi, "")
+                .trim();
+        }
+
+        row.dataset.jogo = name || row.dataset.jogo || "";
         cell.innerHTML = "";
-        cell.textContent = name;
+        cell.textContent = row.dataset.jogo || name || "";
     }
 
     function renderLeft(row){
