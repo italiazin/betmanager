@@ -37,7 +37,7 @@ function formatarLinhaApostaNova(b){
         <td class="data-cell">${b.data || ""}</td>
         <td class="casa-cell">${b.casa || ""}</td>
         <td class="esporte-cell">${b.esporte || ""}</td>
-        <td class="jogo-cell">${b.jogo || ""}${(b.status_jogo || b.horario_jogo) ? `<div class="game-time ${b.ao_vivo ? "live" : ""}">⏰ ${b.status_jogo || b.horario_jogo}</div>` : ""}</td>
+        <td class="jogo-cell">${b.jogo || ""}</td>
         <td class="aposta-cell" title="${b.aposta || ""}">${apostaVisual}</td>
         <td class="odd-cell">${b.odd || ""}</td>
         <td class="valor-cell">${valor}</td>
@@ -200,7 +200,7 @@ function formatarLinhaApostaNovaV39(b){
         <td class="data-cell">${b.data || ""}</td>
         <td class="casa-cell">${b.casa || ""}</td>
         <td class="esporte-cell">${b.esporte || ""}</td>
-        <td class="jogo-cell">${b.jogo || ""}${(b.status_jogo || b.horario_jogo) ? `<div class="game-time ${b.ao_vivo ? "live" : ""}">⏰ ${b.status_jogo || b.horario_jogo}</div>` : ""}</td>
+        <td class="jogo-cell">${b.jogo || ""}</td>
         <td class="aposta-cell" title="${b.aposta || ""}">${apostaVisual}</td>
         <td class="odd-cell">${b.odd || ""}</td>
         <td class="valor-cell">${valor}</td>
@@ -749,7 +749,7 @@ document.addEventListener("DOMContentLoaded", ()=>{
                     data-horario="{{ b.horario_jogo_iso if b.horario_jogo_iso is defined else '' }}"
                     data-status-jogo="{{ espn_status_label_bet(b) if espn_status_label_bet is defined else (b.get('status_jogo') or b.get('horario_jogo') or '') }}"
                     data-status-class="{{ espn_status_class_bet(b) if espn_status_class_bet is defined else ('live' if b.get('ao_vivo') else '') }}"
-                    data-data="{{ b.data }}" data-jogos-relacionados='{{ (b.jogos_relacionados if b.jogos_relacionados is defined else [])|tojson }}' data-horario-jogo-iso="{{ b.horario_jogo_iso if b.horario_jogo_iso is defined else '' }}" data-ao-vivo="{{ '1' if b.ao_vivo is defined and b.ao_vivo else '0' }}">
+                    data-data="{{ b.data }}" data-jogos-relacionados='{{ (b.jogos_relacionados if b.jogos_relacionados is defined else [])|tojson }}' data-horario-jogo-iso="{{ b.horario_jogo_iso if b.horario_jogo_iso is defined else '' }}" data-horario-jogo="{{ b.horario_jogo if b.horario_jogo is defined else '' }}" data-ao-vivo="{{ '1' if b.ao_vivo is defined and b.ao_vivo else '0' }}">
                 <td class="data-cell">{{ b.data }}</td>
                 <td class="casa-cell">{{ b.casa }}</td>
                 <td class="esporte-cell">{{ b.esporte }}</td>
@@ -1881,7 +1881,7 @@ function v76AddBetToTable(b){
         <td>${v76Escape(b.data || "")}</td>
         <td class="casa-cell">${v76Escape(b.casa || "")}</td>
         <td class="esporte-cell">${v76Escape(b.esporte || "")}</td>
-        <td class="jogo-cell">${v76Escape(b.jogo || "")}${(b.status_jogo || b.horario_jogo) ? `<div class="game-time ${b.ao_vivo ? "live" : ""}">⏰ ${v76Escape(b.status_jogo || b.horario_jogo)}</div>` : ""}</td>
+        <td class="jogo-cell">${v76Escape(b.jogo || "")}</td>
         <td class="aposta-cell">${v76Escape(b.aposta_display || b.aposta || "")}</td>
         <td class="odd-cell">${v76Escape(b.odd || "")}</td>
         <td class="valor-cell">${v76Escape(b.valor || "")}</td>
@@ -1934,44 +1934,6 @@ function atualizarHorariosEspn(){
 
 
 
-<script id="v89-force-game-time-js">
-function v89InjectGameTimeBadges(){
-    const rows = document.querySelectorAll("tr.bet-row")
-    rows.forEach(row => {
-        const status = row.dataset.statusJogo || ""
-        const klass = row.dataset.statusClass || ""
-
-        const jogoCell = row.querySelector(".jogo-cell") || row.children?.[3]
-        if(!jogoCell) return
-
-        jogoCell.querySelectorAll(".game-time").forEach(el => el.remove())
-
-        if(!status || status === "-") return
-
-        const badge = document.createElement("span")
-        badge.className = "game-time " + klass
-        badge.textContent = "🕒 " + status
-        jogoCell.appendChild(document.createTextNode(" "))
-        jogoCell.appendChild(badge)
-    })
-}
-
-document.addEventListener("DOMContentLoaded", () => {
-    v89InjectGameTimeBadges()
-    setTimeout(v89InjectGameTimeBadges, 300)
-    setTimeout(v89InjectGameTimeBadges, 1000)
-})
-
-const v89Observer = new MutationObserver(() => {
-    clearTimeout(window.v89InjectTimer)
-    window.v89InjectTimer = setTimeout(v89InjectGameTimeBadges, 80)
-})
-
-document.addEventListener("DOMContentLoaded", () => {
-    const tbody = document.querySelector(".table-panel tbody") || document.querySelector("table tbody")
-    if(tbody) v89Observer.observe(tbody, {childList: true, subtree: true})
-})
-</script>
 
 
 
@@ -1980,215 +1942,8 @@ document.addEventListener("DOMContentLoaded", () => {
 
 
 
-<script id="v92-organizar-colapsavel-js">
-function v92Toast(msg, type){ if(typeof v72Toast === "function") v72Toast(msg, type || "ok") }
 
-function v92EnsureOrganizarButton(){
-    if(document.getElementById("organizarJogosBtn")) return
-    const btn = document.createElement("button")
-    btn.id = "organizarJogosBtn"
-    btn.type = "button"
-    btn.className = "blue organize-games-btn"
-    btn.innerHTML = "🗓️ Organizar jogos"
-    btn.onclick = organizarJogosTabela
-    const filters = document.querySelector(".filters") || document.querySelector(".table-filters") || document.querySelector(".bets-filters") || document.querySelector(".table-panel form") || document.querySelector(".table-panel")
-    if(filters) filters.appendChild(btn)
-}
 
-function v92TeamAlias(name){
-    let s = String(name || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g,"")
-    s = s.replace(/[()]/g," ").replace(/[^a-z0-9 ]/g," ").replace(/\s+/g," ").trim()
-    s = s.replace(/\b(fc|cf|sc|sp|rj|mg|rs|pr|u20|sub 20|feminino)\b/g, " ").replace(/\s+/g," ").trim()
-    const aliases = {
-        "psg":"paris saint germain","paris":"paris saint germain","paris sg":"paris saint germain","paris st germain":"paris saint germain",
-        "bayern":"bayern munich","bayern munique":"bayern munich","bayern de munique":"bayern munich",
-        "atletico de madrid":"atletico madrid","arsenal london":"arsenal",
-        "palmeiras sao paulo":"palmeiras","boca":"boca juniors",
-        "barcelona guayaquil":"barcelona sc","barcelona":"barcelona sc",
-        "okc thunder":"oklahoma city thunder","la lakers":"los angeles lakers","lakers":"los angeles lakers",
-        "shaktar":"shakhtar donetsk","shaktar donetsk":"shakhtar donetsk","shakhtar":"shakhtar donetsk",
-        "vasco":"vasco da gama"
-    }
-    return aliases[s] || s
-}
-
-function v92NormalizeGameText(raw){
-    return String(raw || "")
-        .replace(/🕒|⏰/g,"")
-        .replace(/Hoje\s+\d{1,2}:\d{2}/gi,"")
-        .replace(/\d{2}\/\d{2}\s+\d{1,2}:\d{2}/g,"")
-        .replace(/Ao vivo|Finalizado/gi,"")
-        .replace(/Começa em\s+\d+min/gi,"")
-        .replace(/\s+/g," ")
-        .trim()
-}
-
-function v92SplitGame(raw){
-    let text = v92NormalizeGameText(raw)
-    text = text.replace(/\s+[–—-]\s+/g, " x ")
-    text = text.replace(/\s+(vs\.?|versus|v\.?|x)\s+/gi, " x ")
-    if(text.includes("/") || text.includes(",")) return null
-    const parts = text.split(/\s+x\s+/i)
-    if(parts.length !== 2) return null
-    const a = v92TeamAlias(parts[0])
-    const b = v92TeamAlias(parts[1])
-    return a && b ? [a,b].sort() : null
-}
-
-function v92ParseShortDate(txt){
-    const m = String(txt || "").match(/(\d{2})\/(\d{2})\s+(\d{1,2}):(\d{2})/)
-    if(!m) return null
-    const y = new Date().getFullYear()
-    return new Date(y, Number(m[2])-1, Number(m[1]), Number(m[3]), Number(m[4]))
-}
-
-function v92DiaLabel(date){
-    if(!date || isNaN(date.getTime()) || date.getFullYear() >= 2999) return "Sem data do jogo"
-    const dias = ["Domingo","Segunda-feira","Terça-feira","Quarta-feira","Quinta-feira","Sexta-feira","Sábado"]
-    return `${dias[date.getDay()]} ${String(date.getDate()).padStart(2,"0")}/${String(date.getMonth()+1).padStart(2,"0")}/${date.getFullYear()}`
-}
-
-function v92Tbody(){ return document.querySelector(".table-panel tbody") || document.querySelector("table tbody") }
-function v92Rows(){ const tbody = v92Tbody(); return tbody ? Array.from(tbody.querySelectorAll("tr.bet-row")) : [] }
-function v92FindJogoCell(row){ return row.querySelector(".jogo-cell") || row.children?.[3] || null }
-
-function v92RenderBadges(){
-    v92Rows().forEach(row => {
-        const cell = v92FindJogoCell(row)
-        if(!cell) return
-        cell.querySelectorAll(".game-time").forEach(el => el.remove())
-        const status = row.dataset.statusJogo || ""
-        const klass = row.dataset.statusClass || ""
-        if(!status || status === "-") return
-        const badge = document.createElement("span")
-        badge.className = "game-time " + klass
-        badge.textContent = "🕒 " + status
-        cell.appendChild(document.createTextNode(" "))
-        cell.appendChild(badge)
-    })
-}
-
-async function v92AtualizarHorariosAntesDeOrganizar(){
-    try{
-        const resp = await fetch("/api/horarios_bets", {method:"POST", cache:"no-store"})
-        const data = await resp.json()
-        if(data && Array.isArray(data.rows)){
-            const byId = {}
-            data.rows.forEach(item => { if(item.id) byId[item.id] = item })
-            v92Rows().forEach(row => {
-                const item = byId[row.dataset.id]
-                if(!item) return
-                row.dataset.jogo = item.jogo || row.dataset.jogo || ""
-                row.dataset.horario = item.horario_jogo_iso || row.dataset.horario || ""
-                row.dataset.statusJogo = item.status_label || item.status_jogo || item.horario_jogo || row.dataset.statusJogo || ""
-                row.dataset.statusClass = item.status_class || (item.ao_vivo ? "live" : "") || row.dataset.statusClass || ""
-            })
-            v92RenderBadges()
-        }
-    }catch(e){ console.warn("Erro horários", e) }
-}
-
-function v92RowDate(row){
-    const iso = row.dataset.horario || ""
-    if(iso){
-        const d = new Date(iso)
-        if(!isNaN(d.getTime())) return d
-    }
-    const status = row.dataset.statusJogo || row.querySelector(".game-time")?.innerText || ""
-    const shortD = v92ParseShortDate(status)
-    if(shortD) return shortD
-    return new Date(2999,0,1)
-}
-
-function v92GameKey(row, idx){
-    const cell = v92FindJogoCell(row)
-    const raw = row.dataset.jogo || cell?.childNodes?.[0]?.textContent || cell?.innerText || ""
-    const split = v92SplitGame(raw)
-    if(!split) return `zz-multipla-${idx}`
-    return split.join(" x ")
-}
-
-function v92SetDayCollapsed(dayKey, collapsed){
-    const tbody = v92Tbody()
-    if(!tbody) return
-    let active = false
-    Array.from(tbody.children).forEach(row => {
-        if(row.classList.contains("day-separator-row")){
-            active = row.dataset.dayKey === dayKey
-            if(active){
-                row.dataset.collapsed = collapsed ? "1" : "0"
-                const arrow = row.querySelector(".day-arrow")
-                if(arrow) arrow.textContent = collapsed ? "▶" : "▼"
-            }
-            return
-        }
-        if(active && row.classList.contains("bet-row")){
-            row.style.display = collapsed ? "none" : ""
-        }
-    })
-}
-
-function v92ToggleDay(dayKey){
-    const sep = document.querySelector(`.day-separator-row[data-day-key="${CSS.escape(dayKey)}"]`)
-    if(!sep) return
-    v92SetDayCollapsed(dayKey, sep.dataset.collapsed !== "1")
-}
-
-async function organizarJogosTabela(){
-    v92Toast("Atualizando horários e organizando...")
-    await v92AtualizarHorariosAntesDeOrganizar()
-    const tbody = v92Tbody()
-    if(!tbody) return
-    tbody.querySelectorAll(".day-separator-row").forEach(r => r.remove())
-    const rows = v92Rows()
-    if(!rows.length){ v92Toast("Nenhuma aposta para organizar", "err"); return }
-
-    const enriched = rows.map((row, idx) => {
-        const date = v92RowDate(row)
-        return {
-            row, idx, date,
-            dayKey: date && !isNaN(date.getTime()) && date.getFullYear() < 2999 ? date.toISOString().slice(0,10) : "9999-99-99",
-            gameKey: v92GameKey(row, idx),
-            time: date && !isNaN(date.getTime()) ? date.getTime() : 9999999999999
-        }
-    })
-
-    enriched.sort((a,b) => {
-        if(a.dayKey !== b.dayKey) return a.dayKey.localeCompare(b.dayKey)
-        if(a.gameKey !== b.gameKey) return a.gameKey.localeCompare(b.gameKey)
-        if(a.time !== b.time) return a.time - b.time
-        return a.idx - b.idx
-    })
-
-    let currentDay = null
-    enriched.forEach(item => {
-        if(item.dayKey !== currentDay){
-            currentDay = item.dayKey
-            const sep = document.createElement("tr")
-            sep.className = "day-separator-row"
-            sep.dataset.dayKey = item.dayKey
-            sep.dataset.collapsed = "0"
-            sep.innerHTML = `<td colspan="11"><button type="button" class="day-toggle" onclick="v92ToggleDay('${item.dayKey}')"><span class="day-arrow">▼</span><span>${v92DiaLabel(item.date)}</span></button></td>`
-            tbody.appendChild(sep)
-        }
-        tbody.appendChild(item.row)
-        item.row.style.display = ""
-    })
-
-    v92RenderBadges()
-    v92Toast("Jogos organizados por dia e confronto")
-}
-
-document.addEventListener("DOMContentLoaded", () => {
-    v92EnsureOrganizarButton()
-    v92RenderBadges()
-    setTimeout(v92EnsureOrganizarButton, 500)
-    setTimeout(v92RenderBadges, 500)
-})
-
-window.organizarJogosTabela = organizarJogosTabela
-window.v92ToggleDay = v92ToggleDay
-</script>
 
 
 
@@ -2326,80 +2081,170 @@ window.v92ToggleDay = v92ToggleDay
 
 
 
-
-
-
-<script id="v126-table-clean-js">
+<script id="v128-status-left-js">
 (function(){
     let sortAsc = true;
     let lastSignature = "";
-    function parseISO(iso){ if(!iso) return null; const d = new Date(iso); return isNaN(d.getTime()) ? null : d; }
-    function parseBR(txt){ const m = String(txt || "").match(/(\d{2})\/(\d{2})\/(\d{4})\s+(\d{2}):(\d{2})/); if(!m) return null; return new Date(Number(m[3]), Number(m[2])-1, Number(m[1]), Number(m[4]), Number(m[5])); }
-    function iso(row){ return row.dataset.horarioJogoIso || row.dataset.horario || ""; }
-    function rawStatus(row){ return row.dataset.statusJogo || row.dataset.horarioJogo || ""; }
-    function dateText(row){
-        const d = parseISO(iso(row));
-        if(d){ const p = n => String(n).padStart(2,"0"); return `${p(d.getDate())}/${p(d.getMonth()+1)} ${p(d.getHours())}:${p(d.getMinutes())}`; }
-        const raw = rawStatus(row);
-        if(raw && /\d{2}\/\d{2}/.test(raw)) return raw;
-        const data = row.dataset.data || "";
-        if(data) return data;
-        return (row.children?.[0]?.innerText || "-").split("\n")[0] || "-";
+
+    function parseISO(v){
+        if(!v) return null;
+        const d = new Date(v);
+        return isNaN(d.getTime()) ? null : d;
     }
+
+    function parseBR(v){
+        const m = String(v || "").match(/(\d{2})\/(\d{2})\/(\d{4})\s+(\d{2}):(\d{2})/);
+        if(!m) return null;
+        return new Date(Number(m[3]), Number(m[2])-1, Number(m[1]), Number(m[4]), Number(m[5]));
+    }
+
+    function getIso(row){ return row.dataset.horarioJogoIso || row.dataset.horario || ""; }
+    function getRaw(row){ return row.dataset.statusJogo || row.dataset.horarioJogo || ""; }
+
+    function dateLabel(row){
+        const d = parseISO(getIso(row));
+        if(d){
+            const p = n => String(n).padStart(2,"0");
+            return `${p(d.getDate())}/${p(d.getMonth()+1)} ${p(d.getHours())}:${p(d.getMinutes())}`;
+        }
+
+        const raw = getRaw(row);
+        if(raw && /\d{2}\/\d{2}/.test(raw)) return raw;
+
+        const old = row.dataset.data || row.children?.[0]?.innerText || "";
+        return old.split("\n")[0] || "-";
+    }
+
     function status(row){
-        const raw = String(rawStatus(row) || "").toLowerCase();
-        const d = parseISO(iso(row));
-        if(row.dataset.aoVivo === "1" || raw.includes("ao vivo") || raw.includes("live")) return ["Ao vivo","live"];
-        if(raw.includes("final") || raw.includes("encerr")) return ["Finalizado","finished"];
-        if(raw.includes("jogos") || raw.includes("próximo") || raw.includes("proximo")) return ["Múltipla","multi"];
+        const raw = String(getRaw(row) || "").toLowerCase();
+        const d = parseISO(getIso(row));
+
+        if(row.dataset.aoVivo === "1" || raw.includes("ao vivo") || raw.includes("live")) return ["Ao vivo", "live"];
+        if(raw.includes("final") || raw.includes("encerr")) return ["Finalizado", "finished"];
+        if(raw.includes("jogos") || raw.includes("próximo") || raw.includes("proximo")) return ["Múltipla", "multi"];
+
         if(d){
             const diff = (d.getTime() - Date.now()) / 60000;
-            if(diff < -120) return ["Finalizado","finished"];
-            if(diff < 0) return ["Em andamento","playing"];
-            if(diff <= 60) return [`Falta ${Math.max(1, Math.floor(diff))}min`,"soon"];
-            if(d.toDateString() === new Date().toDateString()) return ["Hoje","today"];
-            return ["Agendado","scheduled"];
+            if(diff < -120) return ["Finalizado", "finished"];
+            if(diff < 0) return ["Em andamento", "playing"];
+            if(diff <= 60) return [`Falta ${Math.max(1, Math.floor(diff))}min`, "soon"];
+            if(d.toDateString() === new Date().toDateString()) return ["Hoje", "today"];
+            return ["Agendado", "scheduled"];
         }
-        return ["Sem horário","empty"];
+
+        return ["Sem horário", "empty"];
     }
-    function order(row){ const d = parseISO(iso(row)); if(d) return d.getTime(); const br = parseBR(row.dataset.data || row.children?.[0]?.innerText || ""); if(br) return br.getTime(); return 9999999999999; }
+
+    function order(row){
+        const d = parseISO(getIso(row));
+        if(d) return d.getTime();
+
+        const br = parseBR(row.dataset.data || row.children?.[0]?.innerText || "");
+        if(br) return br.getTime();
+
+        return 9999999999999;
+    }
+
     function cleanGameCell(row){
         const cell = row.querySelector(".jogo-cell") || row.children?.[3];
         if(!cell) return;
+
         let name = row.dataset.jogo || "";
         if(!name){
             for(const node of Array.from(cell.childNodes)){
-                if(node.nodeType === Node.TEXT_NODE && node.textContent.trim()){ name = node.textContent.trim(); break; }
+                if(node.nodeType === Node.TEXT_NODE && node.textContent.trim()){
+                    name = node.textContent.trim();
+                    break;
+                }
             }
         }
         if(!name) name = cell.textContent.trim();
-        name = name.replace(/⏰|🏁|●/g, "").replace(/Ao vivo|Finalizado/gi, "").replace(/Hoje\s+\d{1,2}:\d{2}/gi, "").replace(/\d+\s+jogos.*$/gi, "").trim();
+
+        // Remove leftovers if old DOM already had badges.
+        name = name
+            .replace(/⏰|🏁|●/g, "")
+            .replace(/\bAo vivo\b/gi, "")
+            .replace(/\bFinalizado\b/gi, "")
+            .replace(/\bHoje\s+\d{1,2}:\d{2}\b/gi, "")
+            .replace(/\b\d{2}\/\d{2}\s+\d{1,2}:\d{2}\b/g, "")
+            .replace(/\b\d+\s+jogos\s*•?.*$/gi, "")
+            .replace(/\s{2,}/g, " ")
+            .trim();
+
         row.dataset.jogo = name || row.dataset.jogo || "";
-        cell.textContent = row.dataset.jogo || name || "";
+        cell.replaceChildren(document.createTextNode(row.dataset.jogo || name || ""));
     }
+
     function renderLeft(row){
-        const cell = row.children?.[0]; if(!cell) return;
+        const cell = row.children?.[0];
+        if(!cell) return;
         const [label, cls] = status(row);
-        const html = `<span class="game-date-main">${dateText(row)}</span><span class="game-date-status ${cls}">${label}</span>`;
-        if(cell.dataset.v126 !== html){ cell.classList.add("game-date-cell"); cell.innerHTML = html; cell.dataset.v126 = html; }
-    }
-    function apply(force=false){
-        const rows = Array.from(document.querySelectorAll("tr.bet-row"));
-        rows.forEach(r => { cleanGameCell(r); renderLeft(r); });
-        const tbody = document.querySelector("table tbody");
-        if(tbody){
-            const sig = rows.map(r => `${r.dataset.id||""}:${iso(r)}:${rawStatus(r)}`).join("|") + ":" + sortAsc;
-            if(force || sig !== lastSignature){ lastSignature = sig; rows.sort((a,b) => sortAsc ? order(a)-order(b) : order(b)-order(a)); rows.forEach(r => tbody.appendChild(r)); }
+        const html = `<span class="game-date-main">${dateLabel(row)}</span><span class="game-date-status ${cls}">${label}</span>`;
+        if(cell.dataset.v128 !== html){
+            cell.classList.add("game-date-cell");
+            cell.innerHTML = html;
+            cell.dataset.v128 = html;
         }
     }
-    function setup(){
+
+    function apply(force=false){
+        const rows = Array.from(document.querySelectorAll("tr.bet-row"));
+        rows.forEach(row => {
+            cleanGameCell(row);
+            renderLeft(row);
+        });
+
+        const tbody = document.querySelector("table tbody");
+        if(!tbody) return;
+
+        const signature = rows.map(r => `${r.dataset.id || ""}:${getIso(r)}:${getRaw(r)}`).join("|") + ":" + sortAsc;
+        if(!force && signature === lastSignature) return;
+        lastSignature = signature;
+
+        rows.sort((a,b) => sortAsc ? order(a) - order(b) : order(b) - order(a));
+        rows.forEach(row => tbody.appendChild(row));
+    }
+
+    function setupSort(){
         const th = document.getElementById("gameDateSortHeader");
         const arrow = document.getElementById("gameDateSortArrow");
-        if(th && th.dataset.v126 !== "1"){ th.dataset.v126 = "1"; th.onclick = () => { sortAsc = !sortAsc; if(arrow) arrow.textContent = sortAsc ? "↑" : "↓"; apply(true); }; }
+        if(!th || th.dataset.v128Ready === "1") return;
+
+        th.dataset.v128Ready = "1";
+        th.title = "Clique para inverter a ordem dos jogos";
+        th.addEventListener("click", () => {
+            sortAsc = !sortAsc;
+            if(arrow) arrow.textContent = sortAsc ? "↑" : "↓";
+            apply(true);
+        });
     }
-    document.addEventListener("DOMContentLoaded", () => { setup(); apply(true); setInterval(() => apply(false), 300000); });
-    document.addEventListener("click", e => { const t = String(e.target?.innerText || "").toLowerCase(); if(t.includes("salvar apostas") || t.includes("adicionar")){ setTimeout(()=>apply(true), 700); setTimeout(()=>apply(true), 1600); } });
-    window.v126ApplyTable = apply;
+
+    function observe(){
+        const tbody = document.querySelector("table tbody");
+        if(!tbody || tbody.dataset.v128Obs === "1") return;
+        tbody.dataset.v128Obs = "1";
+        new MutationObserver(() => {
+            clearTimeout(window.__v128Timer);
+            window.__v128Timer = setTimeout(() => apply(false), 80);
+        }).observe(tbody, {childList:true, subtree:true});
+    }
+
+    document.addEventListener("DOMContentLoaded", () => {
+        setupSort();
+        observe();
+        apply(true);
+        setInterval(() => apply(false), 300000);
+    });
+
+    document.addEventListener("click", e => {
+        const t = String(e.target?.innerText || "").toLowerCase();
+        if(t.includes("salvar apostas") || t.includes("adicionar")){
+            setTimeout(() => apply(true), 700);
+            setTimeout(() => apply(true), 1600);
+        }
+    });
+
+    window.v128ApplyStatusLeft = apply;
 })();
 </script>
 
