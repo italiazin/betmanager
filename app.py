@@ -218,7 +218,7 @@ API_KEY = CONFIG.get("API_KEY", "")
 
 print("CONFIG PATH:", CONFIG_PATH)
 print("API KEY:", API_KEY)
-print("VERSAO_CARREGADA: OCR_CLIENTE_V139_BANCA_INICIAL_POR_USUARIO")
+print("VERSAO_CARREGADA: OCR_CLIENTE_V140_FIX_SALVAR_BANCA_USUARIO")
 
 if os.name == "nt":
     tess_path = r"C:\Program Files\Tesseract-OCR\tesseract.exe"
@@ -5854,35 +5854,91 @@ def v131_aplicar_metricas_extras(m, lista=None):
         print("v131_aplicar_metricas_extras erro:", repr(e))
     return m
 
+
+# ============================================================
+# V140 - identificação robusta do usuário para banca inicial
+# ============================================================
+
+def v140_usuario_key_atual():
+    try:
+        # formatos mais comuns usados ao longo do app
+        candidatos = [
+            session.get("user"),
+            session.get("email"),
+            session.get("usuario_email"),
+            session.get("logged_user"),
+            session.get("login"),
+            session.get("uid"),
+            session.get("user_id"),
+        ]
+
+        usuario_session = session.get("usuario")
+        if isinstance(usuario_session, dict):
+            candidatos.extend([
+                usuario_session.get("email"),
+                usuario_session.get("user"),
+                usuario_session.get("id"),
+                usuario_session.get("uid"),
+                usuario_session.get("login"),
+            ])
+        elif isinstance(usuario_session, str):
+            candidatos.append(usuario_session)
+
+        for c in candidatos:
+            if c is not None and str(c).strip():
+                return str(c).strip()
+
+        # fallback seguro: tenta achar pelo helper do app se existir
+        try:
+            u = usuario_atual()
+            if isinstance(u, dict):
+                for k in ("email", "user", "id", "uid", "login"):
+                    if u.get(k):
+                        return str(u.get(k)).strip()
+            elif u:
+                return str(u).strip()
+        except Exception:
+            pass
+
+        return ""
+    except Exception:
+        return ""
+
+def v140_parse_valor(v):
+    try:
+        v = str(v or "0").replace("R$", "").strip()
+        # BR 19.747,00
+        if "," in v and "." in v:
+            v = v.replace(".", "").replace(",", ".")
+        elif "," in v:
+            v = v.replace(",", ".")
+        return float(v or 0)
+    except Exception:
+        return 0.0
+
+
 @app.route("/api/v132_cards")
 @login_required
 def api_v132_cards():
     try:
-        email = (
-            session.get("user")
-            or session.get("email")
-            or session.get("usuario_email")
-            or session.get("logged_user")
-            or ""
-        )
+        user_key = v140_usuario_key_atual()
+        banca_inicial = 0.0
 
-        usuario_session = session.get("usuario")
-        if not email and isinstance(usuario_session, dict):
-            email = usuario_session.get("email") or usuario_session.get("user") or ""
-        elif not email and isinstance(usuario_session, str) and "@" in usuario_session:
-            email = usuario_session
+        if user_key:
+            banca_inicial = dados.get("usuarios", {}).get(user_key, {}).get("banca_inicial", 0)
 
-        if not email:
-            banca_inicial = 0.0
-        else:
-            u = dados.get("usuarios", {}).get(email, {})
-            banca_inicial = u.get("banca_inicial", 0)
+        # compatibilidade: tenta user/email caso user_key principal não tenha valor
+        if not banca_inicial:
+            for k in ("user", "email", "usuario_email", "logged_user"):
+                sk = session.get(k)
+                if sk:
+                    banca_inicial = dados.get("usuarios", {}).get(str(sk).strip(), {}).get("banca_inicial", 0)
+                    if banca_inicial:
+                        break
 
-        try:
-            banca_inicial = float(str(banca_inicial).replace(",", ".") or 0)
-        except Exception:
-            banca_inicial = 0.0
-    except Exception:
+        banca_inicial = v140_parse_valor(banca_inicial)
+    except Exception as e:
+        print("api_v132_cards erro:", repr(e))
         banca_inicial = 0.0
 
     return jsonify({"ok": True, "banca_inicial": banca_inicial})
@@ -5892,48 +5948,41 @@ def api_v132_cards():
 @login_required
 def configurar_banca_inicial():
     try:
-        email = (
-            session.get("user")
-            or session.get("email")
-            or session.get("usuario_email")
-            or session.get("logged_user")
-            or ""
-        )
+        user_key = v140_usuario_key_atual()
 
-        usuario_session = session.get("usuario")
-        if not email and isinstance(usuario_session, dict):
-            email = usuario_session.get("email") or usuario_session.get("user") or ""
-        elif not email and isinstance(usuario_session, str) and "@" in usuario_session:
-            email = usuario_session
+        # Último fallback individual: usa id da sessão Flask, não valor global compartilhado.
+        if not user_key:
+            user_key = "session_" + str(session.get("_id", ""))
 
-        if not email:
-            print("configurar_banca_inicial erro: usuario sem email na session")
+        if not user_key or user_key == "session_":
+            print("configurar_banca_inicial erro: usuario_sem_chave")
             if request.is_json:
-                return jsonify({"ok": False, "erro": "usuario_sem_email"}), 400
+                return jsonify({"ok": False, "erro": "usuario_sem_chave"}), 400
             return redirect(url_for("index"))
 
         valor = request.form.get("banca_inicial", None)
         if valor is None and request.is_json:
             valor = request.json.get("banca_inicial", 0)
 
-        valor = str(valor or "0").replace("R$", "").replace(".", "").replace(",", ".").strip()
-        try:
-            valor = float(valor)
-        except Exception:
-            valor = 0.0
+        valor = round(v140_parse_valor(valor), 2)
 
         dados.setdefault("usuarios", {})
-        dados["usuarios"].setdefault(email, {})
-        dados["usuarios"][email]["banca_inicial"] = round(valor, 2)
+        dados["usuarios"].setdefault(user_key, {})
+        dados["usuarios"][user_key]["banca_inicial"] = valor
 
-        # V139: não existe mais fallback global. Banca inicial é individual por usuário.
-        if "banca_inicial_global" in dados:
-            dados.pop("banca_inicial_global", None)
+        # compatibilidade: se session user/email existir diferente, salva espelhado nele também,
+        # mas sempre em chaves de usuário, nunca global.
+        for k in ("user", "email", "usuario_email", "logged_user"):
+            sk = session.get(k)
+            if sk and str(sk).strip() and str(sk).strip() != user_key:
+                dados["usuarios"].setdefault(str(sk).strip(), {})
+                dados["usuarios"][str(sk).strip()]["banca_inicial"] = valor
 
+        dados.pop("banca_inicial_global", None)
         salvar()
 
         if request.is_json:
-            return jsonify({"ok": True, "banca_inicial": round(valor, 2)})
+            return jsonify({"ok": True, "banca_inicial": valor, "user_key": user_key})
 
         return redirect(url_for("index"))
     except Exception as e:

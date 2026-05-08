@@ -2303,11 +2303,11 @@ function fecharModalBancaInicial(){
                     if(typeof fecharModalBancaInicial === "function") fecharModalBancaInicial();
                     if(typeof v72Toast === "function") v72Toast("Banca inicial salva");
                 }else{
-                    alert("Erro ao salvar banca inicial");
+                    alert("Erro ao salvar banca inicial: " + (data.erro || "erro desconhecido"));
                 }
             }catch(err){
                 console.error(err);
-                alert("Erro ao salvar banca inicial");
+                alert("Erro ao salvar banca inicial: " + (data.erro || "erro desconhecido"));
             }
         });
     });
