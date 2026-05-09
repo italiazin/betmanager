@@ -1514,7 +1514,175 @@ document.addEventListener("DOMContentLoaded", ()=>{
     if(feedTab) feedTab.addEventListener("click", v63ClearNewBetAlert)
 
     const feedPanel = document.getElementById("aba-feed")
-    if(feedPanel) feedPanel if(src) src.value = ""
+    if(feedPanel) feedPanel.addEventListener("mouseenter", v63ClearNewBetAlert)
+})
+</script>
+
+
+<script id="v72-instant-js">
+window.v72DirtyMetrics = null
+
+function v72Money(v){
+    const n = Number(v || 0)
+    return "R$ " + n.toFixed(2)
+}
+
+function v72UpdateMetrics(m){
+    if(!m) return
+    const map = {
+        "metric-banca": v72Money(m.banca_atual),
+        "metric-valor-aberto": v72Money(m.valor_em_aberto if m.valor_em_aberto is defined else 0),
+        "metric-roi": Number(m.roi || 0).toFixed(2) + "%",
+        "metric-taxa": Number(m.taxa || 0).toFixed(2) + "%",
+        "metric-total": m.total,
+        "metric-pendentes": m.pendentes
+    }
+    Object.entries(map).forEach(([id,val])=>{
+        const el = document.getElementById(id)
+        if(el) el.innerText = val
+    })
+
+    const lucro = document.getElementById("metric-lucro")
+    if(lucro){
+        lucro.innerText = v72Money(m.lucro_total)
+        lucro.classList.remove("green-text","red-text")
+        lucro.classList.add(Number(m.lucro_total || 0) >= 0 ? "green-text" : "red-text")
+    }
+}
+
+function v72BadgeStatus(estado){
+    if(estado === "ganha") return '<span class="badge green">Ganha</span>'
+    if(estado === "perdida") return '<span class="badge red">Perdida</span>'
+    if(estado === "anulada") return '<span class="badge gray">Anulada</span>'
+    return '<span class="badge yellow">Pendente</span>'
+}
+
+function v72UpdateRow(tr, b){
+    if(!tr || !b) return
+    const statusCell = tr.querySelector(".status-cell")
+    if(statusCell) statusCell.innerHTML = v72BadgeStatus(b.estado || "")
+
+    const lucroCell = tr.children[8] || tr.querySelector(".lucro-cell")
+    if(lucroCell){
+        const lucro = Number(b.lucro || 0)
+        lucroCell.innerText = v72Money(lucro)
+        lucroCell.classList.remove("green-text","red-text")
+        if(lucro > 0) lucroCell.classList.add("green-text")
+        if(lucro < 0) lucroCell.classList.add("red-text")
+    }
+}
+
+function v72Toast(msg, type="ok"){
+    let t = document.getElementById("v72Toast")
+    if(!t){
+        t = document.createElement("div")
+        t.id = "v72Toast"
+        document.body.appendChild(t)
+    }
+    t.className = "v72-toast " + type
+    t.innerText = msg
+    t.classList.add("show")
+    setTimeout(()=>t.classList.remove("show"), 1800)
+}
+
+function v72SaveScroll(){
+    sessionStorage.setItem("restoreScrollY", String(window.scrollY || 0))
+}
+
+function v72RestoreScroll(){
+    const y = sessionStorage.getItem("restoreScrollY")
+    if(y !== null){
+        sessionStorage.removeItem("restoreScrollY")
+        setTimeout(()=>window.scrollTo(0, Number(y || 0)), 0)
+    }
+}
+
+document.addEventListener("DOMContentLoaded", v72RestoreScroll)
+window.addEventListener("beforeunload", v72SaveScroll)
+
+// Resultado sem reload.
+document.addEventListener("click", function(e){
+    const link = e.target.closest('a[href^="/resultado/"]')
+    if(!link) return
+
+    e.preventDefault()
+    e.stopPropagation()
+
+    const tr = link.closest("tr")
+    link.style.pointerEvents = "none"
+    link.style.opacity = ".6"
+
+    fetch(link.getAttribute("href") + "?ajax=1", {cache:"no-store"})
+        .then(r=>r.json())
+        .then(d=>{
+            if(!d.ok) throw new Error("erro")
+            v72UpdateRow(tr, d.bet)
+            v72UpdateMetrics(d.metricas)
+            v72Toast("Resultado atualizado")
+        })
+        .catch(()=>v72Toast("Erro ao atualizar", "err"))
+        .finally(()=>{
+            link.style.pointerEvents = ""
+            link.style.opacity = ""
+        })
+}, true)
+
+// Remover sem reload.
+document.addEventListener("click", function(e){
+    const link = e.target.closest('a[href^="/remover/"]')
+    if(!link) return
+
+    e.preventDefault()
+    e.stopPropagation()
+
+    if(!confirm("Apagar esta aposta?")) return
+
+    const tr = link.closest("tr")
+    fetch(link.getAttribute("href") + "?ajax=1", {cache:"no-store"})
+        .then(r=>r.json())
+        .then(d=>{
+            if(!d.ok) throw new Error("erro")
+            if(tr){
+                tr.style.transition = ".18s ease"
+                tr.style.opacity = "0"
+                tr.style.transform = "translateX(10px)"
+                setTimeout(()=>tr.remove(), 180)
+            }
+            v72UpdateMetrics(d.metricas)
+            v72Toast("Aposta apagada")
+        })
+        .catch(()=>v72Toast("Erro ao apagar", "err"))
+}, true)
+
+// Adicionar manual sem reload, incluindo aposta copiada privada.
+document.addEventListener("submit", function(e){
+    const form = e.target
+    if(!form || !form.matches(".manual-form")) return
+
+    e.preventDefault()
+
+    const fd = new FormData(form)
+    const btn = form.querySelector('button[type="submit"]')
+    if(btn){
+        btn.disabled = true
+        btn.dataset.oldText = btn.innerText
+        btn.innerText = "Salvando..."
+    }
+
+    fetch("/adicionar_ajax", {
+        method:"POST",
+        body: fd,
+        cache:"no-store"
+    })
+    .then(r=>r.json())
+    .then(d=>{
+        if(!d.ok) throw new Error(d.erro || "erro")
+        v72UpdateMetrics(d.metricas)
+        v72Toast("Aposta adicionada")
+        form.reset()
+        const copied = document.getElementById("copiadaComunidade")
+        if(copied) copied.value = "0"
+        const src = document.getElementById("sourceOriginalId"); if(src) src.value = ""
         const hj = document.getElementById("horarioJogo"); if(hj) hj.value = ""
         setTimeout(()=>location.reload(), 300) // reload curto só para reconstruir tabela com layout perfeito
     })
@@ -2099,7 +2267,7 @@ function fecharModalBancaInicial(){
 
     document.addEventListener("DOMContentLoaded", () => {
         apply();
-        
+        setInterval(calcularValorAberto, 30000);
     });
 
     document.addEventListener("click", () => setTimeout(calcularValorAberto, 400));
@@ -2465,9 +2633,14 @@ function fecharModalBancaInicial(){
         const target = document.body;
         if(target && !target.dataset.v141LucroObs){
             target.dataset.v141LucroObs = "1";
-            }
+            const obs = new MutationObserver(() => {
+                clearTimeout(window.__v141LucroTimer);
+                window.__v141LucroTimer = setTimeout(atualizar, 80);
+            });
+            obs.observe(target, {subtree:true, childList:true, characterData:true});
+        }
 
-
+        setInterval(atualizar, 30000);
     }
 
     document.addEventListener("DOMContentLoaded", start);
@@ -2489,7 +2662,197 @@ function fecharModalBancaInicial(){
 </script>
 
 
+<script id="v143-filtros-tabela-js">
+(function(){
+    function norm(v){
+        return String(v || "")
+            .normalize("NFD").replace(/[\u0300-\u036f]/g, "")
+            .toLowerCase()
+            .trim();
+    }
 
+    function getColIndex(label){
+        const target = norm(label);
+        const ths = Array.from(document.querySelectorAll("table thead th"));
+        for(let i=0;i<ths.length;i++){
+            const txt = norm(ths[i].innerText).replace(/\s+[↑↓]$/, "");
+            if(txt === target) return i;
+        }
+        return -1;
+    }
+
+    function getFilters(){
+        const searchInput = document.querySelector('input[placeholder*="Pesquisar"]') ||
+                            document.querySelector('#pesquisarAposta') ||
+                            document.querySelector('#searchInput');
+
+        const selects = Array.from(document.querySelectorAll('select'));
+        const casaSelect = selects.find(s => norm(s.innerText).includes("todos") || norm(s.value) !== "");
+        const dataSelect = selects.find(s => norm(s.innerText).includes("todas as datas") || Array.from(s.options || []).some(o => norm(o.innerText).includes("hoje")));
+
+        const minInput = Array.from(document.querySelectorAll('input')).find(i => norm(i.placeholder).includes("valor min"));
+        const maxInput = Array.from(document.querySelectorAll('input')).find(i => norm(i.placeholder).includes("valor max"));
+
+        return {
+            q: norm(searchInput?.value || ""),
+            casa: norm(casaSelect?.value || ""),
+            data: norm(dataSelect?.value || ""),
+            min: parseFloat(String(minInput?.value || "").replace(",", ".")) || null,
+            max: parseFloat(String(maxInput?.value || "").replace(",", ".")) || null
+        };
+    }
+
+    function parseMoney(txt){
+        txt = String(txt || "").replace(/[^\d,.-]/g, "").trim();
+        if(txt.includes(",") && txt.includes(".")) txt = txt.replace(/\./g, "").replace(",", ".");
+        else if(txt.includes(",")) txt = txt.replace(",", ".");
+        const n = parseFloat(txt);
+        return isNaN(n) ? 0 : n;
+    }
+
+    function dateFromRow(row){
+        const txt = row.children?.[0]?.innerText || "";
+        const m = txt.match(/(\d{2})\/(\d{2})(?:\/(\d{4}))?/);
+        if(!m) return "";
+        const y = m[3] || String(new Date().getFullYear());
+        return `${y}-${m[2]}-${m[1]}`;
+    }
+
+    function dateFilterMatch(row, dataFilter){
+        if(!dataFilter || dataFilter === "todas" || dataFilter === "todas as datas") return true;
+
+        const rowDate = dateFromRow(row);
+        if(!rowDate) return true;
+
+        const today = new Date();
+        const p = n => String(n).padStart(2, "0");
+        const todayKey = `${today.getFullYear()}-${p(today.getMonth()+1)}-${p(today.getDate())}`;
+
+        const tomorrow = new Date(today.getFullYear(), today.getMonth(), today.getDate()+1);
+        const tomorrowKey = `${tomorrow.getFullYear()}-${p(tomorrow.getMonth()+1)}-${p(tomorrow.getDate())}`;
+
+        if(dataFilter.includes("hoje")) return rowDate === todayKey;
+        if(dataFilter.includes("amanha") || dataFilter.includes("amanhã")) return rowDate === tomorrowKey;
+
+        // aceita value YYYY-MM-DD se o select usar isso
+        if(/\d{4}-\d{2}-\d{2}/.test(dataFilter)) return rowDate === dataFilter;
+
+        return true;
+    }
+
+    function rowMatches(row, filters){
+        const text = norm(row.innerText);
+
+        if(filters.q && !text.includes(filters.q)) return false;
+
+        if(filters.casa && !["todos", "todas"].includes(filters.casa)){
+            const casaIdx = getColIndex("Casa");
+            const casaTxt = norm(casaIdx >= 0 ? row.children?.[casaIdx]?.innerText : "");
+            if(casaTxt && casaTxt !== filters.casa && !casaTxt.includes(filters.casa)) return false;
+        }
+
+        if(!dateFilterMatch(row, filters.data)) return false;
+
+        const valorIdx = getColIndex("Valor");
+        const valor = parseMoney(valorIdx >= 0 ? row.children?.[valorIdx]?.innerText : "");
+        if(filters.min !== null && valor < filters.min) return false;
+        if(filters.max !== null && valor > filters.max) return false;
+
+        return true;
+    }
+
+    function applyFilters(){
+        const tbody = document.querySelector("table tbody");
+        if(!tbody) return;
+
+        const filters = getFilters();
+        const rows = Array.from(tbody.querySelectorAll("tr.bet-row"));
+
+        rows.forEach(row => {
+            const ok = rowMatches(row, filters);
+            row.dataset.v143Filtered = ok ? "1" : "0";
+            row.style.display = ok ? "" : "none";
+        });
+
+        // Group header appears only if at least one child until next header/day is visible
+        const all = Array.from(tbody.children);
+        for(let i=0;i<all.length;i++){
+            const el = all[i];
+
+            if(el.classList.contains("game-group-row-v136") || el.classList.contains("game-group-row-v130") || el.classList.contains("game-group-row-v129")){
+                let visible = false;
+                for(let j=i+1;j<all.length;j++){
+                    const n = all[j];
+                    if(n.classList.contains("game-group-row-v136") || n.classList.contains("game-group-row-v130") || n.classList.contains("game-group-row-v129") || n.classList.contains("day-separator-row-v136")) break;
+                    if(n.classList.contains("bet-row") && n.dataset.v143Filtered === "1"){
+                        visible = true;
+                        break;
+                    }
+                }
+                el.style.display = visible ? "" : "none";
+            }
+        }
+
+        // Day separator appears only if there is visible row/header until next day separator
+        for(let i=0;i<all.length;i++){
+            const el = all[i];
+            if(el.classList.contains("day-separator-row-v136")){
+                let visible = false;
+                for(let j=i+1;j<all.length;j++){
+                    const n = all[j];
+                    if(n.classList.contains("day-separator-row-v136")) break;
+                    if((n.classList.contains("bet-row") && n.dataset.v143Filtered === "1") ||
+                       ((n.classList.contains("game-group-row-v136") || n.classList.contains("game-group-row-v130") || n.classList.contains("game-group-row-v129")) && n.style.display !== "none")){
+                        visible = true;
+                        break;
+                    }
+                }
+                el.style.display = visible ? "" : "none";
+            }
+        }
+    }
+
+    function bindFilters(){
+        const inputs = Array.from(document.querySelectorAll('input, select'));
+        inputs.forEach(el => {
+            if(el.dataset.v143FilterReady === "1") return;
+            const ph = norm(el.placeholder || "");
+            const text = norm(el.innerText || "");
+            const relevant = ph.includes("pesquisar") || ph.includes("valor min") || ph.includes("valor max") || text.includes("todos") || text.includes("todas as datas");
+            if(!relevant) return;
+            el.dataset.v143FilterReady = "1";
+            el.addEventListener("input", () => setTimeout(applyFilters, 60));
+            el.addEventListener("change", () => setTimeout(applyFilters, 60));
+        });
+
+        document.querySelectorAll("button").forEach(btn => {
+            const t = norm(btn.innerText);
+            if(t.includes("buscar casas") || t.includes("buscar esporte")){
+                btn.addEventListener("click", () => setTimeout(applyFilters, 100));
+            }
+        });
+    }
+
+    document.addEventListener("DOMContentLoaded", () => {
+        bindFilters();
+        setTimeout(applyFilters, 500);
+        setInterval(() => {
+            bindFilters();
+            applyFilters();
+        }, 5000);
+    });
+
+    document.addEventListener("click", e => {
+        const t = norm(e.target?.innerText || "");
+        if(t.includes("agrupar") || t.includes("expandir") || t.includes("salvar") || t.includes("editar") || t.includes("excluir")){
+            setTimeout(applyFilters, 300);
+            setTimeout(applyFilters, 1200);
+        }
+    });
+
+    window.v143ApplyFilters = applyFilters;
+})();
+</script>
 
 
 <script id="v143-stats-jogos-hoje-js">
@@ -2540,346 +2903,7 @@ function fecharModalBancaInicial(){
         setTimeout(corrigirHoje, 1800);
     });
     document.addEventListener("click", () => setTimeout(corrigirHoje, 500));
-    
-})();
-</script>
-
-
-<script id="v144-filtros-tabela-js">
-(function(){
-    function norm(v){
-        return String(v || "")
-            .normalize("NFD").replace(/[\u0300-\u036f]/g, "")
-            .toLowerCase()
-            .trim();
-    }
-
-    function getColIndex(label){
-        const target = norm(label);
-        const ths = Array.from(document.querySelectorAll("table thead th"));
-        for(let i=0;i<ths.length;i++){
-            const txt = norm(ths[i].innerText).replace(/\s+[↑↓]$/, "");
-            if(txt === target) return i;
-        }
-        return -1;
-    }
-
-    function selectOptionsText(s){
-        return Array.from(s.options || []).map(o => norm(o.innerText || o.value)).join(" ");
-    }
-
-    function getFilters(){
-        const searchInput = Array.from(document.querySelectorAll('input')).find(i =>
-            norm(i.placeholder).includes("pesquisar")
-        );
-
-        const selects = Array.from(document.querySelectorAll('select'));
-
-        const statusSelect = selects.find(s => {
-            const opts = selectOptionsText(s);
-            return opts.includes("pendente") || opts.includes("ganha") || opts.includes("perdida") || opts.includes("anulada");
-        });
-
-        const dataSelect = selects.find(s => {
-            const opts = selectOptionsText(s);
-            return opts.includes("todas as datas") || opts.includes("hoje") || opts.includes("amanha") || opts.includes("amanhã");
-        });
-
-        const casaSelect = selects.find(s => {
-            if(s === statusSelect || s === dataSelect) return false;
-            const opts = selectOptionsText(s);
-            return opts.includes("todos") || opts.includes("todas");
-        });
-
-        const minInput = Array.from(document.querySelectorAll('input')).find(i => norm(i.placeholder).includes("valor min"));
-        const maxInput = Array.from(document.querySelectorAll('input')).find(i => norm(i.placeholder).includes("valor max"));
-
-        return {
-            q: norm(searchInput?.value || ""),
-            status: norm(statusSelect?.value || statusSelect?.selectedOptions?.[0]?.innerText || ""),
-            data: norm(dataSelect?.value || dataSelect?.selectedOptions?.[0]?.innerText || ""),
-            casa: norm(casaSelect?.value || casaSelect?.selectedOptions?.[0]?.innerText || ""),
-            min: minInput && minInput.value !== "" ? parseFloat(String(minInput.value).replace(",", ".")) : null,
-            max: maxInput && maxInput.value !== "" ? parseFloat(String(maxInput.value).replace(",", ".")) : null
-        };
-    }
-
-    function parseMoney(txt){
-        txt = String(txt || "").replace(/[^\d,.-]/g, "").trim();
-        if(txt.includes(",") && txt.includes(".")) txt = txt.replace(/\./g, "").replace(",", ".");
-        else if(txt.includes(",")) txt = txt.replace(",", ".");
-        const n = parseFloat(txt);
-        return isNaN(n) ? 0 : n;
-    }
-
-    function rowDateKey(row){
-        const txt = row.children?.[0]?.innerText || "";
-        const m = txt.match(/(\d{2})\/(\d{2})(?:\/(\d{4}))?/);
-        if(!m) return "";
-        const y = m[3] || String(new Date().getFullYear());
-        return `${y}-${m[2]}-${m[1]}`;
-    }
-
-    function dateFilterMatch(row, dataFilter){
-        if(!dataFilter || dataFilter === "todas" || dataFilter === "todas as datas") return true;
-
-        const rowDate = rowDateKey(row);
-        if(!rowDate) return true;
-
-        const today = new Date();
-        const p = n => String(n).padStart(2, "0");
-        const todayKey = `${today.getFullYear()}-${p(today.getMonth()+1)}-${p(today.getDate())}`;
-
-        const tomorrow = new Date(today.getFullYear(), today.getMonth(), today.getDate()+1);
-        const tomorrowKey = `${tomorrow.getFullYear()}-${p(tomorrow.getMonth()+1)}-${p(tomorrow.getDate())}`;
-
-        if(dataFilter.includes("hoje")) return rowDate === todayKey;
-        if(dataFilter.includes("amanha") || dataFilter.includes("amanhã")) return rowDate === tomorrowKey;
-        if(/\d{4}-\d{2}-\d{2}/.test(dataFilter)) return rowDate === dataFilter;
-
-        return true;
-    }
-
-    function statusFilterMatch(row, statusFilter){
-        if(!statusFilter || statusFilter === "todos" || statusFilter === "todas") return true;
-
-        const statusIdx = getColIndex("status");
-        const statusTxt = norm(statusIdx >= 0 ? row.children?.[statusIdx]?.innerText : "");
-
-        if(statusFilter.includes("pendente")) return statusTxt.includes("pendente");
-        if(statusFilter.includes("ganha") || statusFilter.includes("green")) return statusTxt.includes("ganha") || statusTxt.includes("green");
-        if(statusFilter.includes("perdida") || statusFilter.includes("red")) return statusTxt.includes("perdida") || statusTxt.includes("red");
-        if(statusFilter.includes("anulada") || statusFilter.includes("void")) return statusTxt.includes("anulada") || statusTxt.includes("void");
-
-        return statusTxt.includes(statusFilter);
-    }
-
-    function rowMatches(row, filters){
-        const text = norm(row.innerText);
-
-        if(filters.q && !text.includes(filters.q)) return false;
-
-        if(!statusFilterMatch(row, filters.status)) return false;
-
-        if(filters.casa && !["todos", "todas"].includes(filters.casa)){
-            const casaIdx = getColIndex("Casa");
-            const casaTxt = norm(casaIdx >= 0 ? row.children?.[casaIdx]?.innerText : "");
-            if(casaTxt && casaTxt !== filters.casa && !casaTxt.includes(filters.casa)) return false;
-        }
-
-        if(!dateFilterMatch(row, filters.data)) return false;
-
-        const valorIdx = getColIndex("Valor");
-        const valor = parseMoney(valorIdx >= 0 ? row.children?.[valorIdx]?.innerText : "");
-        if(filters.min !== null && valor < filters.min) return false;
-        if(filters.max !== null && valor > filters.max) return false;
-
-        return true;
-    }
-
-    function applyFilters(){
-        const tbody = document.querySelector("table tbody");
-        if(!tbody) return;
-
-        const filters = getFilters();
-        const rows = Array.from(tbody.querySelectorAll("tr.bet-row"));
-
-        rows.forEach(row => {
-            const ok = rowMatches(row, filters);
-            row.dataset.v144Filtered = ok ? "1" : "0";
-            row.style.display = ok ? "" : "none";
-        });
-
-        const all = Array.from(tbody.children);
-
-        for(let i=0;i<all.length;i++){
-            const el = all[i];
-
-            if(el.classList.contains("game-group-row-v136") || el.classList.contains("game-group-row-v130") || el.classList.contains("game-group-row-v129")){
-                let visible = false;
-                for(let j=i+1;j<all.length;j++){
-                    const n = all[j];
-                    if(n.classList.contains("game-group-row-v136") || n.classList.contains("game-group-row-v130") || n.classList.contains("game-group-row-v129") || n.classList.contains("day-separator-row-v136")) break;
-                    if(n.classList.contains("bet-row") && n.dataset.v144Filtered === "1"){
-                        visible = true;
-                        break;
-                    }
-                }
-                el.style.display = visible ? "" : "none";
-            }
-        }
-
-        for(let i=0;i<all.length;i++){
-            const el = all[i];
-            if(el.classList.contains("day-separator-row-v136")){
-                let visible = false;
-                for(let j=i+1;j<all.length;j++){
-                    const n = all[j];
-                    if(n.classList.contains("day-separator-row-v136")) break;
-                    if((n.classList.contains("bet-row") && n.dataset.v144Filtered === "1") ||
-                       ((n.classList.contains("game-group-row-v136") || n.classList.contains("game-group-row-v130") || n.classList.contains("game-group-row-v129")) && n.style.display !== "none")){
-                        visible = true;
-                        break;
-                    }
-                }
-                el.style.display = visible ? "" : "none";
-            }
-        }
-    }
-
-    function bindFilters(){
-        Array.from(document.querySelectorAll('input, select')).forEach(el => {
-            if(el.dataset.v144FilterReady === "1") return;
-            el.dataset.v144FilterReady = "1";
-            el.addEventListener("input", () => setTimeout(applyFilters, 60));
-            el.addEventListener("change", () => setTimeout(applyFilters, 60));
-        });
-
-        document.querySelectorAll("button").forEach(btn => {
-            if(btn.dataset.v144FilterReady === "1") return;
-            const t = norm(btn.innerText);
-            if(t.includes("buscar casas") || t.includes("buscar esporte")){
-                btn.dataset.v144FilterReady = "1";
-                btn.addEventListener("click", () => setTimeout(applyFilters, 100));
-            }
-        });
-    }
-
-    document.addEventListener("DOMContentLoaded", () => {
-        bindFilters();
-        setTimeout(applyFilters, 500);
-
-    });
-
-    document.addEventListener("click", e => {
-        const t = norm(e.target?.innerText || "");
-        if(t.includes("agrupar") || t.includes("expandir") || t.includes("salvar") || t.includes("editar") || t.includes("excluir")){
-            setTimeout(applyFilters, 300);
-            setTimeout(applyFilters, 1200);
-        }
-    });
-
-    window.v144ApplyFilters = applyFilters;
-})();
-</script>
-
-
-<script id="v145-manual-refresh-js">
-(function(){
-    function refreshSoft(){
-        try { if(typeof v136SmartTableApply === "function") v136SmartTableApply(true); } catch(e){}
-        try { if(typeof v144ApplyFilters === "function") v144ApplyFilters(); } catch(e){}
-        try { if(typeof v143ApplyFilters === "function") v143ApplyFilters(); } catch(e){}
-        try { if(typeof v141AtualizarLucroPorBanca === "function") v141AtualizarLucroPorBanca(); } catch(e){}
-    }
-
-    let timer = null;
-    function debounceRefresh(delay){
-        clearTimeout(timer);
-        timer = setTimeout(refreshSoft, delay || 250);
-    }
-
-    document.addEventListener("DOMContentLoaded", () => {
-        debounceRefresh(600);
-    });
-
-    document.addEventListener("input", e => {
-        const ph = String(e.target?.placeholder || "").toLowerCase();
-        if(ph.includes("pesquisar") || ph.includes("valor")) debounceRefresh(150);
-    });
-
-    document.addEventListener("change", e => {
-        if(e.target && e.target.tagName === "SELECT") debounceRefresh(150);
-    });
-
-    document.addEventListener("click", e => {
-        const t = String(e.target?.innerText || "").toLowerCase();
-        if(t.includes("salvar") || t.includes("editar") || t.includes("excluir") || t.includes("agrupar") || t.includes("expandir") || t.includes("buscar")){
-            debounceRefresh(300);
-            setTimeout(refreshSoft, 1200);
-        }
-    });
-
-    window.v145RefreshSoft = refreshSoft;
-})();
-</script>
-
-
-<script id="v146-stable-refresh-js">
-(function(){
-    let busy = false;
-
-    function refreshSoft(){
-        if(busy) return;
-        busy = true;
-        const y = window.scrollY;
-
-        try { if(typeof v144ApplyFilters === "function") v144ApplyFilters(); } catch(e){}
-        try { if(typeof v143ApplyFilters === "function") v143ApplyFilters(); } catch(e){}
-        try { if(typeof v141AtualizarLucroPorBanca === "function") v141AtualizarLucroPorBanca(); } catch(e){}
-
-        // Não chama agrupamento automático aqui para evitar piscar/reordenar.
-        requestAnimationFrame(() => {
-            window.scrollTo({top: y, behavior: "auto"});
-            busy = false;
-        });
-    }
-
-    function refreshTableOnlyWhenNeeded(){
-        if(busy) return;
-        busy = true;
-        const y = window.scrollY;
-
-        try { if(typeof v136SmartTableApply === "function") v136SmartTableApply(true); } catch(e){}
-        try { if(typeof v144ApplyFilters === "function") v144ApplyFilters(); } catch(e){}
-        try { if(typeof v141AtualizarLucroPorBanca === "function") v141AtualizarLucroPorBanca(); } catch(e){}
-
-        requestAnimationFrame(() => {
-            window.scrollTo({top: y, behavior: "auto"});
-            busy = false;
-        });
-    }
-
-    document.addEventListener("DOMContentLoaded", () => {
-        setTimeout(refreshTableOnlyWhenNeeded, 500);
-    });
-
-    document.addEventListener("input", e => {
-        const ph = String(e.target?.placeholder || "").toLowerCase();
-        if(ph.includes("pesquisar") || ph.includes("valor")){
-            clearTimeout(window.__v146FilterTimer);
-            window.__v146FilterTimer = setTimeout(refreshSoft, 180);
-        }
-    });
-
-    document.addEventListener("change", e => {
-        if(e.target && e.target.tagName === "SELECT"){
-            clearTimeout(window.__v146FilterTimer);
-            window.__v146FilterTimer = setTimeout(refreshSoft, 180);
-        }
-    });
-
-    document.addEventListener("submit", () => {
-        setTimeout(refreshTableOnlyWhenNeeded, 800);
-        setTimeout(refreshTableOnlyWhenNeeded, 1800);
-    });
-
-    document.addEventListener("click", e => {
-        const t = String(e.target?.innerText || "").toLowerCase();
-
-        if(t.includes("agrupar") || t.includes("expandir")){
-            setTimeout(refreshTableOnlyWhenNeeded, 150);
-            return;
-        }
-
-        if(t.includes("salvar") || t.includes("excluir")){
-            setTimeout(refreshTableOnlyWhenNeeded, 800);
-            setTimeout(refreshTableOnlyWhenNeeded, 1800);
-        }
-    });
-
-    window.v146RefreshSoft = refreshSoft;
-    window.v146RefreshTableOnlyWhenNeeded = refreshTableOnlyWhenNeeded;
+    setInterval(corrigirHoje, 30000);
 })();
 </script>
 
