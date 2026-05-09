@@ -218,7 +218,7 @@ API_KEY = CONFIG.get("API_KEY", "")
 
 print("CONFIG PATH:", CONFIG_PATH)
 print("API KEY:", API_KEY)
-print("VERSAO_CARREGADA: OCR_CLIENTE_V153_STATUS_AJAX_SEM_RELOAD")
+print("VERSAO_CARREGADA: OCR_CLIENTE_V154_STATUS_AJAX_ORIGINAL_CALENDARIO_JOGO")
 
 if os.name == "nt":
     tess_path = r"C:\Program Files\Tesseract-OCR\tesseract.exe"
@@ -1543,6 +1543,82 @@ def parse_data(data_str):
     return None
 
 
+# ============================================================
+# V154 - calendário por data do jogo
+# ============================================================
+
+def v154_parse_data_jogo_aposta(b):
+    """
+    Retorna a data/hora do jogo da aposta.
+    Prioridade:
+    1) horario_jogo_iso
+    2) horario_jogo / status_jogo com dd/mm hh:mm
+    3) campos data_jogo/jogo_data
+    4) fallback: data de criação da aposta
+    """
+    if not isinstance(b, dict):
+        return None
+
+    candidatos = [
+        b.get("horario_jogo_iso"),
+        b.get("data_jogo"),
+        b.get("jogo_data"),
+        b.get("horario_jogo"),
+        b.get("status_jogo"),
+        b.get("data"),
+    ]
+
+    formatos = [
+        "%Y-%m-%dT%H:%M:%S",
+        "%Y-%m-%dT%H:%M",
+        "%Y-%m-%d %H:%M:%S",
+        "%Y-%m-%d %H:%M",
+        "%d/%m/%Y %H:%M",
+        "%d/%m/%y %H:%M",
+        "%d/%m %H:%M",
+        "%d/%m/%Y",
+        "%d/%m/%y",
+        "%d/%m",
+    ]
+
+    for valor in candidatos:
+        if not valor:
+            continue
+
+        s = str(valor).strip()
+
+        # ISO com timezone/Z
+        try:
+            iso = s.replace("Z", "+00:00")
+            dt = datetime.fromisoformat(iso)
+            if dt.tzinfo is not None:
+                try:
+                    dt = dt.astimezone(ZoneInfo("America/Bahia")).replace(tzinfo=None)
+                except Exception:
+                    dt = dt.replace(tzinfo=None)
+            return dt
+        except Exception:
+            pass
+
+        # extrai algo tipo 09/05 13:30 dentro de texto "Hoje 13:30" ou "09/05 13:30"
+        m = re.search(r"(\d{2}/\d{2}(?:/\d{2,4})?)\s+(\d{1,2}:\d{2})", s)
+        if m:
+            s2 = f"{m.group(1)} {m.group(2)}"
+        else:
+            s2 = s
+
+        for fmt in formatos:
+            try:
+                dt = datetime.strptime(s2, fmt)
+                if "%Y" not in fmt and "%y" not in fmt:
+                    dt = dt.replace(year=datetime.now().year)
+                return dt
+            except Exception:
+                pass
+
+    return None
+
+
 def calendario_historico(ano=None, mes=None):
     hoje = datetime.now()
     ano = int(ano or hoje.year)
@@ -1554,16 +1630,22 @@ def calendario_historico(ano=None, mes=None):
     elif mes > 12:
         mes = 1
         ano += 1
+
     por_dia = {}
 
     for b in bets_do_usuario():
-        dt = parse_data(b.get("data", ""))
+        dt = v154_parse_data_jogo_aposta(b)
         if not dt or dt.year != ano or dt.month != mes:
             continue
 
         dia = dt.day
-        por_dia.setdefault(dia, {"lucro": 0, "apostas": 0})
-        por_dia[dia]["lucro"] += float(b.get("lucro", 0))
+        por_dia.setdefault(dia, {"lucro": 0.0, "apostas": 0})
+
+        try:
+            por_dia[dia]["lucro"] += float(b.get("lucro", 0) or 0)
+        except Exception:
+            pass
+
         por_dia[dia]["apostas"] += 1
 
     cal = calendar.Calendar(firstweekday=6)

@@ -3026,7 +3026,10 @@ function fecharModalBancaInicial(){
 
 
 
-<script id="v153-status-ajax-js">
+
+
+
+<script id="v154-status-original-ajax-js">
 (function(){
     function norm(v){
         return String(v || "")
@@ -3060,37 +3063,17 @@ function fecharModalBancaInicial(){
         return -1;
     }
 
-    function rowId(row){
-        return row?.dataset?.id || row?.dataset?.betId || row?.getAttribute("data-id") || "";
-    }
-
-    function detectarAcao(btn){
-        const txt = norm(btn.innerText || btn.title || btn.getAttribute("aria-label") || "");
-        const cls = norm(btn.className || "");
-        const icon = String(btn.innerText || "").trim();
-
-        if(txt.includes("ganha") || txt.includes("green") || cls.includes("green") || cls.includes("ganha") || icon === "✓" || icon === "✔") return "ganha";
-        if(txt.includes("perdida") || txt.includes("red") || cls.includes("red") || cls.includes("perdida") || icon === "✕" || icon.toLowerCase() === "x") return "perdida";
-        if(txt.includes("anular") || txt.includes("anulada") || txt.includes("void") || cls.includes("anulada") || icon === "-") return "anulada";
-        return "";
-    }
-
-    function statusLabel(estado){
-        if(estado === "ganha") return "Ganha";
-        if(estado === "perdida") return "Perdida";
-        if(estado === "anulada") return "Anulada";
-        return "Pendente";
-    }
-
-    function statusClass(estado){
-        if(estado === "ganha") return "ganha";
-        if(estado === "perdida") return "perdida";
-        if(estado === "anulada") return "anulada";
-        return "pendente";
+    function estadoFromHref(href){
+        const m = String(href || "").match(/\/resultado\/[^\/]+\/([^\/\?]+)/);
+        return m ? decodeURIComponent(m[1]) : "";
     }
 
     function badge(estado){
-        return `<span class="status-badge ${statusClass(estado)}">${statusLabel(estado)}</span>`;
+        estado = norm(estado);
+        if(estado === "ganha" || estado === "green") return `<span class="status-badge ganha">Ganha</span>`;
+        if(estado === "perdida" || estado === "red") return `<span class="status-badge perdida">Perdida</span>`;
+        if(estado === "anulada" || estado === "void") return `<span class="status-badge anulada">Anulada</span>`;
+        return `<span class="status-badge pendente">Pendente</span>`;
     }
 
     function lucroLocal(row, estado){
@@ -3099,8 +3082,9 @@ function fecharModalBancaInicial(){
         const odd = parseMoney(oddIdx >= 0 ? row.children?.[oddIdx]?.innerText : "");
         const valor = parseMoney(valorIdx >= 0 ? row.children?.[valorIdx]?.innerText : "");
 
-        if(estado === "ganha") return (odd * valor) - valor;
-        if(estado === "perdida") return -valor;
+        estado = norm(estado);
+        if(estado === "ganha" || estado === "green") return (odd * valor) - valor;
+        if(estado === "perdida" || estado === "red") return -valor;
         return 0;
     }
 
@@ -3112,34 +3096,56 @@ function fecharModalBancaInicial(){
             row.children[statusIdx].innerHTML = badge(estado);
         }
 
-        if(lucro === undefined || lucro === null) lucro = lucroLocal(row, estado);
+        if(lucro === undefined || lucro === null || Number.isNaN(Number(lucro))){
+            lucro = lucroLocal(row, estado);
+        }
 
         if(lucroIdx >= 0 && row.children?.[lucroIdx]){
-            row.children[lucroIdx].textContent = money(lucro);
+            row.children[lucroIdx].textContent = money(Number(lucro || 0));
             row.children[lucroIdx].classList.remove("lucro-pos", "lucro-neg", "lucro-zero");
             row.children[lucroIdx].classList.add(lucro > 0 ? "lucro-pos" : lucro < 0 ? "lucro-neg" : "lucro-zero");
         }
 
-        row.dataset.estado = estado;
-        row.classList.add("v153-status-ok");
-        setTimeout(() => row.classList.remove("v153-status-ok"), 900);
+        row.classList.add("v154-status-ok");
+        setTimeout(() => row.classList.remove("v154-status-ok"), 900);
     }
 
-    function recalcularCards(){
+    function atualizarMetricas(metricas){
+        if(!metricas) return;
+
+        function setByTitle(title, value, formatter){
+            const card = Array.from(document.querySelectorAll(".metric-card")).find(c =>
+                norm(c.querySelector("span")?.innerText || "") === norm(title)
+            );
+            const strong = card?.querySelector("strong");
+            if(strong) strong.textContent = formatter ? formatter(value) : value;
+        }
+
+        if(metricas.banca_atual !== undefined) setByTitle("Banca Atual", metricas.banca_atual, money);
+        if(metricas.total !== undefined) setByTitle("Total Apostas", metricas.total, v => String(v));
+        if(metricas.pendentes !== undefined) setByTitle("Pendentes", metricas.pendentes, v => String(v));
+    }
+
+    function recalcularLeve(){
         try { if(typeof v141AtualizarLucroPorBanca === "function") v141AtualizarLucroPorBanca(); } catch(e){}
         try { if(typeof v147ApplyFilters === "function") v147ApplyFilters(); } catch(e){}
         try { if(typeof v149AplicarHistorico === "function") v149AplicarHistorico(); } catch(e){}
         try { if(typeof v150ForceFinalizeOldLiveGames === "function") v150ForceFinalizeOldLiveGames(); } catch(e){}
     }
 
-    async function salvarAjax(id, estado){
-        const r = await fetch(`/api/aposta_status/${encodeURIComponent(id)}`, {
-            method: "POST",
-            headers: {
-                "Content-Type": "application/json",
-                "X-Requested-With": "XMLHttpRequest"
-            },
-            body: JSON.stringify({estado})
+    async function ajaxResultado(anchor, row){
+        const href = anchor.getAttribute("href");
+        const estado = estadoFromHref(href);
+        if(!href || !estado) return;
+
+        const y = window.scrollY;
+        row.classList.add("v154-status-loading");
+
+        const url = href.includes("?") ? href + "&ajax=1" : href + "?ajax=1";
+        const r = await fetch(url, {
+            method: "GET",
+            headers: {"X-Requested-With": "XMLHttpRequest"},
+            cache: "no-store"
         });
 
         let data = {};
@@ -3149,65 +3155,40 @@ function fecharModalBancaInicial(){
             throw new Error(data.erro || "erro_status");
         }
 
-        return data;
+        const bet = data.bet || {};
+        const lucro = bet.lucro !== undefined ? Number(bet.lucro) : lucroLocal(row, estado);
+
+        aplicarLinha(row, bet.estado || bet.status || estado, lucro);
+        atualizarMetricas(data.metricas);
+        recalcularLeve();
+
+        requestAnimationFrame(() => window.scrollTo({top:y, behavior:"auto"}));
     }
 
-    function patchStatusButtons(){
-        document.querySelectorAll("tr.bet-row button, tr.bet-row a").forEach(btn => {
-            if(btn.dataset.v153Ready === "1") return;
+    document.addEventListener("click", function(e){
+        const anchor = e.target.closest ? e.target.closest('a[href*="/resultado/"]') : null;
+        if(!anchor) return;
 
-            const estado = detectarAcao(btn);
-            if(!estado) return;
+        const row = anchor.closest("tr.bet-row");
+        if(!row) return;
 
-            btn.dataset.v153Ready = "1";
+        e.preventDefault();
+        e.stopPropagation();
+        if(e.stopImmediatePropagation) e.stopImmediatePropagation();
 
-            btn.addEventListener("click", async function(e){
-                const row = btn.closest("tr.bet-row");
-                if(!row) return;
+        ajaxResultado(anchor, row)
+            .catch(err => {
+                console.error("V154 status ajax original erro:", err);
+                alert("Erro ao mudar status: " + err.message);
+            })
+            .finally(() => {
+                row.classList.remove("v154-status-loading");
+            });
 
-                const id = rowId(row);
-                if(!id) return;
+        return false;
+    }, true);
 
-                // Bloqueia o handler antigo para evitar redirect/reload.
-                e.preventDefault();
-                e.stopPropagation();
-                if(e.stopImmediatePropagation) e.stopImmediatePropagation();
-
-                const y = window.scrollY;
-                btn.disabled = true;
-                row.classList.add("v153-status-loading");
-
-                try{
-                    const data = await salvarAjax(id, estado);
-                    aplicarLinha(row, data.estado || estado, Number(data.lucro || 0));
-                    recalcularCards();
-                    window.scrollTo({top:y, behavior:"auto"});
-                }catch(err){
-                    console.error("V153 status ajax erro:", err);
-                    alert("Erro ao mudar status da aposta: " + err.message);
-                }finally{
-                    btn.disabled = false;
-                    row.classList.remove("v153-status-loading");
-                }
-
-                return false;
-            }, {capture:true});
-        });
-    }
-
-    document.addEventListener("DOMContentLoaded", () => {
-        setTimeout(patchStatusButtons, 600);
-        setTimeout(patchStatusButtons, 1600);
-    });
-
-    document.addEventListener("click", e => {
-        const t = norm(e.target?.innerText || "");
-        if(t.includes("expandir") || t.includes("agrupar") || t.includes("salvar") || t.includes("editar")){
-            setTimeout(patchStatusButtons, 600);
-        }
-    });
-
-    window.v153PatchStatusButtons = patchStatusButtons;
+    window.v154StatusAjaxOriginal = true;
 })();
 </script>
 
