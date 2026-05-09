@@ -4204,3 +4204,13 @@ tr.bet-row[data-v147-filtered="0"]{display:none!important;}
 .game-date-status.finished::before {
     content: "🏁";
 }
+
+/* V151 - status da aposta sem pular tabela */
+.v151-status-atualizado {
+    outline: 1px solid rgba(96,165,250,.45) !important;
+    background: rgba(37,99,235,.08) !important;
+}
+
+.lucro-pos { color: #22c55e !important; font-weight: 900 !important; }
+.lucro-neg { color: #ef4444 !important; font-weight: 900 !important; }
+.lucro-zero { color: #e5f0ff !important; font-weight: 800 !important; }

@@ -3019,5 +3019,183 @@ function fecharModalBancaInicial(){
 })();
 </script>
 
+
+<script id="v151-status-sem-pular-js">
+(function(){
+    function norm(v){
+        return String(v || "")
+            .normalize("NFD").replace(/[\u0300-\u036f]/g,"")
+            .toLowerCase()
+            .trim();
+    }
+
+    function parseMoney(txt){
+        const raw = String(txt || "");
+        let s = raw.replace(/[^\d,.-]/g, "").trim();
+        const negative = raw.includes("-");
+        if(s.includes(",") && s.includes(".")) s = s.replace(/\./g, "").replace(",", ".");
+        else if(s.includes(",")) s = s.replace(",", ".");
+        const n = parseFloat(s);
+        return isNaN(n) ? 0 : (negative ? -Math.abs(n) : n);
+    }
+
+    function money(v){
+        const n = Number(v || 0);
+        return (n < 0 ? "-R$ " : "R$ ") + Math.abs(n).toFixed(2);
+    }
+
+    function col(label){
+        const target = norm(label);
+        const ths = Array.from(document.querySelectorAll("table thead th"));
+        for(let i=0;i<ths.length;i++){
+            const txt = norm(ths[i].innerText).replace(/\s+[↑↓]$/,"");
+            if(txt === target) return i;
+        }
+        return -1;
+    }
+
+    function getBetId(row){
+        return row?.dataset?.id || row?.getAttribute("data-bet-id") || row?.getAttribute("data-id") || "";
+    }
+
+    function detectarAcao(btn){
+        const txt = norm(btn.innerText || btn.title || btn.getAttribute("aria-label") || "");
+        const cls = norm(btn.className || "");
+        const icon = String(btn.innerText || "").trim();
+
+        if(txt.includes("ganha") || txt.includes("green") || icon === "✓" || icon === "✔" || cls.includes("green") || cls.includes("ganha")) return "ganha";
+        if(txt.includes("perdida") || txt.includes("red") || icon === "✕" || icon.toLowerCase() === "x" || cls.includes("red") || cls.includes("perdida")) return "perdida";
+        if(txt.includes("anulada") || txt.includes("anular") || txt.includes("void") || icon === "-" || cls.includes("anulada")) return "anulada";
+        return "";
+    }
+
+    function badge(status){
+        const s = norm(status);
+        if(s.includes("ganha")) return `<span class="status-badge ganha">Ganha</span>`;
+        if(s.includes("perdida")) return `<span class="status-badge perdida">Perdida</span>`;
+        if(s.includes("anulada")) return `<span class="status-badge anulada">Anulada</span>`;
+        return `<span class="status-badge pendente">Pendente</span>`;
+    }
+
+    function lucroPorStatus(row, status){
+        const oddIdx = col("Odd");
+        const valorIdx = col("Valor");
+        const odd = parseMoney(oddIdx >= 0 ? row.children?.[oddIdx]?.innerText : "");
+        const valor = parseMoney(valorIdx >= 0 ? row.children?.[valorIdx]?.innerText : "");
+
+        if(status === "ganha") return (odd * valor) - valor;
+        if(status === "perdida") return -valor;
+        if(status === "anulada") return 0;
+        return 0;
+    }
+
+    function atualizarLinhaVisual(row, status){
+        if(!row) return;
+
+        const statusIdx = col("Status");
+        const lucroIdx = col("Lucro");
+        const lucro = lucroPorStatus(row, status);
+
+        if(statusIdx >= 0 && row.children?.[statusIdx]){
+            row.children[statusIdx].innerHTML = badge(status);
+        }
+
+        if(lucroIdx >= 0 && row.children?.[lucroIdx]){
+            row.children[lucroIdx].textContent = money(lucro);
+            row.children[lucroIdx].classList.remove("lucro-pos", "lucro-neg", "lucro-zero");
+            row.children[lucroIdx].classList.add(lucro > 0 ? "lucro-pos" : lucro < 0 ? "lucro-neg" : "lucro-zero");
+        }
+
+        row.dataset.estado = status;
+        row.classList.add("v151-status-atualizado");
+        setTimeout(() => row.classList.remove("v151-status-atualizado"), 1600);
+    }
+
+    function recalcularCardsLeve(){
+        try { if(typeof v141AtualizarLucroPorBanca === "function") v141AtualizarLucroPorBanca(); } catch(e){}
+        try { if(typeof v147ApplyFilters === "function") v147ApplyFilters(); } catch(e){}
+        try { if(typeof v149AplicarHistorico === "function") v149AplicarHistorico(); } catch(e){}
+        try { if(typeof v150ForceFinalizeOldLiveGames === "function") v150ForceFinalizeOldLiveGames(); } catch(e){}
+    }
+
+    async function tentarSalvarStatus(row, status){
+        const id = getBetId(row);
+        if(!id) return false;
+
+        const urls = [
+            `/estado/${id}/${status}`,
+            `/status/${id}/${status}`,
+            `/atualizar_status/${id}/${status}`,
+            `/marcar/${id}/${status}`
+        ];
+
+        for(const url of urls){
+            try{
+                const r = await fetch(url, {method:"POST", headers:{"X-Requested-With":"XMLHttpRequest"}});
+                if(r.ok) return true;
+            }catch(e){}
+        }
+
+        // Se o app original já tem onclick/fetch próprio, não forçamos erro.
+        return false;
+    }
+
+    function patchStatusButtons(){
+        document.querySelectorAll("tr.bet-row button, tr.bet-row a").forEach(btn => {
+            if(btn.dataset.v151Ready === "1") return;
+
+            const status = detectarAcao(btn);
+            if(!status) return;
+
+            btn.dataset.v151Ready = "1";
+
+            btn.addEventListener("click", function(e){
+                const row = btn.closest("tr.bet-row");
+                if(!row) return;
+
+                const y = window.scrollY;
+                const oldParent = row.parentNode;
+                const next = row.nextSibling;
+
+                // Atualiza na hora, sem esperar refresh geral.
+                atualizarLinhaVisual(row, status);
+
+                // Preserva a posição da linha caso algum script tente mover.
+                setTimeout(() => {
+                    try{
+                        if(oldParent && row.parentNode === oldParent && next && next.parentNode === oldParent){
+                            oldParent.insertBefore(row, next);
+                        }
+                    }catch(err){}
+                    window.scrollTo({top:y, behavior:"auto"});
+                    recalcularCardsLeve();
+                }, 250);
+
+                setTimeout(() => {
+                    window.scrollTo({top:y, behavior:"auto"});
+                    recalcularCardsLeve();
+                }, 900);
+
+                // Não bloqueia o handler antigo do sistema; só evita pulo visual.
+            }, {capture:true});
+        });
+    }
+
+    document.addEventListener("DOMContentLoaded", () => {
+        setTimeout(patchStatusButtons, 700);
+        setTimeout(patchStatusButtons, 1800);
+    });
+
+    document.addEventListener("click", e => {
+        const t = norm(e.target?.innerText || "");
+        if(t.includes("expandir") || t.includes("agrupar") || t.includes("salvar") || t.includes("editar")){
+            setTimeout(patchStatusButtons, 600);
+        }
+    });
+
+    window.v151PatchStatusButtons = patchStatusButtons;
+})();
+</script>
+
 </body>
 </html>
