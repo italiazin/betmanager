@@ -2267,7 +2267,7 @@ function fecharModalBancaInicial(){
 
     document.addEventListener("DOMContentLoaded", () => {
         apply();
-        setInterval(calcularValorAberto, 30000);
+        
     });
 
     document.addEventListener("click", () => setTimeout(calcularValorAberto, 400));
@@ -2640,7 +2640,7 @@ function fecharModalBancaInicial(){
             obs.observe(target, {subtree:true, childList:true, characterData:true});
         }
 
-        setInterval(atualizar, 30000);
+
     }
 
     document.addEventListener("DOMContentLoaded", start);
@@ -2713,7 +2713,7 @@ function fecharModalBancaInicial(){
         setTimeout(corrigirHoje, 1800);
     });
     document.addEventListener("click", () => setTimeout(corrigirHoje, 500));
-    setInterval(corrigirHoje, 30000);
+    
 })();
 </script>
 
@@ -2921,10 +2921,7 @@ function fecharModalBancaInicial(){
     document.addEventListener("DOMContentLoaded", () => {
         bindFilters();
         setTimeout(applyFilters, 500);
-        setInterval(() => {
-            bindFilters();
-            applyFilters();
-        }, 5000);
+
     });
 
     document.addEventListener("click", e => {
@@ -2936,6 +2933,47 @@ function fecharModalBancaInicial(){
     });
 
     window.v144ApplyFilters = applyFilters;
+})();
+</script>
+
+
+<script id="v145-manual-refresh-js">
+(function(){
+    function refreshSoft(){
+        try { if(typeof v136SmartTableApply === "function") v136SmartTableApply(true); } catch(e){}
+        try { if(typeof v144ApplyFilters === "function") v144ApplyFilters(); } catch(e){}
+        try { if(typeof v143ApplyFilters === "function") v143ApplyFilters(); } catch(e){}
+        try { if(typeof v141AtualizarLucroPorBanca === "function") v141AtualizarLucroPorBanca(); } catch(e){}
+    }
+
+    let timer = null;
+    function debounceRefresh(delay){
+        clearTimeout(timer);
+        timer = setTimeout(refreshSoft, delay || 250);
+    }
+
+    document.addEventListener("DOMContentLoaded", () => {
+        debounceRefresh(600);
+    });
+
+    document.addEventListener("input", e => {
+        const ph = String(e.target?.placeholder || "").toLowerCase();
+        if(ph.includes("pesquisar") || ph.includes("valor")) debounceRefresh(150);
+    });
+
+    document.addEventListener("change", e => {
+        if(e.target && e.target.tagName === "SELECT") debounceRefresh(150);
+    });
+
+    document.addEventListener("click", e => {
+        const t = String(e.target?.innerText || "").toLowerCase();
+        if(t.includes("salvar") || t.includes("editar") || t.includes("excluir") || t.includes("agrupar") || t.includes("expandir") || t.includes("buscar")){
+            debounceRefresh(300);
+            setTimeout(refreshSoft, 1200);
+        }
+    });
+
+    window.v145RefreshSoft = refreshSoft;
 })();
 </script>
 
