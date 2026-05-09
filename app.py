@@ -218,7 +218,7 @@ API_KEY = CONFIG.get("API_KEY", "")
 
 print("CONFIG PATH:", CONFIG_PATH)
 print("API KEY:", API_KEY)
-print("VERSAO_CARREGADA: OCR_CLIENTE_V143_FIX_FILTROS_STATS_HOJE")
+print("VERSAO_CARREGADA: OCR_CLIENTE_V140_FIX_SALVAR_BANCA_USUARIO")
 
 if os.name == "nt":
     tess_path = r"C:\Program Files\Tesseract-OCR\tesseract.exe"
@@ -1470,44 +1470,19 @@ def metricas():
 
 
 def grafico():
-    try:
-        try:
-            user_key = v140_usuario_key_atual()
-        except Exception:
-            user_key = session.get("user") or session.get("email") or ""
+    banca = float(dados.get("banca_inicial", 0))
+    labels, valores = [], []
 
-        banca = 0.0
-        if user_key:
-            banca = float(dados.get("usuarios", {}).get(user_key, {}).get("banca_inicial", 0) or 0)
+    # Se houver saldo por casa, o gráfico usa o saldo atual como referência final,
+    # mas mantém evolução por lucro das apostas do usuário.
+    for b in bets_do_usuario():
+        banca += float(b.get("lucro", 0))
+        labels.append(b.get("data", ""))
+        valores.append(round(banca, 2))
 
-        # fallback antigo só se o usuário ainda não configurou banca inicial
-        if not banca:
-            banca = float(dados.get("banca_inicial", 0) or 0)
-    except Exception:
-        banca = 0.0
-
-    labels, valores = ["Início"], [round(banca, 2)]
-
-    fechados = {"ganha", "green", "win", "vencida", "perdida", "red", "loss", "anulada", "void", "cancelada", "cancelado"}
-
-    try:
-        lista = bets_do_usuario()
-    except Exception:
-        lista = []
-
-    for b in lista:
-        try:
-            estado = str(b.get("estado", b.get("status", "")) or "").lower().strip()
-
-            # Apostas abertas NÃO entram como red no gráfico.
-            if estado not in fechados:
-                continue
-
-            banca += float(b.get("lucro", 0) or 0)
-            labels.append(b.get("data", ""))
-            valores.append(round(banca, 2))
-        except Exception:
-            pass
+    if not labels:
+        labels = ["Início"]
+        valores = [total_saldos_casas() or banca]
 
     return labels, valores
 
