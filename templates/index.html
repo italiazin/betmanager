@@ -33,7 +33,7 @@ function formatarLinhaApostaNova(b){
     const lucro = parseFloat(b.lucro || 0).toFixed(2)
 
     return `
-    <tr class="bet-row">
+    <tr class="bet-row" data-id="{{ b.id if b.id is defined else loop.index0 }}">
         <td class="data-cell">${b.data || ""}</td>
         <td class="casa-cell">${b.casa || ""}</td>
         <td class="esporte-cell">${b.esporte || ""}</td>
@@ -3020,7 +3020,13 @@ function fecharModalBancaInicial(){
 </script>
 
 
-<script id="v151-status-sem-pular-js">
+
+
+
+
+
+
+<script id="v153-status-ajax-js">
 (function(){
     function norm(v){
         return String(v || "")
@@ -3054,8 +3060,8 @@ function fecharModalBancaInicial(){
         return -1;
     }
 
-    function getBetId(row){
-        return row?.dataset?.id || row?.getAttribute("data-bet-id") || row?.getAttribute("data-id") || "";
+    function rowId(row){
+        return row?.dataset?.id || row?.dataset?.betId || row?.getAttribute("data-id") || "";
     }
 
     function detectarAcao(btn){
@@ -3063,42 +3069,50 @@ function fecharModalBancaInicial(){
         const cls = norm(btn.className || "");
         const icon = String(btn.innerText || "").trim();
 
-        if(txt.includes("ganha") || txt.includes("green") || icon === "✓" || icon === "✔" || cls.includes("green") || cls.includes("ganha")) return "ganha";
-        if(txt.includes("perdida") || txt.includes("red") || icon === "✕" || icon.toLowerCase() === "x" || cls.includes("red") || cls.includes("perdida")) return "perdida";
-        if(txt.includes("anulada") || txt.includes("anular") || txt.includes("void") || icon === "-" || cls.includes("anulada")) return "anulada";
+        if(txt.includes("ganha") || txt.includes("green") || cls.includes("green") || cls.includes("ganha") || icon === "✓" || icon === "✔") return "ganha";
+        if(txt.includes("perdida") || txt.includes("red") || cls.includes("red") || cls.includes("perdida") || icon === "✕" || icon.toLowerCase() === "x") return "perdida";
+        if(txt.includes("anular") || txt.includes("anulada") || txt.includes("void") || cls.includes("anulada") || icon === "-") return "anulada";
         return "";
     }
 
-    function badge(status){
-        const s = norm(status);
-        if(s.includes("ganha")) return `<span class="status-badge ganha">Ganha</span>`;
-        if(s.includes("perdida")) return `<span class="status-badge perdida">Perdida</span>`;
-        if(s.includes("anulada")) return `<span class="status-badge anulada">Anulada</span>`;
-        return `<span class="status-badge pendente">Pendente</span>`;
+    function statusLabel(estado){
+        if(estado === "ganha") return "Ganha";
+        if(estado === "perdida") return "Perdida";
+        if(estado === "anulada") return "Anulada";
+        return "Pendente";
     }
 
-    function lucroPorStatus(row, status){
+    function statusClass(estado){
+        if(estado === "ganha") return "ganha";
+        if(estado === "perdida") return "perdida";
+        if(estado === "anulada") return "anulada";
+        return "pendente";
+    }
+
+    function badge(estado){
+        return `<span class="status-badge ${statusClass(estado)}">${statusLabel(estado)}</span>`;
+    }
+
+    function lucroLocal(row, estado){
         const oddIdx = col("Odd");
         const valorIdx = col("Valor");
         const odd = parseMoney(oddIdx >= 0 ? row.children?.[oddIdx]?.innerText : "");
         const valor = parseMoney(valorIdx >= 0 ? row.children?.[valorIdx]?.innerText : "");
 
-        if(status === "ganha") return (odd * valor) - valor;
-        if(status === "perdida") return -valor;
-        if(status === "anulada") return 0;
+        if(estado === "ganha") return (odd * valor) - valor;
+        if(estado === "perdida") return -valor;
         return 0;
     }
 
-    function atualizarLinhaVisual(row, status){
-        if(!row) return;
-
+    function aplicarLinha(row, estado, lucro){
         const statusIdx = col("Status");
         const lucroIdx = col("Lucro");
-        const lucro = lucroPorStatus(row, status);
 
         if(statusIdx >= 0 && row.children?.[statusIdx]){
-            row.children[statusIdx].innerHTML = badge(status);
+            row.children[statusIdx].innerHTML = badge(estado);
         }
+
+        if(lucro === undefined || lucro === null) lucro = lucroLocal(row, estado);
 
         if(lucroIdx >= 0 && row.children?.[lucroIdx]){
             row.children[lucroIdx].textContent = money(lucro);
@@ -3106,84 +3120,84 @@ function fecharModalBancaInicial(){
             row.children[lucroIdx].classList.add(lucro > 0 ? "lucro-pos" : lucro < 0 ? "lucro-neg" : "lucro-zero");
         }
 
-        row.dataset.estado = status;
-        row.classList.add("v151-status-atualizado");
-        setTimeout(() => row.classList.remove("v151-status-atualizado"), 1600);
+        row.dataset.estado = estado;
+        row.classList.add("v153-status-ok");
+        setTimeout(() => row.classList.remove("v153-status-ok"), 900);
     }
 
-    function recalcularCardsLeve(){
+    function recalcularCards(){
         try { if(typeof v141AtualizarLucroPorBanca === "function") v141AtualizarLucroPorBanca(); } catch(e){}
         try { if(typeof v147ApplyFilters === "function") v147ApplyFilters(); } catch(e){}
         try { if(typeof v149AplicarHistorico === "function") v149AplicarHistorico(); } catch(e){}
         try { if(typeof v150ForceFinalizeOldLiveGames === "function") v150ForceFinalizeOldLiveGames(); } catch(e){}
     }
 
-    async function tentarSalvarStatus(row, status){
-        const id = getBetId(row);
-        if(!id) return false;
+    async function salvarAjax(id, estado){
+        const r = await fetch(`/api/aposta_status/${encodeURIComponent(id)}`, {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+                "X-Requested-With": "XMLHttpRequest"
+            },
+            body: JSON.stringify({estado})
+        });
 
-        const urls = [
-            `/estado/${id}/${status}`,
-            `/status/${id}/${status}`,
-            `/atualizar_status/${id}/${status}`,
-            `/marcar/${id}/${status}`
-        ];
+        let data = {};
+        try { data = await r.json(); } catch(e){}
 
-        for(const url of urls){
-            try{
-                const r = await fetch(url, {method:"POST", headers:{"X-Requested-With":"XMLHttpRequest"}});
-                if(r.ok) return true;
-            }catch(e){}
+        if(!r.ok || !data.ok){
+            throw new Error(data.erro || "erro_status");
         }
 
-        // Se o app original já tem onclick/fetch próprio, não forçamos erro.
-        return false;
+        return data;
     }
 
     function patchStatusButtons(){
         document.querySelectorAll("tr.bet-row button, tr.bet-row a").forEach(btn => {
-            if(btn.dataset.v151Ready === "1") return;
+            if(btn.dataset.v153Ready === "1") return;
 
-            const status = detectarAcao(btn);
-            if(!status) return;
+            const estado = detectarAcao(btn);
+            if(!estado) return;
 
-            btn.dataset.v151Ready = "1";
+            btn.dataset.v153Ready = "1";
 
-            btn.addEventListener("click", function(e){
+            btn.addEventListener("click", async function(e){
                 const row = btn.closest("tr.bet-row");
                 if(!row) return;
 
+                const id = rowId(row);
+                if(!id) return;
+
+                // Bloqueia o handler antigo para evitar redirect/reload.
+                e.preventDefault();
+                e.stopPropagation();
+                if(e.stopImmediatePropagation) e.stopImmediatePropagation();
+
                 const y = window.scrollY;
-                const oldParent = row.parentNode;
-                const next = row.nextSibling;
+                btn.disabled = true;
+                row.classList.add("v153-status-loading");
 
-                // Atualiza na hora, sem esperar refresh geral.
-                atualizarLinhaVisual(row, status);
-
-                // Preserva a posição da linha caso algum script tente mover.
-                setTimeout(() => {
-                    try{
-                        if(oldParent && row.parentNode === oldParent && next && next.parentNode === oldParent){
-                            oldParent.insertBefore(row, next);
-                        }
-                    }catch(err){}
+                try{
+                    const data = await salvarAjax(id, estado);
+                    aplicarLinha(row, data.estado || estado, Number(data.lucro || 0));
+                    recalcularCards();
                     window.scrollTo({top:y, behavior:"auto"});
-                    recalcularCardsLeve();
-                }, 250);
+                }catch(err){
+                    console.error("V153 status ajax erro:", err);
+                    alert("Erro ao mudar status da aposta: " + err.message);
+                }finally{
+                    btn.disabled = false;
+                    row.classList.remove("v153-status-loading");
+                }
 
-                setTimeout(() => {
-                    window.scrollTo({top:y, behavior:"auto"});
-                    recalcularCardsLeve();
-                }, 900);
-
-                // Não bloqueia o handler antigo do sistema; só evita pulo visual.
+                return false;
             }, {capture:true});
         });
     }
 
     document.addEventListener("DOMContentLoaded", () => {
-        setTimeout(patchStatusButtons, 700);
-        setTimeout(patchStatusButtons, 1800);
+        setTimeout(patchStatusButtons, 600);
+        setTimeout(patchStatusButtons, 1600);
     });
 
     document.addEventListener("click", e => {
@@ -3193,7 +3207,7 @@ function fecharModalBancaInicial(){
         }
     });
 
-    window.v151PatchStatusButtons = patchStatusButtons;
+    window.v153PatchStatusButtons = patchStatusButtons;
 })();
 </script>
 
