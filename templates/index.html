@@ -2787,5 +2787,165 @@ function fecharModalBancaInicial(){
 })();
 </script>
 
+
+<script id="v149-otimizacao-js">
+(function(){
+    let ultimaVersaoApostas = null;
+    let feedVisivel = false;
+    let mostrarHistoricoAntigo = false;
+
+    function norm(v){ return String(v||"").normalize("NFD").replace(/[\u0300-\u036f]/g,"").toLowerCase().trim(); }
+
+    function statusIdx(){
+        const ths = Array.from(document.querySelectorAll("table thead th"));
+        for(let i=0;i<ths.length;i++){
+            if(norm(ths[i].innerText).replace(/\s+[↑↓]$/,"")==="status") return i;
+        }
+        return -1;
+    }
+
+    function rowDate(row){
+        const txt = row.children?.[0]?.innerText || "";
+        const m = txt.match(/(\d{2})\/(\d{2})(?:\/(\d{4}))?/);
+        if(!m) return null;
+        return new Date(Number(m[3] || new Date().getFullYear()), Number(m[2])-1, Number(m[1]));
+    }
+
+    function isOldFinished(row){
+        const si = statusIdx();
+        const st = norm(si >= 0 ? row.children?.[si]?.innerText : "");
+        const finished = st.includes("ganha") || st.includes("green") || st.includes("perdida") || st.includes("red") || st.includes("anulada") || st.includes("void");
+        if(!finished) return false;
+        const d = rowDate(row);
+        if(!d) return false;
+        const today = new Date();
+        today.setHours(0,0,0,0);
+        d.setHours(0,0,0,0);
+        return d.getTime() < today.getTime();
+    }
+
+    function ensureHistoricoButton(){
+        const panel = document.querySelector(".table-panel") || document.querySelector("table")?.parentElement;
+        if(!panel || document.getElementById("toggleHistoricoV149")) return;
+
+        const bar = panel.querySelector(".smart-table-toolbar-v129") || panel;
+        const btn = document.createElement("button");
+        btn.type = "button";
+        btn.id = "toggleHistoricoV149";
+        btn.className = "smart-table-btn-v129 secondary historico-btn-v149";
+        btn.textContent = "📦 Mostrar finalizadas antigas";
+        btn.onclick = () => {
+            mostrarHistoricoAntigo = !mostrarHistoricoAntigo;
+            btn.textContent = mostrarHistoricoAntigo ? "📦 Ocultar finalizadas antigas" : "📦 Mostrar finalizadas antigas";
+            aplicarHistorico();
+        };
+
+        if(bar.classList && bar.classList.contains("smart-table-toolbar-v129")) bar.appendChild(btn);
+        else panel.insertBefore(btn, panel.querySelector("table"));
+    }
+
+    function aplicarHistorico(){
+        const rows = Array.from(document.querySelectorAll("tr.bet-row"));
+        let hidden = 0;
+        rows.forEach(row => {
+            if(isOldFinished(row) && !mostrarHistoricoAntigo){
+                row.classList.add("v149-historico-hidden");
+                hidden++;
+            }else{
+                row.classList.remove("v149-historico-hidden");
+            }
+        });
+
+        let badge = document.getElementById("historicoHiddenBadgeV149");
+        const btn = document.getElementById("toggleHistoricoV149");
+        if(btn){
+            if(!badge){
+                badge = document.createElement("span");
+                badge.id = "historicoHiddenBadgeV149";
+                badge.className = "historico-badge-v149";
+                btn.appendChild(badge);
+            }
+            badge.textContent = hidden ? " " + hidden : "";
+        }
+    }
+
+    async function checarVersaoApostas(){
+        try{
+            const r = await fetch("/api/apostas_versao", {cache:"no-store"});
+            const data = await r.json();
+            if(!data || !data.ok) return;
+
+            if(ultimaVersaoApostas === null){
+                ultimaVersaoApostas = data.versao;
+                return;
+            }
+
+            if(data.versao !== ultimaVersaoApostas){
+                ultimaVersaoApostas = data.versao;
+
+                if(feedVisivel){
+                    try { if(typeof carregarFeedApostas === "function") carregarFeedApostas(false); } catch(e){}
+                    try { if(typeof carregarUltimasApostas === "function") carregarUltimasApostas(); } catch(e){}
+                    try { if(typeof atualizarUltimasApostas === "function") atualizarUltimasApostas(); } catch(e){}
+                }
+
+                setTimeout(() => {
+                    try { if(typeof v147ApplyFilters === "function") v147ApplyFilters(); } catch(e){}
+                    aplicarHistorico();
+                }, 500);
+            }
+        }catch(e){}
+    }
+
+    function patchStatusButtons(){
+        document.querySelectorAll("tr.bet-row button, tr.bet-row a").forEach(btn => {
+            if(btn.dataset.v149StatusReady === "1") return;
+            const t = norm(btn.innerText || btn.title || btn.getAttribute("aria-label") || "");
+            const icon = (btn.innerText || "").trim();
+            const looksStatus = t.includes("green") || t.includes("ganha") || t.includes("red") || t.includes("perdida") || t.includes("anular") || t.includes("anulada") || ["✓","✔","x","✕","-"].includes(icon);
+            if(!looksStatus) return;
+            btn.dataset.v149StatusReady = "1";
+            btn.addEventListener("click", () => {
+                const row = btn.closest("tr.bet-row");
+                if(row){
+                    row.classList.add("v149-status-changing");
+                    setTimeout(() => row.classList.remove("v149-status-changing"), 2200);
+                }
+                setTimeout(() => {
+                    try { if(typeof v147ApplyFilters === "function") v147ApplyFilters(); } catch(e){}
+                    try { if(typeof v141AtualizarLucroPorBanca === "function") v141AtualizarLucroPorBanca(); } catch(e){}
+                    aplicarHistorico();
+                }, 900);
+            }, {capture:true});
+        });
+    }
+
+    function boot(){
+        ensureHistoricoButton();
+        patchStatusButtons();
+        aplicarHistorico();
+        checarVersaoApostas();
+    }
+
+    document.addEventListener("DOMContentLoaded", () => {
+        setTimeout(boot, 800);
+        setTimeout(boot, 1800);
+        setInterval(checarVersaoApostas, 15000);
+    });
+
+    document.addEventListener("click", e => {
+        const t = norm(e.target?.innerText || "");
+        if(t.includes("ultimas apostas") || t.includes("últimas apostas")) feedVisivel = true;
+        if(t.includes("evolucao") || t.includes("evolução")) feedVisivel = false;
+
+        if(t.includes("salvar") || t.includes("editar") || t.includes("excluir") || t.includes("agrupar") || t.includes("expandir")){
+            setTimeout(() => { ensureHistoricoButton(); patchStatusButtons(); aplicarHistorico(); }, 800);
+        }
+    });
+
+    window.v149AplicarHistorico = aplicarHistorico;
+})();
+</script>
+
 </body>
 </html>

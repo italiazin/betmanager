@@ -218,7 +218,7 @@ API_KEY = CONFIG.get("API_KEY", "")
 
 print("CONFIG PATH:", CONFIG_PATH)
 print("API KEY:", API_KEY)
-print("VERSAO_CARREGADA: OCR_CLIENTE_V147_V142_FILTROS_LEVES")
+print("VERSAO_CARREGADA: OCR_CLIENTE_V149_OTIMIZACAO_FEED_STATUS_HISTORICO")
 
 if os.name == "nt":
     tess_path = r"C:\Program Files\Tesseract-OCR\tesseract.exe"
@@ -5940,6 +5940,37 @@ def v140_parse_valor(v):
         return float(v or 0)
     except Exception:
         return 0.0
+
+
+
+@app.route("/api/apostas_versao")
+@login_required
+def api_apostas_versao():
+    try:
+        try:
+            lista = bets_do_usuario()
+        except Exception:
+            lista = dados.get("bets", []) if isinstance(dados.get("bets", []), list) else []
+
+        total = len(lista or [])
+        last_id = ""
+        last_data = ""
+        last_estado = ""
+
+        if lista:
+            b = lista[-1]
+            last_id = str(b.get("id", ""))
+            last_data = str(b.get("data", ""))
+            last_estado = str(b.get("estado", b.get("status", "")))
+
+        return jsonify({
+            "ok": True,
+            "versao": f"{total}:{last_id}:{last_data}:{last_estado}",
+            "total": total
+        })
+    except Exception as e:
+        print("api_apostas_versao erro:", repr(e))
+        return jsonify({"ok": False, "erro": str(e)}), 500
 
 
 @app.route("/api/v132_cards")
