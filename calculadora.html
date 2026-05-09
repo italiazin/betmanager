@@ -1,0 +1,21 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head><meta charset="UTF-8"><title>Assinatura Pendente</title><link rel="stylesheet" href="/static/style.css"></head>
+<body class="auth-page">
+<div class="auth-card">
+    <h1>Assinatura pendente</h1>
+    <p>Sua conta foi criada, mas o administrador ainda não liberou sua assinatura.</p>
+    <a href="/" class="api-button">Voltar ao Dashboard</a>
+    <a href="/logout" class="auth-link" style="display:block;margin-top:18px;">Sair</a>
+</div>
+
+<script id="v72-global-scroll-js">
+function v72SaveScroll(){sessionStorage.setItem("restoreScrollY", String(window.scrollY || 0))}
+function v72RestoreScroll(){const y=sessionStorage.getItem("restoreScrollY"); if(y!==null){sessionStorage.removeItem("restoreScrollY"); setTimeout(()=>window.scrollTo(0, Number(y||0)),0)}}
+document.addEventListener("DOMContentLoaded", v72RestoreScroll)
+window.addEventListener("beforeunload", v72SaveScroll)
+document.addEventListener("click", e=>{if(e.target.closest("a,button")) v72SaveScroll()}, true)
+document.addEventListener("submit", e=>v72SaveScroll(), true)
+</script>
+
+</body></html>
