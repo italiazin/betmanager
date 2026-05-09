@@ -4178,3 +4178,8 @@ td:nth-child(5) {
 tr.bet-row[data-v143-filtered="0"] {
     display: none !important;
 }
+
+/* V144 - filtro pendentes corrigido */
+tr.bet-row[data-v144-filtered="0"] {
+    display: none !important;
+}
