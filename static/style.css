@@ -4194,3 +4194,13 @@ tr.bet-row[data-v147-filtered="0"]{display:none!important;}
     outline: 1px solid rgba(96,165,250,.35) !important;
     background: rgba(37,99,235,.08) !important;
 }
+
+/* V150 - auto finaliza jogos 130min depois do início */
+.game-date-status.finished {
+    background: rgba(100,116,139,.20) !important;
+    border-color: rgba(148,163,184,.45) !important;
+    color: #cbd5e1 !important;
+}
+.game-date-status.finished::before {
+    content: "🏁";
+}

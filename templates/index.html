@@ -2419,6 +2419,7 @@ function fecharModalBancaInicial(){
         const r = String(raw(row) || "").toLowerCase();
         const d = parseISO(iso(row));
         if(trueMulti(row)) return ["Múltipla","multi",30];
+        if(d && ((Date.now() - d.getTime()) / 60000) >= 130) return ["Finalizado","finished",50];
         if(row.dataset.aoVivo === "1" || r.includes("ao vivo") || r.includes("live")) return ["Ao vivo","live",0];
         if(r.includes("final") || r.includes("encerr")) return ["Finalizado","finished",50];
         if(r.includes("em andamento")) return ["Em andamento","playing",1];
@@ -2944,6 +2945,77 @@ function fecharModalBancaInicial(){
     });
 
     window.v149AplicarHistorico = aplicarHistorico;
+})();
+</script>
+
+
+<script id="v150-auto-finaliza-130min-js">
+(function(){
+    const LIMITE_MINUTOS = 130;
+
+    function parseGameDateFromCell(row){
+        const txt = row.children?.[0]?.innerText || "";
+        const m = txt.match(/(\d{2})\/(\d{2})(?:\/(\d{4}))?\s+(\d{1,2}):(\d{2})/);
+        if(!m) return null;
+
+        const ano = Number(m[3] || new Date().getFullYear());
+        return new Date(ano, Number(m[2])-1, Number(m[1]), Number(m[4]), Number(m[5]));
+    }
+
+    function parseGameDateFromDataset(row){
+        const iso = row.dataset.horarioJogoIso || row.dataset.horario || "";
+        if(!iso) return null;
+        const d = new Date(iso);
+        return isNaN(d.getTime()) ? null : d;
+    }
+
+    function gameDate(row){
+        return parseGameDateFromDataset(row) || parseGameDateFromCell(row);
+    }
+
+    function shouldFinalize(row){
+        const d = gameDate(row);
+        if(!d) return false;
+
+        const diffMin = (Date.now() - d.getTime()) / 60000;
+        return diffMin >= LIMITE_MINUTOS;
+    }
+
+    function forceFinalizeOldLiveGames(){
+        document.querySelectorAll("tr.bet-row").forEach(row => {
+            if(!shouldFinalize(row)) return;
+
+            row.dataset.aoVivo = "0";
+            row.dataset.statusJogo = "Finalizado";
+            row.dataset.horarioJogo = "Finalizado";
+
+            const first = row.children?.[0];
+            if(first){
+                const main = first.querySelector(".game-date-main")?.innerText || first.innerText.split("\n")[0] || "";
+                first.classList.add("game-date-cell");
+                first.innerHTML = `<span class="game-date-main">${main}</span><span class="game-date-status finished">Finalizado</span>`;
+            }
+        });
+    }
+
+    function refresh(){
+        forceFinalizeOldLiveGames();
+
+        // Depois de finalizar visualmente, reaplica filtros/histórico.
+        try { if(typeof v147ApplyFilters === "function") v147ApplyFilters(); } catch(e){}
+        try { if(typeof v149AplicarHistorico === "function") v149AplicarHistorico(); } catch(e){}
+    }
+
+    document.addEventListener("DOMContentLoaded", () => {
+        setTimeout(refresh, 900);
+        setTimeout(refresh, 2000);
+    });
+
+    document.addEventListener("click", () => {
+        setTimeout(refresh, 500);
+    });
+
+    window.v150ForceFinalizeOldLiveGames = refresh;
 })();
 </script>
 
