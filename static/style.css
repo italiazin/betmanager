@@ -4183,3 +4183,18 @@ tr.bet-row[data-v143-filtered="0"] {
 tr.bet-row[data-v144-filtered="0"] {
     display: none !important;
 }
+
+/* V146 - estabilidade visual */
+table, tbody, tr, td, th {
+    transition-property: background-color, color, border-color !important;
+    transition-duration: 0.12s !important;
+}
+
+tr.bet-row:hover {
+    transform: none !important;
+}
+
+.table-panel,
+table {
+    contain: layout paint !important;
+}

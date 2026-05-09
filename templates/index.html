@@ -1514,175 +1514,7 @@ document.addEventListener("DOMContentLoaded", ()=>{
     if(feedTab) feedTab.addEventListener("click", v63ClearNewBetAlert)
 
     const feedPanel = document.getElementById("aba-feed")
-    if(feedPanel) feedPanel.addEventListener("mouseenter", v63ClearNewBetAlert)
-})
-</script>
-
-
-<script id="v72-instant-js">
-window.v72DirtyMetrics = null
-
-function v72Money(v){
-    const n = Number(v || 0)
-    return "R$ " + n.toFixed(2)
-}
-
-function v72UpdateMetrics(m){
-    if(!m) return
-    const map = {
-        "metric-banca": v72Money(m.banca_atual),
-        "metric-valor-aberto": v72Money(m.valor_em_aberto if m.valor_em_aberto is defined else 0),
-        "metric-roi": Number(m.roi || 0).toFixed(2) + "%",
-        "metric-taxa": Number(m.taxa || 0).toFixed(2) + "%",
-        "metric-total": m.total,
-        "metric-pendentes": m.pendentes
-    }
-    Object.entries(map).forEach(([id,val])=>{
-        const el = document.getElementById(id)
-        if(el) el.innerText = val
-    })
-
-    const lucro = document.getElementById("metric-lucro")
-    if(lucro){
-        lucro.innerText = v72Money(m.lucro_total)
-        lucro.classList.remove("green-text","red-text")
-        lucro.classList.add(Number(m.lucro_total || 0) >= 0 ? "green-text" : "red-text")
-    }
-}
-
-function v72BadgeStatus(estado){
-    if(estado === "ganha") return '<span class="badge green">Ganha</span>'
-    if(estado === "perdida") return '<span class="badge red">Perdida</span>'
-    if(estado === "anulada") return '<span class="badge gray">Anulada</span>'
-    return '<span class="badge yellow">Pendente</span>'
-}
-
-function v72UpdateRow(tr, b){
-    if(!tr || !b) return
-    const statusCell = tr.querySelector(".status-cell")
-    if(statusCell) statusCell.innerHTML = v72BadgeStatus(b.estado || "")
-
-    const lucroCell = tr.children[8] || tr.querySelector(".lucro-cell")
-    if(lucroCell){
-        const lucro = Number(b.lucro || 0)
-        lucroCell.innerText = v72Money(lucro)
-        lucroCell.classList.remove("green-text","red-text")
-        if(lucro > 0) lucroCell.classList.add("green-text")
-        if(lucro < 0) lucroCell.classList.add("red-text")
-    }
-}
-
-function v72Toast(msg, type="ok"){
-    let t = document.getElementById("v72Toast")
-    if(!t){
-        t = document.createElement("div")
-        t.id = "v72Toast"
-        document.body.appendChild(t)
-    }
-    t.className = "v72-toast " + type
-    t.innerText = msg
-    t.classList.add("show")
-    setTimeout(()=>t.classList.remove("show"), 1800)
-}
-
-function v72SaveScroll(){
-    sessionStorage.setItem("restoreScrollY", String(window.scrollY || 0))
-}
-
-function v72RestoreScroll(){
-    const y = sessionStorage.getItem("restoreScrollY")
-    if(y !== null){
-        sessionStorage.removeItem("restoreScrollY")
-        setTimeout(()=>window.scrollTo(0, Number(y || 0)), 0)
-    }
-}
-
-document.addEventListener("DOMContentLoaded", v72RestoreScroll)
-window.addEventListener("beforeunload", v72SaveScroll)
-
-// Resultado sem reload.
-document.addEventListener("click", function(e){
-    const link = e.target.closest('a[href^="/resultado/"]')
-    if(!link) return
-
-    e.preventDefault()
-    e.stopPropagation()
-
-    const tr = link.closest("tr")
-    link.style.pointerEvents = "none"
-    link.style.opacity = ".6"
-
-    fetch(link.getAttribute("href") + "?ajax=1", {cache:"no-store"})
-        .then(r=>r.json())
-        .then(d=>{
-            if(!d.ok) throw new Error("erro")
-            v72UpdateRow(tr, d.bet)
-            v72UpdateMetrics(d.metricas)
-            v72Toast("Resultado atualizado")
-        })
-        .catch(()=>v72Toast("Erro ao atualizar", "err"))
-        .finally(()=>{
-            link.style.pointerEvents = ""
-            link.style.opacity = ""
-        })
-}, true)
-
-// Remover sem reload.
-document.addEventListener("click", function(e){
-    const link = e.target.closest('a[href^="/remover/"]')
-    if(!link) return
-
-    e.preventDefault()
-    e.stopPropagation()
-
-    if(!confirm("Apagar esta aposta?")) return
-
-    const tr = link.closest("tr")
-    fetch(link.getAttribute("href") + "?ajax=1", {cache:"no-store"})
-        .then(r=>r.json())
-        .then(d=>{
-            if(!d.ok) throw new Error("erro")
-            if(tr){
-                tr.style.transition = ".18s ease"
-                tr.style.opacity = "0"
-                tr.style.transform = "translateX(10px)"
-                setTimeout(()=>tr.remove(), 180)
-            }
-            v72UpdateMetrics(d.metricas)
-            v72Toast("Aposta apagada")
-        })
-        .catch(()=>v72Toast("Erro ao apagar", "err"))
-}, true)
-
-// Adicionar manual sem reload, incluindo aposta copiada privada.
-document.addEventListener("submit", function(e){
-    const form = e.target
-    if(!form || !form.matches(".manual-form")) return
-
-    e.preventDefault()
-
-    const fd = new FormData(form)
-    const btn = form.querySelector('button[type="submit"]')
-    if(btn){
-        btn.disabled = true
-        btn.dataset.oldText = btn.innerText
-        btn.innerText = "Salvando..."
-    }
-
-    fetch("/adicionar_ajax", {
-        method:"POST",
-        body: fd,
-        cache:"no-store"
-    })
-    .then(r=>r.json())
-    .then(d=>{
-        if(!d.ok) throw new Error(d.erro || "erro")
-        v72UpdateMetrics(d.metricas)
-        v72Toast("Aposta adicionada")
-        form.reset()
-        const copied = document.getElementById("copiadaComunidade")
-        if(copied) copied.value = "0"
-        const src = document.getElementById("sourceOriginalId"); if(src) src.value = ""
+    if(feedPanel) feedPanel if(src) src.value = ""
         const hj = document.getElementById("horarioJogo"); if(hj) hj.value = ""
         setTimeout(()=>location.reload(), 300) // reload curto só para reconstruir tabela com layout perfeito
     })
@@ -2633,12 +2465,7 @@ function fecharModalBancaInicial(){
         const target = document.body;
         if(target && !target.dataset.v141LucroObs){
             target.dataset.v141LucroObs = "1";
-            const obs = new MutationObserver(() => {
-                clearTimeout(window.__v141LucroTimer);
-                window.__v141LucroTimer = setTimeout(atualizar, 80);
-            });
-            obs.observe(target, {subtree:true, childList:true, characterData:true});
-        }
+            }
 
 
     }
@@ -2974,6 +2801,85 @@ function fecharModalBancaInicial(){
     });
 
     window.v145RefreshSoft = refreshSoft;
+})();
+</script>
+
+
+<script id="v146-stable-refresh-js">
+(function(){
+    let busy = false;
+
+    function refreshSoft(){
+        if(busy) return;
+        busy = true;
+        const y = window.scrollY;
+
+        try { if(typeof v144ApplyFilters === "function") v144ApplyFilters(); } catch(e){}
+        try { if(typeof v143ApplyFilters === "function") v143ApplyFilters(); } catch(e){}
+        try { if(typeof v141AtualizarLucroPorBanca === "function") v141AtualizarLucroPorBanca(); } catch(e){}
+
+        // Não chama agrupamento automático aqui para evitar piscar/reordenar.
+        requestAnimationFrame(() => {
+            window.scrollTo({top: y, behavior: "auto"});
+            busy = false;
+        });
+    }
+
+    function refreshTableOnlyWhenNeeded(){
+        if(busy) return;
+        busy = true;
+        const y = window.scrollY;
+
+        try { if(typeof v136SmartTableApply === "function") v136SmartTableApply(true); } catch(e){}
+        try { if(typeof v144ApplyFilters === "function") v144ApplyFilters(); } catch(e){}
+        try { if(typeof v141AtualizarLucroPorBanca === "function") v141AtualizarLucroPorBanca(); } catch(e){}
+
+        requestAnimationFrame(() => {
+            window.scrollTo({top: y, behavior: "auto"});
+            busy = false;
+        });
+    }
+
+    document.addEventListener("DOMContentLoaded", () => {
+        setTimeout(refreshTableOnlyWhenNeeded, 500);
+    });
+
+    document.addEventListener("input", e => {
+        const ph = String(e.target?.placeholder || "").toLowerCase();
+        if(ph.includes("pesquisar") || ph.includes("valor")){
+            clearTimeout(window.__v146FilterTimer);
+            window.__v146FilterTimer = setTimeout(refreshSoft, 180);
+        }
+    });
+
+    document.addEventListener("change", e => {
+        if(e.target && e.target.tagName === "SELECT"){
+            clearTimeout(window.__v146FilterTimer);
+            window.__v146FilterTimer = setTimeout(refreshSoft, 180);
+        }
+    });
+
+    document.addEventListener("submit", () => {
+        setTimeout(refreshTableOnlyWhenNeeded, 800);
+        setTimeout(refreshTableOnlyWhenNeeded, 1800);
+    });
+
+    document.addEventListener("click", e => {
+        const t = String(e.target?.innerText || "").toLowerCase();
+
+        if(t.includes("agrupar") || t.includes("expandir")){
+            setTimeout(refreshTableOnlyWhenNeeded, 150);
+            return;
+        }
+
+        if(t.includes("salvar") || t.includes("excluir")){
+            setTimeout(refreshTableOnlyWhenNeeded, 800);
+            setTimeout(refreshTableOnlyWhenNeeded, 1800);
+        }
+    });
+
+    window.v146RefreshSoft = refreshSoft;
+    window.v146RefreshTableOnlyWhenNeeded = refreshTableOnlyWhenNeeded;
 })();
 </script>
 
