@@ -4173,8 +4173,3 @@ td:nth-child(5) {
 .metric-positive-v137 { color: #22c55e !important; }
 .metric-negative-v137 { color: #fb7185 !important; }
 .metric-zero-v137 { color: #e5f0ff !important; }
-
-/* V143 - filtros corrigidos */
-tr.bet-row[data-v143-filtered="0"] {
-    display: none !important;
-}
