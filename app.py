@@ -218,7 +218,7 @@ API_KEY = CONFIG.get("API_KEY", "")
 
 print("CONFIG PATH:", CONFIG_PATH)
 print("API KEY:", API_KEY)
-print("VERSAO_CARREGADA: OCR_CLIENTE_V153_STATUS_AJAX_SEM_RELOAD")
+print("VERSAO_CARREGADA: OCR_CLIENTE_V150_AUTO_FINALIZA_130MIN")
 
 if os.name == "nt":
     tess_path = r"C:\Program Files\Tesseract-OCR\tesseract.exe"
@@ -5940,129 +5940,6 @@ def v140_parse_valor(v):
         return float(v or 0)
     except Exception:
         return 0.0
-
-
-
-
-# ============================================================
-# V153 - status via AJAX sem recarregar página
-# ============================================================
-
-def v153_float(v, padrao=0.0):
-    try:
-        if v is None:
-            return padrao
-        if isinstance(v, str):
-            v = v.replace("R$", "").replace(".", "").replace(",", ".").strip()
-        return float(v)
-    except Exception:
-        return padrao
-
-def v153_find_bet_by_id(bet_id):
-    bet_id = str(bet_id)
-    containers = []
-
-    try:
-        containers.append(bets_do_usuario())
-    except Exception:
-        pass
-
-    try:
-        if isinstance(dados.get("bets"), list):
-            containers.append(dados.get("bets"))
-    except Exception:
-        pass
-
-    try:
-        if isinstance(dados.get("apostas"), list):
-            containers.append(dados.get("apostas"))
-    except Exception:
-        pass
-
-    seen = set()
-    for lista in containers:
-        if not isinstance(lista, list):
-            continue
-        for b in lista:
-            if not isinstance(b, dict):
-                continue
-            if id(b) in seen:
-                continue
-            seen.add(id(b))
-            if str(b.get("id", "")) == bet_id or str(b.get("_id", "")) == bet_id:
-                return b
-
-    return None
-
-def v153_calc_lucro(b, estado):
-    estado = str(estado or "").lower().strip()
-    valor = v153_float(b.get("valor", 0))
-    odd = v153_float(b.get("odd", 0))
-
-    if estado in ("ganha", "green", "win", "vencida"):
-        return round((odd * valor) - valor, 2)
-    if estado in ("perdida", "red", "loss"):
-        return round(-valor, 2)
-    if estado in ("anulada", "void", "cancelada", "cancelado"):
-        return 0.0
-    return 0.0
-
-def v153_normalizar_estado(estado):
-    e = str(estado or "").lower().strip()
-    mapa = {
-        "green": "ganha",
-        "win": "ganha",
-        "vencida": "ganha",
-        "red": "perdida",
-        "loss": "perdida",
-        "void": "anulada",
-        "cancelada": "anulada",
-        "cancelado": "anulada",
-        "pendente": "pendente",
-        "ganha": "ganha",
-        "perdida": "perdida",
-        "anulada": "anulada",
-    }
-    return mapa.get(e, e or "pendente")
-
-@app.route("/api/aposta_status/<bet_id>", methods=["POST"])
-@login_required
-def api_v153_aposta_status(bet_id):
-    try:
-        payload = request.get_json(silent=True) or request.form or {}
-        estado = v153_normalizar_estado(payload.get("estado") or payload.get("status") or payload.get("acao"))
-
-        if estado not in ("ganha", "perdida", "anulada", "pendente"):
-            return jsonify({"ok": False, "erro": "estado_invalido"}), 400
-
-        b = v153_find_bet_by_id(bet_id)
-        if not b:
-            return jsonify({"ok": False, "erro": "aposta_nao_encontrada"}), 404
-
-        lucro = v153_calc_lucro(b, estado)
-
-        b["estado"] = estado
-        b["status"] = estado
-        b["lucro"] = lucro
-
-        try:
-            salvar()
-        except Exception as e:
-            print("v153 salvar status erro:", repr(e))
-            return jsonify({"ok": False, "erro": "erro_ao_salvar"}), 500
-
-        return jsonify({
-            "ok": True,
-            "id": bet_id,
-            "estado": estado,
-            "status": estado,
-            "lucro": lucro,
-            "valor": v153_float(b.get("valor", 0)),
-            "odd": v153_float(b.get("odd", 0))
-        })
-    except Exception as e:
-        print("api_v153_aposta_status erro:", repr(e))
-        return jsonify({"ok": False, "erro": str(e)}), 500
 
 
 
