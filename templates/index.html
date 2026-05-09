@@ -2661,5 +2661,131 @@ function fecharModalBancaInicial(){
 })();
 </script>
 
+
+<script id="v147-filtros-leves-js">
+(function(){
+    function norm(v){ return String(v||"").normalize("NFD").replace(/[\u0300-\u036f]/g,"").toLowerCase().trim(); }
+    function col(label){
+        const target = norm(label);
+        const ths = Array.from(document.querySelectorAll("table thead th"));
+        for(let i=0;i<ths.length;i++){
+            const txt = norm(ths[i].innerText).replace(/\s+[↑↓]$/,"");
+            if(txt === target) return i;
+        }
+        return -1;
+    }
+    function opts(s){ return Array.from(s.options||[]).map(o=>norm(o.innerText||o.value)).join(" "); }
+    function money(txt){
+        txt = String(txt||"").replace(/[^\d,.-]/g,"").trim();
+        if(txt.includes(",") && txt.includes(".")) txt = txt.replace(/\./g,"").replace(",",".");
+        else if(txt.includes(",")) txt = txt.replace(",",".");
+        const n = parseFloat(txt); return isNaN(n)?0:n;
+    }
+    function filters(){
+        const inputs = Array.from(document.querySelectorAll("input"));
+        const selects = Array.from(document.querySelectorAll("select"));
+        const search = inputs.find(i=>norm(i.placeholder).includes("pesquisar"));
+        const min = inputs.find(i=>norm(i.placeholder).includes("valor min"));
+        const max = inputs.find(i=>norm(i.placeholder).includes("valor max"));
+        const status = selects.find(s=>{const o=opts(s); return o.includes("pendente")||o.includes("ganha")||o.includes("perdida")||o.includes("anulada");});
+        const data = selects.find(s=>{const o=opts(s); return o.includes("todas as datas")||o.includes("hoje")||o.includes("amanha")||o.includes("amanhã");});
+        const casa = selects.find(s=>s!==status && s!==data && (opts(s).includes("todos")||opts(s).includes("todas")));
+        return {
+            q:norm(search?.value||""),
+            status:norm(status?.value||status?.selectedOptions?.[0]?.innerText||""),
+            data:norm(data?.value||data?.selectedOptions?.[0]?.innerText||""),
+            casa:norm(casa?.value||casa?.selectedOptions?.[0]?.innerText||""),
+            min:min&&min.value!==""?money(min.value):null,
+            max:max&&max.value!==""?money(max.value):null
+        };
+    }
+    function rowDate(row){
+        const txt = row.children?.[0]?.innerText || "";
+        const m = txt.match(/(\d{2})\/(\d{2})(?:\/(\d{4}))?/);
+        if(!m) return "";
+        return `${m[3]||new Date().getFullYear()}-${m[2]}-${m[1]}`;
+    }
+    function dateOk(row,f){
+        if(!f||f==="todas"||f==="todas as datas") return true;
+        const d = rowDate(row); if(!d) return true;
+        const p=n=>String(n).padStart(2,"0");
+        const now = new Date();
+        const today = `${now.getFullYear()}-${p(now.getMonth()+1)}-${p(now.getDate())}`;
+        const tom = new Date(now.getFullYear(),now.getMonth(),now.getDate()+1);
+        const tomorrow = `${tom.getFullYear()}-${p(tom.getMonth()+1)}-${p(tom.getDate())}`;
+        if(f.includes("hoje")) return d===today;
+        if(f.includes("amanha")||f.includes("amanhã")) return d===tomorrow;
+        if(/\d{4}-\d{2}-\d{2}/.test(f)) return d===f;
+        return true;
+    }
+    function statusOk(row,f){
+        if(!f||f==="todos"||f==="todas") return true;
+        const i=col("status"), txt=norm(i>=0?row.children?.[i]?.innerText:"");
+        if(f.includes("pendente")) return txt.includes("pendente");
+        if(f.includes("ganha")||f.includes("green")) return txt.includes("ganha")||txt.includes("green");
+        if(f.includes("perdida")||f.includes("red")) return txt.includes("perdida")||txt.includes("red");
+        if(f.includes("anulada")||f.includes("void")) return txt.includes("anulada")||txt.includes("void");
+        return txt.includes(f);
+    }
+    function rowOk(row,f){
+        if(f.q && !norm(row.innerText).includes(f.q)) return false;
+        if(!statusOk(row,f.status)) return false;
+        if(!dateOk(row,f.data)) return false;
+        if(f.casa && !["todos","todas"].includes(f.casa)){
+            const i=col("Casa"), txt=norm(i>=0?row.children?.[i]?.innerText:"");
+            if(txt && txt!==f.casa && !txt.includes(f.casa)) return false;
+        }
+        const vi=col("Valor"), val=money(vi>=0?row.children?.[vi]?.innerText:"");
+        if(f.min!==null && val<f.min) return false;
+        if(f.max!==null && val>f.max) return false;
+        return true;
+    }
+    function apply(){
+        const tbody=document.querySelector("table tbody"); if(!tbody) return;
+        const f=filters(), rows=Array.from(tbody.querySelectorAll("tr.bet-row"));
+        rows.forEach(r=>{ const ok=rowOk(r,f); r.dataset.v147Filtered=ok?"1":"0"; r.style.display=ok?"":"none"; });
+        const all=Array.from(tbody.children);
+        all.forEach((el,i)=>{
+            if(el.classList.contains("game-group-row-v136")||el.classList.contains("game-group-row-v130")||el.classList.contains("game-group-row-v129")){
+                let v=false;
+                for(let j=i+1;j<all.length;j++){
+                    const n=all[j];
+                    if(n.classList.contains("game-group-row-v136")||n.classList.contains("game-group-row-v130")||n.classList.contains("game-group-row-v129")||n.classList.contains("day-separator-row-v136")) break;
+                    if(n.classList.contains("bet-row")&&n.dataset.v147Filtered==="1"){v=true;break;}
+                }
+                el.style.display=v?"":"none";
+            }
+        });
+        all.forEach((el,i)=>{
+            if(el.classList.contains("day-separator-row-v136")){
+                let v=false;
+                for(let j=i+1;j<all.length;j++){
+                    const n=all[j];
+                    if(n.classList.contains("day-separator-row-v136")) break;
+                    if((n.classList.contains("bet-row")&&n.dataset.v147Filtered==="1") || ((n.className||"").includes("game-group-row")&&n.style.display!=="none")){v=true;break;}
+                }
+                el.style.display=v?"":"none";
+            }
+        });
+    }
+    function bind(){
+        document.querySelectorAll("input,select").forEach(el=>{
+            if(el.dataset.v147Ready==="1") return;
+            el.dataset.v147Ready="1";
+            el.addEventListener("input",()=>{clearTimeout(window.__v147t);window.__v147t=setTimeout(apply,120);});
+            el.addEventListener("change",()=>{clearTimeout(window.__v147t);window.__v147t=setTimeout(apply,120);});
+        });
+    }
+    document.addEventListener("DOMContentLoaded",()=>{bind();setTimeout(apply,700);});
+    document.addEventListener("click",e=>{
+        const t=norm(e.target?.innerText||"");
+        if(t.includes("agrupar")||t.includes("expandir")||t.includes("salvar")||t.includes("editar")||t.includes("excluir")||t.includes("buscar")){
+            setTimeout(()=>{bind();apply();},350); setTimeout(apply,1300);
+        }
+    });
+    window.v147ApplyFilters=apply;
+})();
+</script>
+
 </body>
 </html>
