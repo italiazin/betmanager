@@ -4238,24 +4238,3 @@ tr.bet-row[data-v147-filtered="0"]{display:none!important;}
 .lucro-pos { color: #22c55e !important; font-weight: 900 !important; }
 .lucro-neg { color: #ef4444 !important; font-weight: 900 !important; }
 .lucro-zero { color: #e5f0ff !important; font-weight: 800 !important; }
-
-/* V154 - status pela rota original sem reload */
-.v154-status-loading {
-    opacity: .65 !important;
-    pointer-events: none !important;
-}
-.v154-status-ok {
-    outline: 1px solid rgba(34,197,94,.45) !important;
-    background: rgba(34,197,94,.07) !important;
-}
-.lucro-pos { color: #22c55e !important; font-weight: 900 !important; }
-.lucro-neg { color: #ef4444 !important; font-weight: 900 !important; }
-.lucro-zero { color: #e5f0ff !important; font-weight: 800 !important; }
-
-.calendar-help-v154 {
-    display: block !important;
-    color: #93c5fd !important;
-    font-size: 12px !important;
-    margin-top: 3px !important;
-    font-weight: 700 !important;
-}
