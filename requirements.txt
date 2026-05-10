@@ -6,5 +6,7 @@ requests
 Werkzeug
 SQLAlchemy
 psycopg2-binary
+flask-compress
+python-dotenv
 
 tzdata
