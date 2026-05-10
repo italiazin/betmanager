@@ -332,7 +332,7 @@ const valores = {{ valores | tojson }};
                     data-status-jogo="{{ espn_status_label_bet(b) if espn_status_label_bet is defined else (b.get('status_jogo') or b.get('horario_jogo') or '') }}"
                     data-status-class="{{ espn_status_class_bet(b) if espn_status_class_bet is defined else ('live' if b.get('ao_vivo') else '') }}"
                     data-data="{{ b.data }}" data-jogos-relacionados='{{ (b.jogos_relacionados if b.jogos_relacionados is defined else [])|tojson }}' data-horario-jogo-iso="{{ b.horario_jogo_iso if b.horario_jogo_iso is defined else '' }}" data-horario-jogo="{{ b.horario_jogo if b.horario_jogo is defined else '' }}" data-ao-vivo="{{ '1' if b.ao_vivo is defined and b.ao_vivo else '0' }}" data-id="{{ b.id if b.id is defined else loop.index0 }}">
-                <td class="data-cell">{{ b.data }}</td>
+                <td class="data-cell">{{ (b.data or '')[:10] }}</td>
                 <td class="casa-cell">{{ b.casa }}</td>
                 <td class="esporte-cell">{{ b.esporte }}</td>
                 <td class="jogo-cell">{{ b.jogo }}</td>
@@ -451,14 +451,14 @@ const valores = {{ valores | tojson }};
             </thead>
             <tbody>
                 {% for b in bets_historico %}
-                <tr class="bet-row-historico" data-id="{{ b.id if b.id is defined else loop.index0 }}">
-                    <td>{{ b.data }}</td>
-                    <td>{{ b.casa }}</td>
-                    <td>{{ b.esporte }}</td>
-                    <td>{{ b.jogo }}</td>
-                    <td>{{ b.aposta_display if b.aposta_display is defined else b.aposta }}</td>
-                    <td>{{ b.odd }}</td>
-                    <td>{{ "%.2f"|format(b.valor) }}</td>
+                <tr class="bet-row-historico" data-id="{{ b.id if b.id is defined else loop.index0 }}" data-horario="{{ b.horario_jogo_iso if b.horario_jogo_iso is defined else '' }}">
+                    <td>{{ (b.data or '')[:10] }}</td>
+                    <td class="casa-cell">{{ b.casa }}</td>
+                    <td class="esporte-cell">{{ b.esporte }}</td>
+                    <td class="jogo-cell">{{ b.jogo }}</td>
+                    <td class="aposta-cell">{{ b.aposta_display if b.aposta_display is defined else b.aposta }}</td>
+                    <td class="odd-cell">{{ b.odd }}</td>
+                    <td class="valor-cell">{{ "%.2f"|format(b.valor) }}</td>
                     <td class="status-cell">
                         {% if b.estado == "ganha" %}
                             <span class="badge green">Ganha</span>
@@ -474,6 +474,9 @@ const valores = {{ valores | tojson }};
                         R$ {{ "%.2f"|format(b.lucro) }}
                     </td>
                     <td class="actions">
+                        <a href="/resultado/{{ b.id }}/ganha"><button class="green">✔</button></a>
+                        <a href="/resultado/{{ b.id }}/perdida"><button class="red">✖</button></a>
+                        <a href="/resultado/{{ b.id }}/anulada"><button class="gray">↺</button></a>
                         <button class="blue" onclick="abrirEditar(this)"
                             data-id="{{ b.id if b.id is defined else '' }}"
                             data-estado="{{ b.estado }}"
