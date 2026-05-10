@@ -1,4 +1,7 @@
-from flask import Flask, render_template, request, redirect, jsonify, session, url_for
+from dotenv import load_dotenv
+load_dotenv()
+from flask import Flask, render_template, request, redirect, jsonify, session, url_for, g
+from flask_compress import Compress
 import json
 import time
 import threading
@@ -16,12 +19,14 @@ import requests
 from sqlalchemy import create_engine, text
 from sqlalchemy.exc import SQLAlchemyError
 from functools import wraps
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from werkzeug.security import generate_password_hash, check_password_hash
 
 import pytesseract
 from PIL import Image
 
 app = Flask(__name__)
+Compress(app)
 app.secret_key = os.environ.get("SECRET_KEY", "troque-essa-chave-em-producao")
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -43,7 +48,7 @@ DB_ENGINE = None
 
 # V71: cache curto de leitura do app_store para reduzir latência.
 APP_STORE_CACHE = {}
-APP_STORE_CACHE_TTL = float(os.environ.get("APP_STORE_CACHE_TTL", "3"))
+APP_STORE_CACHE_TTL = float(os.environ.get("APP_STORE_CACHE_TTL", "30"))
 
 def _normalizar_database_url(url):
     if url.startswith("postgres://"):
@@ -165,9 +170,13 @@ def db_set_json(chave, valor):
         return False
 
 
+_migrado = False
+
 def migrar_json_para_banco_se_vazio():
-    if not banco_ativo():
+    global _migrado
+    if _migrado or not banco_ativo():
         return
+    _migrado = True
 
     try:
         engine = get_db_engine()
@@ -348,7 +357,14 @@ def carregar():
 
     return dados_local
 
+_recalcular_dirty = True
+_stats_extras_cache = {"ts": 0, "uid": None, "data": None}
+
 def salvar():
+    global _recalcular_dirty, _stats_extras_cache, _grafico_cache
+    _recalcular_dirty = True
+    _stats_extras_cache = {"ts": 0, "uid": None, "data": None}
+    _grafico_cache.clear()
     if banco_ativo():
         db_set_json("dados", dados)
         return
@@ -428,12 +444,16 @@ def usuario_id_atual():
 
 
 def usuario_logado():
+    if hasattr(g, "_usuario_cache"):
+        return g._usuario_cache
+
     try:
         uid = session.get("user_id")
     except Exception:
         uid = None
 
     if not uid:
+        g._usuario_cache = None
         return None
 
     try:
@@ -444,10 +464,12 @@ def usuario_logado():
                 u.setdefault("assinatura_ativa", bool(u.get("is_admin", False)))
                 u.setdefault("plano", "admin" if u.get("is_admin") else "free")
                 u.setdefault("apostas_publicas_padrao", False)
+                g._usuario_cache = u
                 return u
     except Exception:
-        return None
+        pass
 
+    g._usuario_cache = None
     return None
 
 
@@ -565,11 +587,15 @@ def calcular_lucro(b):
 
 
 def recalcular():
+    global _recalcular_dirty
+    if not _recalcular_dirty:
+        return
     for b in dados.get("bets", []):
         try:
             b["lucro"] = calcular_lucro(b)
         except Exception:
             b["lucro"] = 0
+    _recalcular_dirty = False
 
 
 def retorno_por_estado_saldo(b):
@@ -594,6 +620,12 @@ def debitar_stake_saldo_casa(b):
     valor = float(b.get("valor", 0) or 0)
 
     if casa and valor > 0:
+        saldos = saldo_casas_usuario()
+        chave = encontrar_chave_saldo_casa(casa)
+        if chave and chave not in saldos:
+            # Carteira não existe: cria com o valor da aposta antes de debitar
+            saldos[chave] = round(valor, 2)
+            registrar_movimentacao_casa(casa, "deposito", valor, f"Carteira criada automaticamente via aposta")
         alterar_saldo_casa(casa, -valor)
         b["saldo_debitado"] = True
 
@@ -789,6 +821,46 @@ def limpar_casa(texto):
     texto = remover_emojis(texto)
     texto = re.sub(r"[^A-Za-zÀ-ÿ0-9.\s]", "", texto)
     return texto.strip()
+
+
+def _norm_casa(s):
+    s = s.lower()
+    s = unicodedata.normalize("NFD", s)
+    s = "".join(c for c in s if unicodedata.category(c) != "Mn")
+    return re.sub(r"[^a-z0-9]", "", s)
+
+_CASAS_NORM = None
+
+def corrigir_casa_ocr(texto):
+    global _CASAS_NORM
+    texto = limpar_casa(texto or "")
+    if not texto:
+        return texto
+
+    # Remove artefatos OCR no início: "ff Betano" → "Betano", "fe betvip" → "betvip"
+    sem_artefato = re.sub(r"^[A-Za-z]{1,3}\s+", "", texto).strip()
+    candidato = sem_artefato if len(sem_artefato) >= 3 else texto
+
+    candidato_norm = _norm_casa(candidato)
+    if len(candidato_norm) < 2:
+        return candidato
+
+    # Constrói índice normalizado uma única vez
+    if _CASAS_NORM is None:
+        _CASAS_NORM = [(c, _norm_casa(c)) for c in CASAS_DISPONIVEIS]
+
+    melhor_casa = None
+    melhor_score = 0.0
+    for casa, casa_norm in _CASAS_NORM:
+        score = difflib.SequenceMatcher(None, candidato_norm, casa_norm).ratio()
+        if score > melhor_score:
+            melhor_score = score
+            melhor_casa = casa
+
+    if melhor_score >= 0.65 and melhor_casa:
+        return melhor_casa
+
+    return candidato
 
 
 def limpar_linha(texto):
@@ -1469,7 +1541,15 @@ def metricas():
 
 
 
+_grafico_cache = {}
+
 def grafico():
+    uid = session.get("user_id", "")
+    agora = time.time()
+    c = _grafico_cache.get(uid)
+    if c and (agora - c["ts"]) < 300:
+        return c["data"]
+
     try:
         try:
             user_key = v140_usuario_key_atual()
@@ -1509,6 +1589,7 @@ def grafico():
         except Exception:
             pass
 
+    _grafico_cache[uid] = {"ts": time.time(), "data": (labels, valores)}
     return labels, valores
 
 
@@ -1721,6 +1802,12 @@ def ranking_por_campo(campo):
 
 
 def estatisticas_extras():
+    global _stats_extras_cache
+    uid = session.get("user_id", "")
+    agora = time.time()
+    if _stats_extras_cache["data"] and _stats_extras_cache["uid"] == uid and (agora - _stats_extras_cache["ts"]) < 300:
+        return _stats_extras_cache["data"]
+
     if dados["bets"]:
         ticket_medio = sum(float(b.get("valor", 0)) for b in dados["bets"]) / len(dados["bets"])
     else:
@@ -1744,7 +1831,7 @@ def estatisticas_extras():
         else:
             break
 
-    return {
+    result = {
         "ticket_medio": round(ticket_medio, 2),
         "maior_green": round(maior_green, 2),
         "maior_red": round(maior_red, 2),
@@ -1754,6 +1841,8 @@ def estatisticas_extras():
         "ranking_esportes": ranking_por_campo("esporte"),
         "ranking_mercados": ranking_por_campo("mercado")
     }
+    _stats_extras_cache = {"ts": agora, "uid": uid, "data": result}
+    return result
 
 
 def preparar_imagem(caminho):
@@ -2256,7 +2345,7 @@ def montar_resumo_itens_multipla(itens, partes):
                 textos.append(i.get("texto", ""))
 
         textos = [t for t in textos if t]
-        return " / ".join(textos[:4]) + (" ..." if len(textos) > 4 else "")
+        return textos[0] if textos else ""
 
     return montar_resumo_multipla(partes)
 
@@ -2328,7 +2417,7 @@ def extrair_linhas_padrao_multibloco(texto):
     idx = achar_indice_bloco_padrao(linhas) if "achar_indice_bloco_padrao" in globals() else 0
     bloco = linhas[idx:]
 
-    casa = limpar_casa(bloco[0]) if len(bloco) > 0 else ""
+    casa = corrigir_casa_ocr(bloco[0]) if len(bloco) > 0 else ""
 
     idx_esporte = None
     for i in range(1, len(bloco)):
@@ -2769,7 +2858,7 @@ def extrair_linhas_padrao_saas_v19(texto):
     idx = achar_inicio_bloco_v19(linhas)
     bloco = linhas[idx:]
 
-    casa = limpar_casa(bloco[0]) if len(bloco) > 0 else ""
+    casa = corrigir_casa_ocr(bloco[0]) if len(bloco) > 0 else ""
 
     idx_esporte = None
     esporte = "Futebol"
@@ -4111,7 +4200,7 @@ def resumir_multiplas_para_campos(itens):
         linha = it.get("linha", None)
         linhas.append(str(linha).rstrip("0").rstrip(".") if isinstance(linha, float) else (str(linha) if linha is not None else "-"))
         periodos.append(it.get("periodo", "jogo inteiro") or "jogo inteiro")
-    return {"mercado": " / ".join(mercados), "selecao": " / ".join(selecoes), "linha": " / ".join(linhas), "periodo": " / ".join(periodos)}
+    return {"mercado": mercados[0] if mercados else "Outro", "selecao": selecoes[0] if selecoes else "-", "linha": linhas[0] if linhas else "-", "periodo": periodos[0] if periodos else "jogo inteiro"}
 
 
 def aplicar_formatacao_multiplas_combinadas(resultado):
@@ -4814,11 +4903,13 @@ def criar_aposta_manual_payload(form):
 
     classificacao = classificar_aposta(aposta_texto, jogo)
 
+    horario_jogo = form.get("horario_jogo", "") or extrair_horario_jogo(f"{jogo} {aposta_texto}")
+
     bet = {
         "id": str(uuid.uuid4()),
         "user_id": usuario_id_atual(),
-        "data": data_hora_local(),
-        "horario_jogo": form.get("horario_jogo", "") or extrair_horario_jogo(f"{jogo} {aposta_texto}"),
+        "data": data_aposta_com_regra_horario(horario_jogo),
+        "horario_jogo": horario_jogo,
         "aposta": aposta_texto,
         "casa": limpar_casa(form.get("casa", "")),
         "esporte": limpar_linha(form.get("esporte", "")),
@@ -4866,6 +4957,9 @@ def criar_aposta_manual_payload(form):
 
 
 def carregar_usuarios():
+    if hasattr(g, "_usuarios_cache"):
+        return g._usuarios_cache
+
     usuarios_padrao = {
         "users": [
             {
@@ -4906,9 +5000,21 @@ def carregar_usuarios():
         u.setdefault("plano", "admin" if u.get("is_admin") else "free")
         u.setdefault("apostas_publicas_padrao", False)
 
+    try:
+        g._usuarios_cache = data
+        g._usuario_cache = None  # invalida cache de usuario_logado ao recarregar lista
+    except Exception:
+        pass
+
     return data
 
 def salvar_usuarios(data):
+    try:
+        g._usuarios_cache = data
+        g._usuario_cache = None
+    except Exception:
+        pass
+
     if banco_ativo():
         db_set_json("usuarios", data)
         return
@@ -5024,6 +5130,9 @@ def aplicar_headers_seguranca(response):
     response.headers["X-Frame-Options"] = "SAMEORIGIN"
     response.headers["X-Content-Type-Options"] = "nosniff"
     response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+    path = request.path
+    if path.startswith("/static/") and path.endswith((".css", ".js", ".png", ".ico", ".woff2")):
+        response.headers["Cache-Control"] = "public, max-age=86400, stale-while-revalidate=3600"
     return response
 
 
@@ -5126,6 +5235,15 @@ def agora_local():
 
 def data_hora_local():
     return agora_local().strftime("%d/%m/%Y %H:%M")
+
+
+def data_aposta_com_regra_horario(horario_jogo):
+    """Se a aposta não tem horário e foi criada a partir das 19h, pertence ao dia seguinte."""
+    agora = agora_local()
+    if not horario_jogo and agora.hour >= 19:
+        amanha = agora + timedelta(days=1)
+        return amanha.strftime("%d/%m/%Y %H:%M")
+    return agora.strftime("%d/%m/%Y %H:%M")
 
 
 def extrair_horario_jogo(texto):
@@ -5603,55 +5721,60 @@ def v94_cache_jogos_espn(forcar=False):
     if not forcar and JOGOS_ESPN_CACHE.get("items") and (agora_ts - JOGOS_ESPN_CACHE.get("ts", 0) < ttl):
         return JOGOS_ESPN_CACHE["items"]
 
-    jogos = []
-
+    tarefas = []
     for esporte in ["Futebol", "Basquete"]:
         try:
             ligas = espn_ligas_por_esporte(esporte)
         except Exception:
             ligas = []
-
         for sport, league in ligas:
-            try:
-                r = requests.get(espn_scoreboard_url(sport, league), timeout=7)
-                if r.status_code != 200:
+            tarefas.append((esporte, sport, league))
+
+    def buscar_liga(esporte, sport, league):
+        try:
+            r = requests.get(espn_scoreboard_url(sport, league), timeout=7)
+            if r.status_code != 200:
+                return []
+            resultado = []
+            for ev in r.json().get("events", []):
+                comp = (ev.get("competitions") or [{}])[0]
+                nomes = []
+                for c in comp.get("competitors", []):
+                    team = c.get("team", {}) or {}
+                    nome = team.get("displayName") or team.get("shortDisplayName") or team.get("name") or ""
+                    if nome:
+                        nomes.append(nome)
+                if len(nomes) < 2:
                     continue
+                label, dt_br, ao_vivo, ordem = v98_status_espn_seguro(comp)
+                jogo_nome = f"{nomes[0]} x {nomes[1]}"
+                resultado.append({
+                    "id": ev.get("id", ""),
+                    "jogo": jogo_nome,
+                    "jogo_norm": espn_normalizar_nome(jogo_nome),
+                    "esporte": esporte,
+                    "sport": sport,
+                    "league": league,
+                    "liga_nome": v96_liga_label(league) if "v96_liga_label" in globals() else league,
+                    "horario_jogo": dt_br.strftime("%d/%m/%Y %H:%M") if dt_br else "",
+                    "horario_jogo_iso": dt_br.isoformat() if dt_br else "",
+                    "status_jogo": label,
+                    "ao_vivo": bool(ao_vivo),
+                    "ordem_jogo": ordem,
+                })
+            return resultado
+        except Exception as e:
+            print("V98 cache ESPN liga ignorada:", sport, league, repr(e))
+            return []
 
-                for ev in r.json().get("events", []):
-                    comp = (ev.get("competitions") or [{}])[0]
-                    competitors = comp.get("competitors", [])
-
-                    nomes = []
-                    for c in competitors:
-                        team = c.get("team", {}) or {}
-                        nome = team.get("displayName") or team.get("shortDisplayName") or team.get("name") or ""
-                        if nome:
-                            nomes.append(nome)
-
-                    if len(nomes) < 2:
-                        continue
-
-                    label, dt_br, ao_vivo, ordem = v98_status_espn_seguro(comp)
-                    jogo_nome = f"{nomes[0]} x {nomes[1]}"
-
-                    jogos.append({
-                        "id": ev.get("id", ""),
-                        "jogo": jogo_nome,
-                        "jogo_norm": espn_normalizar_nome(jogo_nome),
-                        "esporte": esporte,
-                        "sport": sport,
-                        "league": league,
-                        "liga_nome": v96_liga_label(league) if "v96_liga_label" in globals() else league,
-                        "horario_jogo": dt_br.strftime("%d/%m/%Y %H:%M") if dt_br else "",
-                        "horario_jogo_iso": dt_br.isoformat() if dt_br else "",
-                        "status_jogo": label,
-                        "ao_vivo": bool(ao_vivo),
-                        "ordem_jogo": ordem,
-                    })
-
-            except Exception as e:
-                print("V98 cache ESPN liga ignorada:", sport, league, repr(e))
-                continue
+    jogos = []
+    with ThreadPoolExecutor(max_workers=min(len(tarefas), 12)) as executor:
+        futuros = {executor.submit(buscar_liga, e, s, l): (e, s, l) for e, s, l in tarefas}
+        for futuro in as_completed(futuros):
+            try:
+                jogos.extend(futuro.result())
+            except Exception:
+                pass
 
     seen = set()
     limpos = []
@@ -6554,7 +6677,32 @@ def logout():
 @admin_required
 def admin():
     usuarios = carregar_usuarios().get("users", [])
-    return render_template("admin.html", usuarios=usuarios)
+    todos_bets = dados.get("bets", [])
+    stats_por_usuario = {}
+    for b in todos_bets:
+        uid = b.get("user_id", "")
+        if not uid:
+            continue
+        s = stats_por_usuario.setdefault(uid, {"total": 0, "ganhas": 0, "perdidas": 0, "pendentes": 0, "lucro": 0.0, "valor_apostado": 0.0})
+        s["total"] += 1
+        estado = b.get("estado", "")
+        if estado == "ganha":
+            s["ganhas"] += 1
+        elif estado == "perdida":
+            s["perdidas"] += 1
+        elif not estado:
+            s["pendentes"] += 1
+        s["lucro"] += float(b.get("lucro", 0) or 0)
+        s["valor_apostado"] += float(b.get("valor", 0) or 0)
+    for s in stats_por_usuario.values():
+        s["lucro"] = round(s["lucro"], 2)
+        s["valor_apostado"] = round(s["valor_apostado"], 2)
+        resolvidas = s["ganhas"] + s["perdidas"]
+        s["taxa"] = round(s["ganhas"] / resolvidas * 100, 1) if resolvidas else 0
+    total_geral = {"usuarios": len(usuarios), "bets": len(todos_bets),
+                   "lucro": round(sum(float(b.get("lucro", 0) or 0) for b in todos_bets), 2),
+                   "valor_apostado": round(sum(float(b.get("valor", 0) or 0) for b in todos_bets), 2)}
+    return render_template("admin.html", usuarios=usuarios, stats=stats_por_usuario, total_geral=total_geral)
 
 
 @app.route("/admin/toggle/<uid>")
@@ -6597,11 +6745,11 @@ def adicionar_ajax():
             bet["origem"] = "copia"
             bet["source_original_id"] = request.form.get("source_original_id", "") or bet.get("source_original_id", "")
 
-        espn_aplicar_info_na_aposta(bet)
         registrar_nova_aposta_saldo(bet)
         v107_aplicar_multiplas_na_bet(bet)
         dados["bets"].append(bet)
-        salvar()
+        threading.Thread(target=espn_aplicar_info_na_aposta, args=(bet,), daemon=True).start()
+        threading.Thread(target=salvar, daemon=True).start()
 
         return jsonify({
             "ok": True,
@@ -6630,15 +6778,35 @@ def index():
         return redirect("/")
 
     recalcular()
-    # V90 lazy ESPN dashboard
-    espn_lazy_preencher_horarios_dashboard(limit=25)
-    salvar()
+    agora_ts = time.time()
+    if not hasattr(app, "_espn_dash_last") or (agora_ts - app._espn_dash_last) > 60:
+        app._espn_dash_last = agora_ts
+        threading.Thread(target=espn_lazy_preencher_horarios_dashboard, kwargs={"limit": 25}, daemon=True).start()
 
     labels, valores = grafico()
 
+    todos_bets = bets_display_v39()
+    hoje = agora_local().date()
+    bets_main, bets_historico = [], []
+    for b in todos_bets:
+        try:
+            data_bet = datetime.strptime(str(b.get("data", "") or "")[:10], "%d/%m/%Y").date()
+            is_anterior = data_bet < hoje
+        except Exception:
+            is_anterior = False
+        if is_anterior and b.get("estado", "") in ("ganha", "perdida", "anulada"):
+            bets_historico.append(b)
+        else:
+            bets_main.append(b)
+
+    # Agrupa por jogo (primário) depois data desc (secundário) — sort estável em 2 passos
+    bets_main.sort(key=lambda b: str(b.get("data", "") or "")[:10], reverse=True)
+    bets_main.sort(key=lambda b: str(b.get("jogo", "") or "").lower())
+
     return render_template(
         "index.html",
-        bets=bets_display_v39(),
+        bets=bets_main,
+        bets_historico=bets_historico,
         m=metricas(),
         labels=labels,
         valores=valores,
@@ -6652,7 +6820,6 @@ def index():
 @assinatura_required
 def estatisticas():
     recalcular()
-    salvar()
 
     mes = int(request.args.get("mes", datetime.now().month))
     ano = int(request.args.get("ano", datetime.now().year))
@@ -6691,7 +6858,7 @@ def resultado(bet_id, estado):
     if b:
         atualizar_resultado_saldo(b, estado)
         propagar_resultado_para_copias(b, estado)
-        salvar()
+        threading.Thread(target=salvar, daemon=True).start()
 
         if request.args.get("ajax") == "1":
             return jsonify({
@@ -6714,7 +6881,7 @@ def remover(bet_id):
 
     if b:
         dados["bets"] = [x for x in dados.get("bets", []) if x.get("id") != bet_id]
-        salvar()
+        threading.Thread(target=salvar, daemon=True).start()
 
         if request.args.get("ajax") == "1":
             return jsonify({"ok": True, "metricas": metricas()})
@@ -6773,7 +6940,7 @@ def editar_ajax():
     reverter_saldo_snapshot(snapshot_saldo)
     reaplicar_saldo_apos_edicao(b)
 
-    salvar()
+    threading.Thread(target=salvar, daemon=True).start()
     return jsonify({"status": "ok"})
 
 
@@ -6784,19 +6951,13 @@ def colar():
     try:
         payload = request.get_json(silent=True) or {}
         imagens = payload.get("images", [])
-        resultados = []
 
         os.makedirs(os.path.join(BASE_DIR, "uploads"), exist_ok=True)
 
-        for img in imagens:
+        def processar_imagem(img):
             try:
                 caminho = os.path.join(BASE_DIR, "uploads", f"{uuid.uuid4()}.png")
-
-                if "," in img:
-                    img_base64 = img.split(",", 1)[1]
-                else:
-                    img_base64 = img
-
+                img_base64 = img.split(",", 1)[1] if "," in img else img
                 with open(caminho, "wb") as f:
                     f.write(base64.b64decode(img_base64))
 
@@ -6823,26 +6984,23 @@ def colar():
                 aposta_extraida.setdefault("valor", "")
                 aposta_extraida.setdefault("texto_bruto", texto)
                 aposta_extraida.setdefault("texto_interpretado", aposta_extraida.get("aposta", ""))
-
-                resultados.append(aposta_extraida)
+                return aposta_extraida
 
             except Exception as e:
                 print("ERRO EM UMA IMAGEM /colar:", repr(e))
-                resultados.append({
-                    "aposta": "",
-                    "casa": "",
-                    "esporte": "",
-                    "jogo": "",
-                    "mercado": "",
-                    "selecao": "",
-                    "linha": "",
-                    "periodo": "",
-                    "odd": "",
-                    "valor": "",
-                    "texto_bruto": "",
-                    "texto_interpretado": "",
-                    "erro": str(e)
-                })
+                return {"aposta": "", "casa": "", "esporte": "", "jogo": "", "mercado": "",
+                        "selecao": "", "linha": "", "periodo": "", "odd": "", "valor": "",
+                        "texto_bruto": "", "texto_interpretado": "", "erro": str(e)}
+
+        if len(imagens) <= 1:
+            resultados = [processar_imagem(img) for img in imagens]
+        else:
+            with ThreadPoolExecutor(max_workers=min(len(imagens), 4)) as executor:
+                futures = {executor.submit(processar_imagem, img): i for i, img in enumerate(imagens)}
+                ordered = [None] * len(imagens)
+                for future, idx in futures.items():
+                    ordered[idx] = future.result()
+                resultados = ordered
 
         return jsonify({"ok": True, "resultados": resultados})
 
@@ -6872,7 +7030,7 @@ def salvar_preview():
                     continue
 
                 aposta_texto = limpar_linha(a.get("aposta", ""))
-                casa = limpar_casa(a.get("casa", ""))
+                casa = corrigir_casa_ocr(a.get("casa", ""))
                 esporte = limpar_linha(a.get("esporte", "Futebol")) or "Futebol"
                 jogo = limpar_linha(a.get("jogo", ""))
                 odd = normalizar_float(a.get("odd", 0))
@@ -6889,11 +7047,13 @@ def salvar_preview():
 
                 classificacao = classificar_aposta(aposta_texto, jogo)
 
+                horario_jogo = a.get("horario_jogo", "") or extrair_horario_jogo((a.get("texto_bruto", "") or "") + " " + jogo + " " + aposta_texto)
+
                 bet = {
                     "id": str(uuid.uuid4()),
                     "user_id": usuario_id_atual() if "usuario_id_atual" in globals() else session.get("user_id"),
-                    "data": data_hora_local(),
-                    "horario_jogo": a.get("horario_jogo", "") or extrair_horario_jogo((a.get("texto_bruto", "") or "") + " " + jogo + " " + aposta_texto),
+                    "data": data_aposta_com_regra_horario(horario_jogo),
+                    "horario_jogo": horario_jogo,
                     "aposta": aposta_texto,
                     "casa": casa,
                     "esporte": esporte,
@@ -6922,7 +7082,6 @@ def salvar_preview():
                     "publica": aposta_publica_padrao_usuario() if "aposta_publica_padrao_usuario" in globals() else False
                 }
 
-                espn_aplicar_info_na_aposta(bet)
                 registrar_nova_aposta_saldo(bet)
                 dados.setdefault("bets", []).append(bet)
                 bets_salvas.append(limpar_aposta_display_v39(bet) if "limpar_aposta_display_v39" in globals() else bet)
@@ -6932,7 +7091,9 @@ def salvar_preview():
                 print("ERRO AO SALVAR UMA APOSTA DO PREVIEW:", repr(e))
                 erros.append(str(e))
 
-        salvar()
+        espn_threads = [threading.Thread(target=espn_aplicar_info_na_aposta, args=(b,), daemon=True) for b in dados.get("bets", [])[-salvas:] if salvas]
+        for t in espn_threads: t.start()
+        threading.Thread(target=salvar, daemon=True).start()
 
         return jsonify({
             "ok": True,
