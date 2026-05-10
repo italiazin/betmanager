@@ -4204,3 +4204,58 @@ tr.bet-row[data-v147-filtered="0"]{display:none!important;}
 .game-date-status.finished::before {
     content: "🏁";
 }
+
+/* V151 - status da aposta sem pular tabela */
+.v151-status-atualizado {
+    outline: 1px solid rgba(96,165,250,.45) !important;
+    background: rgba(37,99,235,.08) !important;
+}
+
+.lucro-pos { color: #22c55e !important; font-weight: 900 !important; }
+.lucro-neg { color: #ef4444 !important; font-weight: 900 !important; }
+.lucro-zero { color: #e5f0ff !important; font-weight: 800 !important; }
+
+/* V152 - status sem atualização visual fake */
+.v151-status-atualizado {
+    outline: none !important;
+    background: inherit !important;
+}
+
+.v152-status-loading {
+    outline: 1px solid rgba(96,165,250,.35) !important;
+    background: rgba(37,99,235,.055) !important;
+}
+
+/* V153 - status AJAX sem reload */
+.v153-status-loading {
+    opacity: .65 !important;
+    pointer-events: none !important;
+}
+.v153-status-ok {
+    outline: 1px solid rgba(34,197,94,.45) !important;
+    background: rgba(34,197,94,.07) !important;
+}
+.lucro-pos { color: #22c55e !important; font-weight: 900 !important; }
+.lucro-neg { color: #ef4444 !important; font-weight: 900 !important; }
+.lucro-zero { color: #e5f0ff !important; font-weight: 800 !important; }
+
+/* V154 - status pela rota original sem reload */
+.v154-status-loading {
+    opacity: .65 !important;
+    pointer-events: none !important;
+}
+.v154-status-ok {
+    outline: 1px solid rgba(34,197,94,.45) !important;
+    background: rgba(34,197,94,.07) !important;
+}
+.lucro-pos { color: #22c55e !important; font-weight: 900 !important; }
+.lucro-neg { color: #ef4444 !important; font-weight: 900 !important; }
+.lucro-zero { color: #e5f0ff !important; font-weight: 800 !important; }
+
+.calendar-help-v154 {
+    display: block !important;
+    color: #93c5fd !important;
+    font-size: 12px !important;
+    margin-top: 3px !important;
+    font-weight: 700 !important;
+}

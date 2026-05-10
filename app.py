@@ -218,7 +218,7 @@ API_KEY = CONFIG.get("API_KEY", "")
 
 print("CONFIG PATH:", CONFIG_PATH)
 print("API KEY:", API_KEY)
-print("VERSAO_CARREGADA: OCR_CLIENTE_V150_AUTO_FINALIZA_130MIN")
+print("VERSAO_CARREGADA: OCR_CLIENTE_V155_FIX_B_UNDEFINED")
 
 if os.name == "nt":
     tess_path = r"C:\Program Files\Tesseract-OCR\tesseract.exe"
@@ -1543,6 +1543,82 @@ def parse_data(data_str):
     return None
 
 
+# ============================================================
+# V154 - calendário por data do jogo
+# ============================================================
+
+def v154_parse_data_jogo_aposta(b):
+    """
+    Retorna a data/hora do jogo da aposta.
+    Prioridade:
+    1) horario_jogo_iso
+    2) horario_jogo / status_jogo com dd/mm hh:mm
+    3) campos data_jogo/jogo_data
+    4) fallback: data de criação da aposta
+    """
+    if not isinstance(b, dict):
+        return None
+
+    candidatos = [
+        b.get("horario_jogo_iso"),
+        b.get("data_jogo"),
+        b.get("jogo_data"),
+        b.get("horario_jogo"),
+        b.get("status_jogo"),
+        b.get("data"),
+    ]
+
+    formatos = [
+        "%Y-%m-%dT%H:%M:%S",
+        "%Y-%m-%dT%H:%M",
+        "%Y-%m-%d %H:%M:%S",
+        "%Y-%m-%d %H:%M",
+        "%d/%m/%Y %H:%M",
+        "%d/%m/%y %H:%M",
+        "%d/%m %H:%M",
+        "%d/%m/%Y",
+        "%d/%m/%y",
+        "%d/%m",
+    ]
+
+    for valor in candidatos:
+        if not valor:
+            continue
+
+        s = str(valor).strip()
+
+        # ISO com timezone/Z
+        try:
+            iso = s.replace("Z", "+00:00")
+            dt = datetime.fromisoformat(iso)
+            if dt.tzinfo is not None:
+                try:
+                    dt = dt.astimezone(ZoneInfo("America/Bahia")).replace(tzinfo=None)
+                except Exception:
+                    dt = dt.replace(tzinfo=None)
+            return dt
+        except Exception:
+            pass
+
+        # extrai algo tipo 09/05 13:30 dentro de texto "Hoje 13:30" ou "09/05 13:30"
+        m = re.search(r"(\d{2}/\d{2}(?:/\d{2,4})?)\s+(\d{1,2}:\d{2})", s)
+        if m:
+            s2 = f"{m.group(1)} {m.group(2)}"
+        else:
+            s2 = s
+
+        for fmt in formatos:
+            try:
+                dt = datetime.strptime(s2, fmt)
+                if "%Y" not in fmt and "%y" not in fmt:
+                    dt = dt.replace(year=datetime.now().year)
+                return dt
+            except Exception:
+                pass
+
+    return None
+
+
 def calendario_historico(ano=None, mes=None):
     hoje = datetime.now()
     ano = int(ano or hoje.year)
@@ -1554,16 +1630,22 @@ def calendario_historico(ano=None, mes=None):
     elif mes > 12:
         mes = 1
         ano += 1
+
     por_dia = {}
 
     for b in bets_do_usuario():
-        dt = parse_data(b.get("data", ""))
+        dt = v154_parse_data_jogo_aposta(b)
         if not dt or dt.year != ano or dt.month != mes:
             continue
 
         dia = dt.day
-        por_dia.setdefault(dia, {"lucro": 0, "apostas": 0})
-        por_dia[dia]["lucro"] += float(b.get("lucro", 0))
+        por_dia.setdefault(dia, {"lucro": 0.0, "apostas": 0})
+
+        try:
+            por_dia[dia]["lucro"] += float(b.get("lucro", 0) or 0)
+        except Exception:
+            pass
+
         por_dia[dia]["apostas"] += 1
 
     cal = calendar.Calendar(firstweekday=6)
@@ -5940,6 +6022,129 @@ def v140_parse_valor(v):
         return float(v or 0)
     except Exception:
         return 0.0
+
+
+
+
+# ============================================================
+# V153 - status via AJAX sem recarregar página
+# ============================================================
+
+def v153_float(v, padrao=0.0):
+    try:
+        if v is None:
+            return padrao
+        if isinstance(v, str):
+            v = v.replace("R$", "").replace(".", "").replace(",", ".").strip()
+        return float(v)
+    except Exception:
+        return padrao
+
+def v153_find_bet_by_id(bet_id):
+    bet_id = str(bet_id)
+    containers = []
+
+    try:
+        containers.append(bets_do_usuario())
+    except Exception:
+        pass
+
+    try:
+        if isinstance(dados.get("bets"), list):
+            containers.append(dados.get("bets"))
+    except Exception:
+        pass
+
+    try:
+        if isinstance(dados.get("apostas"), list):
+            containers.append(dados.get("apostas"))
+    except Exception:
+        pass
+
+    seen = set()
+    for lista in containers:
+        if not isinstance(lista, list):
+            continue
+        for b in lista:
+            if not isinstance(b, dict):
+                continue
+            if id(b) in seen:
+                continue
+            seen.add(id(b))
+            if str(b.get("id", "")) == bet_id or str(b.get("_id", "")) == bet_id:
+                return b
+
+    return None
+
+def v153_calc_lucro(b, estado):
+    estado = str(estado or "").lower().strip()
+    valor = v153_float(b.get("valor", 0))
+    odd = v153_float(b.get("odd", 0))
+
+    if estado in ("ganha", "green", "win", "vencida"):
+        return round((odd * valor) - valor, 2)
+    if estado in ("perdida", "red", "loss"):
+        return round(-valor, 2)
+    if estado in ("anulada", "void", "cancelada", "cancelado"):
+        return 0.0
+    return 0.0
+
+def v153_normalizar_estado(estado):
+    e = str(estado or "").lower().strip()
+    mapa = {
+        "green": "ganha",
+        "win": "ganha",
+        "vencida": "ganha",
+        "red": "perdida",
+        "loss": "perdida",
+        "void": "anulada",
+        "cancelada": "anulada",
+        "cancelado": "anulada",
+        "pendente": "pendente",
+        "ganha": "ganha",
+        "perdida": "perdida",
+        "anulada": "anulada",
+    }
+    return mapa.get(e, e or "pendente")
+
+@app.route("/api/aposta_status/<bet_id>", methods=["POST"])
+@login_required
+def api_v153_aposta_status(bet_id):
+    try:
+        payload = request.get_json(silent=True) or request.form or {}
+        estado = v153_normalizar_estado(payload.get("estado") or payload.get("status") or payload.get("acao"))
+
+        if estado not in ("ganha", "perdida", "anulada", "pendente"):
+            return jsonify({"ok": False, "erro": "estado_invalido"}), 400
+
+        b = v153_find_bet_by_id(bet_id)
+        if not b:
+            return jsonify({"ok": False, "erro": "aposta_nao_encontrada"}), 404
+
+        lucro = v153_calc_lucro(b, estado)
+
+        b["estado"] = estado
+        b["status"] = estado
+        b["lucro"] = lucro
+
+        try:
+            salvar()
+        except Exception as e:
+            print("v153 salvar status erro:", repr(e))
+            return jsonify({"ok": False, "erro": "erro_ao_salvar"}), 500
+
+        return jsonify({
+            "ok": True,
+            "id": bet_id,
+            "estado": estado,
+            "status": estado,
+            "lucro": lucro,
+            "valor": v153_float(b.get("valor", 0)),
+            "odd": v153_float(b.get("odd", 0))
+        })
+    except Exception as e:
+        print("api_v153_aposta_status erro:", repr(e))
+        return jsonify({"ok": False, "erro": str(e)}), 500
 
 
 
