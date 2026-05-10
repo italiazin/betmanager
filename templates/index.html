@@ -434,7 +434,7 @@ const valores = {{ valores | tojson }};
             📦 Histórico — apostas de dias anteriores
             <span class="historico-count-badge">{{ bets_historico|length }}</span>
         </summary>
-        <table class="historico-table">
+        <div style="overflow-x:auto;"><table class="historico-table">
             <thead>
                 <tr>
                     <th>Data</th>
@@ -487,7 +487,7 @@ const valores = {{ valores | tojson }};
                 </tr>
                 {% endfor %}
             </tbody>
-        </table>
+        </table></div>
     </details>
 </section>
 {% endif %}
