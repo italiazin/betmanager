@@ -5242,8 +5242,8 @@ def data_aposta_com_regra_horario(horario_jogo):
     agora = agora_local()
     if not horario_jogo and agora.hour >= 19:
         amanha = agora + timedelta(days=1)
-        return amanha.strftime("%d/%m/%Y %H:%M")
-    return agora.strftime("%d/%m/%Y %H:%M")
+        return amanha.strftime("%d/%m/%Y")
+    return agora.strftime("%d/%m/%Y")
 
 
 def extrair_horario_jogo(texto):
@@ -5538,7 +5538,7 @@ def espn_aplicar_info_na_aposta(bet, forcar=False):
 # V90 - preencher horários ESPN no carregamento do dashboard
 # ============================================================
 
-def espn_lazy_preencher_horarios_dashboard(limit=25):
+def espn_lazy_preencher_horarios_dashboard(limit=25, user_id=None):
     """
     Preenche horários de apostas já salvas que ainda não têm horário.
     Seguro: se ESPN não achar, não quebra e não apaga nada.
@@ -5547,7 +5547,8 @@ def espn_lazy_preencher_horarios_dashboard(limit=25):
     tentativas = 0
 
     try:
-        lista = bets_do_usuario()
+        uid = user_id or ""
+        lista = [b for b in dados.get("bets", []) if b.get("user_id") == uid] if uid else []
     except Exception as e:
         print("ESPN lazy listar erro:", repr(e))
         return 0
@@ -6781,7 +6782,8 @@ def index():
     agora_ts = time.time()
     if not hasattr(app, "_espn_dash_last") or (agora_ts - app._espn_dash_last) > 60:
         app._espn_dash_last = agora_ts
-        threading.Thread(target=espn_lazy_preencher_horarios_dashboard, kwargs={"limit": 25}, daemon=True).start()
+        _uid = session.get("user_id", "")
+        threading.Thread(target=espn_lazy_preencher_horarios_dashboard, kwargs={"limit": 25, "user_id": _uid}, daemon=True).start()
 
     labels, valores = grafico()
 

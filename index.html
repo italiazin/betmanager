@@ -1,0 +1,521 @@
+﻿<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <title>Gestor de Apostas</title>
+    <link rel="stylesheet" href="/static/style.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js" defer></script>
+<script>
+const labels = {{ labels | tojson }};
+const valores = {{ valores | tojson }};
+</script>
+<script src="/static/main.js" defer></script>
+</head>
+
+<body>
+
+<aside class="sidebar">
+    <div class="sidebar-top">
+        <div class="logo">
+            <span class="logo-icon">🎯</span>
+            <span class="logo-text">Bet Manager</span>
+        </div>
+        <button type="button" class="sidebar-toggle" onclick="toggleSidebar()" title="Recolher menu">‹</button>
+    </div>
+    <nav>
+        <a class="active" href="/" data-title="Dashboard"><span class="nav-icon">⌂</span><span class="nav-text">Dashboard</span></a>
+        <a href="/calculadora" data-title="Calculadora"><span class="nav-icon">🧮</span><span class="nav-text">Calculadora</span></a>
+        <a href="/estatisticas" data-title="Estatísticas"><span class="nav-icon">▥</span><span class="nav-text">Estatísticas</span></a>
+        <a href="/saldos" data-title="Saldos"><span class="nav-icon">💰</span><span class="nav-text">Saldos</span></a>
+    {% if usuario and usuario.is_admin %}
+        <a href="/admin" data-title="Admin"><span class="nav-icon">⚙</span><span class="nav-text">Admin</span></a>
+        {% endif %}
+        <a href="/configuracoes" data-title="Configurações"><span class="nav-icon">⚙</span><span class="nav-text">Configurações</span></a>
+        <a href="/logout" data-title="Sair"><span class="nav-icon">↪</span><span class="nav-text">Sair</span></a>
+</nav>
+
+    <div class="sidebar-user-wrap">
+        <div class="sidebar-user-card" onclick="toggleUserMenu(event)">
+            <div class="sidebar-user-avatar">{{ usuario_inicial if usuario_inicial else "U" }}</div>
+            <div class="sidebar-user-info">
+                <strong>{{ usuario.nome if usuario else "Usuário" }}</strong>
+                <span>{{ usuario.email if usuario else "" }}</span>
+            </div>
+            <span class="sidebar-user-arrow">⌄</span>
+        </div>
+
+        <div id="sidebarUserMenu" class="sidebar-user-menu">
+            <a href="/configuracoes">👤 Perfil / Configurações</a>
+            <a href="/saldos">💰 Saldos</a>
+            {% if usuario and usuario.is_admin %}
+            <a href="/admin">⚙ Admin</a>
+            {% endif %}
+            <a href="/logout" class="logout-link">🚪 Sair</a>
+        </div>
+    </div>
+
+</aside>
+
+<main class="app">
+
+<header class="topbar">
+    <div>
+        <h1>Gestor de Apostas</h1>
+        <p>Controle sua banca, prints, resultados, OCR e API</p>
+    </div>
+
+    {% if usuario and usuario.is_admin %}<a href="/atualizar_api" class="api-button">{% if usuario and usuario.is_admin %}Atualizar Resultados API{% endif %}</a>{% endif %}
+{% if usuario and usuario.is_admin %}<button class="api-button" type="button" onclick="atualizarHorariosEspn()">🕒 Atualizar horários</button>{% endif %}
+</header>
+
+<section class="cards">
+
+    <div class="metric-card banca-card">
+        <span>Banca Atual</span>
+
+        <div id="banca-view" class="banca-view">
+            <strong id="metric-banca">R$ {{ "%.2f"|format(m.banca_atual) }}</strong>
+            <div class="banca-actions">
+                <button class="icon-btn" onclick="mostrarEditarBanca()" title="Editar banca">✎</button>
+            </div>
+        </div>
+
+        <form method="POST" action="/banca" id="banca-form" class="banca-form">
+            <input name="banca" type="number" step="0.01" value="{{ m.banca_atual }}">
+            <button type="submit">Salvar</button>
+            <button type="button" onclick="cancelarEditarBanca()">Cancelar</button>
+        </form>
+    </div>
+
+    <div class="metric-card">
+        <span>Lucro Total</span>
+        <strong id="metric-lucro" class="{{ 'green-text' if m.lucro_total >= 0 else 'red-text' }}">
+            R$ {{ "%.2f"|format(m.lucro_total) }}
+        </strong>
+    </div>
+
+    <div class="metric-card">
+        <span>ROI</span>
+        <strong id="metric-roi">{{ "%.2f"|format(m.roi) }}%</strong>
+    </div>
+
+    <div class="metric-card">
+        <span>Taxa de Acerto</span>
+        <strong id="metric-taxa">{{ "%.2f"|format(m.taxa) }}%</strong>
+    </div>
+
+    <div class="metric-card">
+        <span>Total Apostas</span>
+        <strong id="metric-total">{{ m.total }}</strong>
+    </div>
+
+    <div class="metric-card pending-card">
+        <span>Pendentes</span>
+        <strong id="metric-pendentes">{{ m.pendentes }}</strong>
+    </div>
+
+    <div class="metric-card">
+        <span>Valor em Aberto</span>
+        <strong id="metric-valor-aberto">R$ {{ "%.2f"|format(m.valor_em_aberto if m.valor_em_aberto is defined else 0) }}</strong>
+    </div>
+
+</section>
+
+{% if not assinatura_ativa_usuario() %}
+<section class="panel assinatura-bloqueada">
+    <h2>Assinatura pendente</h2>
+    <p>Sua conta foi criada, mas as funcionalidades avançadas ainda estão bloqueadas. Aguarde o administrador liberar sua assinatura.</p>
+</section>
+{% endif %}
+
+<section class="main-grid {% if not assinatura_ativa_usuario() %}locked-area{% endif %}">
+
+    <div class="panel left-panel">
+
+        <h2>Nova Aposta Manual</h2>
+
+        <form method="POST" class="manual-form" id="manualForm">
+            <input type="hidden" name="copiada_comunidade" id="copiadaComunidade" value="0">
+            <input type="hidden" name="source_original_id" id="sourceOriginalId" value="">
+            <input type="hidden" name="horario_jogo" id="horarioJogo" value="">
+            <input type="hidden" name="aposta" id="manualApostaAuto" value="">
+            <input name="casa" placeholder="Casa">
+            <input name="esporte" placeholder="Esporte">
+            <input name="jogo" placeholder="Jogo / Times">
+            <input name="odd" type="number" step="0.01" placeholder="Odd" required>
+            <input name="valor" type="number" step="0.01" placeholder="Valor apostado" required>
+            <button type="submit">Adicionar</button>
+        </form>
+
+        <h2>Colar Prints</h2>
+
+        <div id="paste-area" class="paste-area" tabindex="0">
+            <div class="paste-icon">📋</div>
+            <strong>Clique aqui e cole prints com CTRL + V</strong>
+            <span>Casa, jogo, esporte, mercado, odd e valor serão lidos automaticamente</span>
+        </div>
+
+        <div id="loading" class="loading" style="display:none;">
+            Processando OCR...
+        </div>
+
+        <div id="preview-area"></div>
+
+        <button id="salvar-preview" class="save-preview" style="display:none;">
+            Salvar Apostas do Preview
+        </button>
+    </div>
+
+    <div class="panel chart-panel">
+        <div class="chart-tabs">
+            <button id="tabBancaBtn" type="button" class="chart-tab active" onclick="mostrarPainelDashboard('banca')">Evolução da Banca</button>
+            <button id="tabFeedBtn" type="button" class="chart-tab" onclick="mostrarPainelDashboard('feed')">Últimas Apostas <span id="feedNotifyBadge" class="feed-notify-badge" style="display:none;">NOVO</span></button>
+        </div>
+
+        <div id="aba-banca" class="panel-tab active">
+            <canvas id="grafico"></canvas>
+        </div>
+        <div id="aba-feed" class="panel-tab">
+            <div class="dashboard-switch-title">
+                <h2>Últimas Apostas da Comunidade <span id="feedToastNova" class="feed-toast-nova" style="display:none;">NOVA APOSTA</span></h2>
+                <button type="button" class="copy-bet-btn" onclick="carregarFeedApostas(true)">Atualizar</button>
+            </div>
+            <p class="community-note">Copie uma aposta com 1 clique e use como base para uma nova entrada.</p>
+            <div id="feed-apostas" class="feed-list">
+                <div class="feed-empty">Clique no botão ao lado da banca para carregar.</div>
+            </div>
+        </div>
+    </div>
+
+</section>
+
+<section class="panel table-panel" id="apostas">
+
+    <div class="table-header">
+        <h2>Apostas</h2>
+
+        <div class="filters-right">
+            <input 
+                type="text" 
+                id="searchInput" 
+                class="search-input" 
+                placeholder="Pesquisar aposta..."
+                onkeyup="filtrarApostas()"
+            >
+
+            <select id="statusFilter" onchange="filtrarApostas()">
+                <option value="todos">Todos</option>
+                <option value="ganha">Ganhas</option>
+                <option value="perdida">Perdidas</option>
+                <option value="pendente">Pendentes</option>
+                <option value="anulada">Anuladas</option>
+            </select>
+
+            <select id="dateFilter" onchange="filtrarApostas()">
+                <option value="todos">Todas as datas</option>
+                <option value="hoje">Hoje</option>
+                <option value="7">Últimos 7 dias</option>
+                <option value="30">Últimos 30 dias</option>
+            </select>
+
+            <div class="custom-filter">
+                <button type="button" class="custom-filter-btn" onclick="toggleDropdown('houseDropdown', 'houseSearch')">
+                    🔍 Buscar casas
+                </button>
+
+                <div class="custom-dropdown" id="houseDropdown">
+                    <input 
+                        type="text" 
+                        id="houseSearch" 
+                        class="dropdown-search"
+                        placeholder="Buscar..."
+                        onkeyup="filtrarLista('.casa-linha', 'houseSearch')"
+                    >
+
+                    <label class="dropdown-item select-visible">
+                        <input type="checkbox" onchange="selecionarVisiveis('.casa-linha', this.checked)">
+                        <span>Selecionar Visíveis</span>
+                    </label>
+
+                    <div class="dropdown-list">
+                        {% for casa in casas %}
+                        <label class="dropdown-item casa-linha">
+                            <input 
+                                type="checkbox" 
+                                value="{{ casa|lower }}"
+                                onchange="filtrarApostas()"
+                            >
+                            <span>{{ casa }}</span>
+                        </label>
+                        {% endfor %}
+                    </div>
+                </div>
+            </div>
+
+            <div class="custom-filter">
+                <button type="button" class="custom-filter-btn" onclick="toggleDropdown('sportDropdown', 'sportSearch')">
+                    🎯 Buscar esporte
+                </button>
+
+                <div class="custom-dropdown" id="sportDropdown">
+                    <input 
+                        type="text" 
+                        id="sportSearch" 
+                        class="dropdown-search"
+                        placeholder="Buscar..."
+                        onkeyup="filtrarLista('.sport-linha', 'sportSearch')"
+                    >
+
+                    <label class="dropdown-item select-visible">
+                        <input type="checkbox" onchange="selecionarVisiveis('.sport-linha', this.checked)">
+                        <span>Selecionar Visíveis</span>
+                    </label>
+
+                    <div class="dropdown-list">
+                        {% for esporte in esportes %}
+                        <label class="dropdown-item sport-linha">
+                            <input 
+                                type="checkbox" 
+                                value="{{ esporte|lower }}"
+                                onchange="filtrarApostas()"
+                            >
+                            <span>{{ esporte }}</span>
+                        </label>
+                        {% endfor %}
+                    </div>
+                </div>
+            </div>
+
+            <input 
+                type="number" 
+                id="minValue" 
+                class="small-filter" 
+                placeholder="Valor mín."
+                onkeyup="filtrarApostas()"
+                onchange="filtrarApostas()"
+            >
+
+            <input 
+                type="number" 
+                id="maxValue" 
+                class="small-filter" 
+                placeholder="Valor máx."
+                onkeyup="filtrarApostas()"
+                onchange="filtrarApostas()"
+            >
+        </div>
+    </div>
+
+    <div class="table-scroll-wrap"><table>
+        <thead>
+            <tr>
+                <th id="gameDateSortHeader" class="sortable-game-date">Jogo/Data <span id="gameDateSortArrow">↑</span></th>
+                <th>Casa</th>
+                <th>Esporte</th>
+                <th>Jogo</th>
+                <th>Aposta</th>
+                <th>Odd</th>
+                <th>Valor</th>
+                <th>Status</th>
+                <th>Lucro</th>
+                <th>API</th>
+                <th>Ações</th>
+            </tr>
+        </thead>
+
+        <tbody>
+            {% for b in bets %}
+            <tr class="bet-row"
+                   
+                    data-jogo="{{ b.jogo }}"
+                    data-horario="{{ b.horario_jogo_iso if b.horario_jogo_iso is defined else '' }}"
+                    data-status-jogo="{{ espn_status_label_bet(b) if espn_status_label_bet is defined else (b.get('status_jogo') or b.get('horario_jogo') or '') }}"
+                    data-status-class="{{ espn_status_class_bet(b) if espn_status_class_bet is defined else ('live' if b.get('ao_vivo') else '') }}"
+                    data-data="{{ b.data }}" data-jogos-relacionados='{{ (b.jogos_relacionados if b.jogos_relacionados is defined else [])|tojson }}' data-horario-jogo-iso="{{ b.horario_jogo_iso if b.horario_jogo_iso is defined else '' }}" data-horario-jogo="{{ b.horario_jogo if b.horario_jogo is defined else '' }}" data-ao-vivo="{{ '1' if b.ao_vivo is defined and b.ao_vivo else '0' }}" data-id="{{ b.id if b.id is defined else loop.index0 }}">
+                <td class="data-cell">{{ (b.data or '')[:10] }}</td>
+                <td class="casa-cell">{{ b.casa }}</td>
+                <td class="esporte-cell">{{ b.esporte }}</td>
+                <td class="jogo-cell">{{ b.jogo }}</td>
+                <td class="aposta-cell">{{ b.aposta_display if b.aposta_display is defined else b.aposta }}</td>
+                <td class="odd-cell">{{ b.odd }}</td>
+                <td class="valor-cell">{{ "%.2f"|format(b.valor) }}</td>
+
+                <td class="status-cell">
+                    {% if b.estado == "ganha" %}
+                        <span class="badge green">Ganha</span>
+                    {% elif b.estado == "perdida" %}
+                        <span class="badge red">Perdida</span>
+                    {% elif b.estado == "anulada" %}
+                        <span class="badge gray">Anulada</span>
+                    {% else %}
+                        <span class="badge yellow">Pendente</span>
+                    {% endif %}
+                </td>
+
+                <td class="{{ 'green-text' if b.lucro > 0 else 'red-text' if b.lucro < 0 else '' }}">
+                    R$ {{ "%.2f"|format(b.lucro) }}
+                </td>
+
+                <td class="api-cell">{{ b.api_status }}</td>
+
+                <td class="actions">
+                    <a href="/resultado/{{ b.id }}/ganha"><button class="green">✔</button></a>
+                    <a href="/resultado/{{ b.id }}/perdida"><button class="red">✖</button></a>
+                    <a href="/resultado/{{ b.id }}/anulada"><button class="gray">↺</button></a>
+                    <button 
+                        class="blue"
+                        onclick="abrirEditar(this)"
+                       
+                        data-estado="{{ b.estado }}" data-status-jogo="{{ b.status_jogo if b.status_jogo is defined else '' }}" data-horario="{{ b.horario_jogo_iso if b.horario_jogo_iso is defined else '' }}"
+                    >✎</button>
+                    <a href="/remover/{{ b.id }}"><button class="dark">🗑</button></a>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table></div>
+</section>
+
+<div id="editModal" class="modal">
+    <div class="modal-content">
+        <h3>Editar Aposta</h3>
+
+        <label>Aposta</label>
+        <input id="editAposta">
+
+        <label>Casa</label>
+        <input id="editCasa">
+
+        <label>Esporte</label>
+        <input id="editEsporte">
+
+        <label>Jogo</label>
+        <input id="editJogo" name="jogo" placeholder="Buscar jogo / times...">
+
+        <label>Data/Hora do Jogo</label>
+        <input id="editHorarioJogo" type="datetime-local">
+
+        <label>Odd</label>
+        <input id="editOdd" type="number" step="0.01">
+
+        <label>Valor</label>
+        <input id="editValor" type="number" step="0.01">
+
+        <label>Status da aposta</label>
+        <select id="editEstado">
+            <option value="">Pendente</option>
+            <option value="ganha">Ganha</option>
+            <option value="perdida">Perdida</option>
+            <option value="anulada">Anulada</option>
+        </select>
+
+        <div class="modal-actions">
+            <label>Status do jogo</label>
+        <select id="editStatusJogoManual">
+            <option value="">Automático</option>
+            <option value="Ao vivo">Ao vivo</option>
+            <option value="Em andamento">Em andamento</option>
+            <option value="Finalizado">Finalizado</option>
+            <option value="Sem horário">Sem horário</option>
+            <option value="Agendado">Agendado</option>
+        </select>
+
+        <button onclick="salvarEdicao()">Salvar</button>
+            <button class="dark" onclick="fecharModal()">Cancelar</button>
+        </div>
+    </div>
+</div>
+
+
+{% if bets_historico %}
+<section class="panel table-panel historico-panel">
+    <details id="historicoSection">
+        <summary class="historico-summary">
+            📦 Histórico — apostas de dias anteriores
+            <span class="historico-count-badge">{{ bets_historico|length }}</span>
+        </summary>
+        <table class="historico-table">
+            <thead>
+                <tr>
+                    <th>Data</th>
+                    <th>Casa</th>
+                    <th>Esporte</th>
+                    <th>Jogo</th>
+                    <th>Aposta</th>
+                    <th>Odd</th>
+                    <th>Valor</th>
+                    <th>Status</th>
+                    <th>Lucro</th>
+                    <th>Ações</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for b in bets_historico %}
+                <tr class="bet-row-historico" data-id="{{ b.id if b.id is defined else loop.index0 }}" data-horario="{{ b.horario_jogo_iso if b.horario_jogo_iso is defined else '' }}">
+                    <td>{{ (b.data or '')[:10] }}</td>
+                    <td class="casa-cell">{{ b.casa }}</td>
+                    <td class="esporte-cell">{{ b.esporte }}</td>
+                    <td class="jogo-cell">{{ b.jogo }}</td>
+                    <td class="aposta-cell">{{ b.aposta_display if b.aposta_display is defined else b.aposta }}</td>
+                    <td class="odd-cell">{{ b.odd }}</td>
+                    <td class="valor-cell">{{ "%.2f"|format(b.valor) }}</td>
+                    <td class="status-cell">
+                        {% if b.estado == "ganha" %}
+                            <span class="badge green">Ganha</span>
+                        {% elif b.estado == "perdida" %}
+                            <span class="badge red">Perdida</span>
+                        {% elif b.estado == "anulada" %}
+                            <span class="badge gray">Anulada</span>
+                        {% else %}
+                            <span class="badge yellow">Pendente</span>
+                        {% endif %}
+                    </td>
+                    <td class="{{ 'green-text' if b.lucro > 0 else 'red-text' if b.lucro < 0 else '' }}">
+                        R$ {{ "%.2f"|format(b.lucro) }}
+                    </td>
+                    <td class="actions">
+                        <button class="blue" onclick="abrirEditar(this)"
+                            data-id="{{ b.id if b.id is defined else '' }}"
+                            data-estado="{{ b.estado }}"
+                            data-status-jogo="{{ b.status_jogo if b.status_jogo is defined else '' }}"
+                            data-horario="{{ b.horario_jogo_iso if b.horario_jogo_iso is defined else '' }}">✎</button>
+                        <a href="/remover/{{ b.id }}"><button class="dark">🗑</button></a>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </details>
+</section>
+{% endif %}
+
+</main>
+
+
+
+
+
+
+
+
+
+
+
+
+
+<div id="bancaInicialModal" class="modal" style="display:none;">
+    <div class="modal-content">
+        <h3>Editar Banca Inicial</h3>
+        <form method="POST" action="/configurar_banca_inicial">
+            <label>Banca inicial</label>
+            <input type="number" step="0.01" name="banca_inicial" id="bancaInicialInput" value="{{ m.banca_inicial if m.banca_inicial is defined else 0 }}">
+            <button type="submit">Salvar</button>
+            <button type="button" onclick="fecharModalBancaInicial()">Cancelar</button>
+        </form>
+    </div>
+</div>
+
+
+</body>
+</html>
+
