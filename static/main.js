@@ -1,4 +1,5 @@
-﻿function limparApostaDuplicadaVisual(){
+﻿
+function limparApostaDuplicadaVisual(){
     document.querySelectorAll("tbody tr").forEach(tr=>{
         const jogoEl = tr.querySelector(".jogo-cell")
         const apostaEl = tr.querySelector(".aposta-cell")
@@ -461,7 +462,17 @@ function abrirEditar(btn){
     document.getElementById("editEstado").value = btn.dataset.estado
     const sj = document.getElementById("editStatusJogoManual"); if(sj) sj.value = btn.dataset.statusJogo || ""
     const horarioInput = document.getElementById("editHorarioJogo")
-    if(horarioInput) horarioInput.value = v106ToDatetimeLocal(tr.dataset.horario || btn.dataset.horario || "")
+    if(horarioInput){
+        const horarioExistente = v106ToDatetimeLocal(tr.dataset.horario || btn.dataset.horario || "")
+        if(horarioExistente){
+            horarioInput.value = horarioExistente
+        } else {
+            const now = new Date()
+            const y = now.getFullYear()
+            const m = String(now.getMonth()+1).padStart(2,"0")
+            horarioInput.value = `${y}-${m}-01T00:00`
+        }
+    }
     document.getElementById("editModal").style.display="flex"
     if(typeof window.gameAutocompleteAttach==="function") window.gameAutocompleteAttach()
 }

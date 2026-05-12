@@ -1772,6 +1772,13 @@ def calendario_historico(ano=None, mes=None):
         next_mes = 1
         next_ano += 1
 
+    lucro_mes = round(sum(v["lucro"] for v in por_dia.values()), 2)
+    apostas_mes = sum(v["apostas"] for v in por_dia.values())
+    dias_positivos = sum(1 for v in por_dia.values() if v["lucro"] > 0)
+    dias_negativos = sum(1 for v in por_dia.values() if v["lucro"] < 0)
+    melhor_dia = max(por_dia.items(), key=lambda x: x[1]["lucro"], default=(None, {"lucro": 0}))
+    pior_dia = min(por_dia.items(), key=lambda x: x[1]["lucro"], default=(None, {"lucro": 0}))
+
     return {
         "mes_nome": mes_ref.strftime("%B").capitalize(),
         "ano": ano,
@@ -1780,11 +1787,21 @@ def calendario_historico(ano=None, mes=None):
         "prev_ano": prev_ano,
         "next_mes": next_mes,
         "next_ano": next_ano,
-        "semanas": semanas
+        "semanas": semanas,
+        "resumo_mes": {
+            "lucro": lucro_mes,
+            "apostas": apostas_mes,
+            "dias_positivos": dias_positivos,
+            "dias_negativos": dias_negativos,
+            "melhor_dia": melhor_dia[0],
+            "melhor_dia_lucro": round(melhor_dia[1]["lucro"], 2),
+            "pior_dia": pior_dia[0],
+            "pior_dia_lucro": round(pior_dia[1]["lucro"], 2),
+        }
     }
 
 
-def ranking_por_campo(campo):
+def ranking_por_campo(campo, limite=None):
     ranking = {}
 
     for b in bets_do_usuario():
@@ -1798,7 +1815,8 @@ def ranking_por_campo(campo):
         for k, v in ranking.items()
     ]
 
-    return sorted(lista, key=lambda x: x["lucro"], reverse=True)[:5]
+    ordenado = sorted(lista, key=lambda x: x["lucro"], reverse=True)
+    return ordenado[:limite] if limite else ordenado
 
 
 def estatisticas_extras():
@@ -1838,8 +1856,8 @@ def estatisticas_extras():
         "sequencia": sequencia,
         "tipo_seq": tipo_seq,
         "ranking_casas": ranking_por_campo("casa"),
-        "ranking_esportes": ranking_por_campo("esporte"),
-        "ranking_mercados": ranking_por_campo("mercado")
+        "ranking_esportes": ranking_por_campo("esporte", limite=5),
+        "ranking_mercados": ranking_por_campo("mercado", limite=5)
     }
     _stats_extras_cache = {"ts": agora, "uid": uid, "data": result}
     return result
@@ -1886,9 +1904,13 @@ def limpar_odd(texto):
 
 
 def limpar_valor(texto):
-    texto = str(texto).lower()
-    texto = texto.replace("r$", "").replace("rs", "").replace("r5", "").replace("r ", "").replace("$", "")
+    original = str(texto).lower()
+    texto = original.replace("r$", "").replace("rs", "").replace("r5", "").replace("r ", "").replace("$", "")
     texto = remover_emojis(texto).replace(" ", "")
+
+    # Guarda se havia separador decimal no texto original (vírgula ou ponto com 2 casas)
+    tinha_decimal = bool(re.search(r"[,\.]\d{2}\b", texto))
+
     texto = re.sub(r"[^\d,\.]", "", texto)
 
     if "," in texto:
@@ -1900,7 +1922,14 @@ def limpar_valor(texto):
 
     match = re.search(r"\d+", texto)
     if match:
-        return float(match.group(0))
+        val = float(match.group(0))
+        # OCR às vezes perde a vírgula: "40,00" → "4000". Se não havia separador
+        # decimal e o número é >= 1000, trata os últimos 2 dígitos como centavos.
+        if not tinha_decimal and val >= 1000:
+            corrigido = val / 100
+            if corrigido >= 1.0:
+                return corrigido
+        return val
 
     return 0.0
 
@@ -5372,45 +5401,96 @@ def espn_ligas_por_esporte(esporte):
         ]
 
     return [
-        # Brasil / América do Sul
+        # Brasil
         ("soccer", "bra.1"),
         ("soccer", "bra.2"),
+        ("soccer", "bra.3"),
+        ("soccer", "bra.copa_do_brazil"),
+
+        # América do Sul
         ("soccer", "conmebol.libertadores"),
         ("soccer", "conmebol.sudamericana"),
         ("soccer", "arg.1"),
+        ("soccer", "arg.2"),
         ("soccer", "col.1"),
         ("soccer", "uru.1"),
         ("soccer", "chi.1"),
         ("soccer", "per.1"),
         ("soccer", "ecu.1"),
+        ("soccer", "ven.1"),
+        ("soccer", "bol.1"),
+        ("soccer", "par.1"),
 
-        # Europa principais
+        # Inglaterra
         ("soccer", "eng.1"),
         ("soccer", "eng.2"),
+        ("soccer", "eng.3"),
+        ("soccer", "eng.4"),
+        ("soccer", "eng.fa.cup"),
+        ("soccer", "eng.league_cup"),
+
+        # Espanha
         ("soccer", "esp.1"),
         ("soccer", "esp.2"),
+        ("soccer", "esp.copa_del_rey"),
+
+        # Itália
         ("soccer", "ita.1"),
         ("soccer", "ita.2"),
+        ("soccer", "ita.coppa_italia"),
+
+        # Alemanha
         ("soccer", "ger.1"),
+        ("soccer", "ger.2"),
+        ("soccer", "ger.3"),
+        ("soccer", "ger.dfb_pokal"),
+
+        # França
         ("soccer", "fra.1"),
+        ("soccer", "fra.2"),
+        ("soccer", "fra.coupe_de_france"),
+
+        # Portugal
         ("soccer", "por.1"),
+        ("soccer", "por.2"),
+        ("soccer", "por.cup"),
+
+        # Holanda / Bélgica
         ("soccer", "ned.1"),
+        ("soccer", "ned.2"),
+        ("soccer", "bel.1"),
+
+        # Escócia / Suíça / Áustria / Grécia
+        ("soccer", "sco.1"),
+        ("soccer", "sui.1"),
+        ("soccer", "aut.1"),
+        ("soccer", "gre.1"),
+
+        # Turquia / Rússia / Ucrânia
         ("soccer", "tur.1"),
+        ("soccer", "rus.1"),
+        ("soccer", "ukr.1"),
 
         # Competições UEFA
         ("soccer", "uefa.champions"),
         ("soccer", "uefa.europa"),
         ("soccer", "uefa.europa.conf"),
+        ("soccer", "uefa.nations"),
 
         # Outros comuns em apostas
         ("soccer", "mex.1"),
         ("soccer", "usa.1"),
         ("soccer", "ksa.1"),
+        ("soccer", "uae.1"),
+        ("soccer", "jpn.1"),
+        ("soccer", "kor.1"),
+        ("soccer", "chn.1"),
+        ("soccer", "aus.1"),
     ]
 
 def espn_scoreboard_url(sport, league):
     hoje = agora_local().date() if "agora_local" in globals() else datetime.now(ZoneInfo("America/Sao_Paulo")).date()
-    ini, fim = hoje - timedelta(days=1), hoje + timedelta(days=7)
+    ini, fim = hoje - timedelta(days=4), hoje + timedelta(days=7)
     dates = f"{ini.strftime('%Y%m%d')}-{fim.strftime('%Y%m%d')}"
     return f"https://site.api.espn.com/apis/site/v2/sports/{sport}/{league}/scoreboard?dates={dates}&limit=300"
 
@@ -5437,6 +5517,78 @@ def espn_formatar_status(comp):
         return dt_br.strftime("%d/%m %H:%M"), dt_br, False
     return "", None, False
 
+def _espn_buscar_em_liga(sport, league, time_a, time_b, time_unico, dois_times):
+    """Busca um jogo em uma liga específica. Retorna (score, melhor_dict) ou (0, None)."""
+    try:
+        r = requests.get(espn_scoreboard_url(sport, league), timeout=6)
+        if r.status_code != 200:
+            return 0, None
+        melhor_score = 0
+        melhor = None
+        for ev in r.json().get("events", []):
+            comp = (ev.get("competitions") or [{}])[0]
+            nomes = []
+            for c in comp.get("competitors", []):
+                team = c.get("team", {}) or {}
+                nomes.append(team.get("displayName") or team.get("shortDisplayName") or team.get("name") or "")
+            if len(nomes) < 2:
+                continue
+            if dois_times:
+                a1 = espn_similaridade(time_a, nomes[0])
+                b1 = espn_similaridade(time_b, nomes[1])
+                a2 = espn_similaridade(time_a, nomes[1])
+                b2 = espn_similaridade(time_b, nomes[0])
+                if a1 + b1 >= a2 + b2:
+                    score = a1 + b1
+                    min_side = min(a1, b1)
+                else:
+                    score = a2 + b2
+                    min_side = min(a2, b2)
+                if min_side < 58 or score < 142:
+                    continue
+            else:
+                score = max(espn_similaridade(time_unico, nomes[0]), espn_similaridade(time_unico, nomes[1]))
+                if score < 82:
+                    continue
+            label, dt_br, ao_vivo, ordem = v98_status_espn_seguro(comp)
+            finalizado = str(label).lower().startswith("final")
+            # Prefere jogo não-finalizado em empate de score (ex: 2ª mão vs 1ª mão já encerrada)
+            melhor_finalizado = str((melhor or {}).get("status_jogo", "")).lower().startswith("final")
+            supera = score > melhor_score or (score == melhor_score and melhor_finalizado and not finalizado)
+            if supera:
+                melhor_score = score
+                competidores = comp.get("competitors", [])
+                home = next((c for c in competidores if c.get("homeAway") == "home"), competidores[0] if competidores else {})
+                away = next((c for c in competidores if c.get("homeAway") == "away"), competidores[1] if len(competidores) > 1 else {})
+                placar_home = str(home.get("score", "")).strip()
+                placar_away = str(away.get("score", "")).strip()
+                placar = f"{placar_home}-{placar_away}" if placar_home != "" and placar_away != "" else ""
+                liga_display = ""
+                for lg in ev.get("leagues", []) or r.json().get("leagues", []):
+                    liga_display = lg.get("name") or lg.get("abbreviation") or ""
+                    if liga_display:
+                        break
+                melhor = {
+                    "espn_event_id": ev.get("id", ""),
+                    "espn_sport": sport,
+                    "espn_league": league,
+                    "espn_liga_nome": liga_display,
+                    "espn_match_score": score,
+                    "espn_match_name": " x ".join(nomes),
+                    "horario_jogo": dt_br.strftime("%d/%m/%Y %H:%M") if dt_br else "",
+                    "horario_jogo_iso": dt_br.isoformat() if dt_br else "",
+                    "status_jogo": label,
+                    "ao_vivo": bool(ao_vivo),
+                    "ordem_jogo": ordem,
+                    "placar_espn": placar,
+                    "placar_finalizado": placar if label == "Finalizado" else "",
+                }
+        return melhor_score, melhor
+    except Exception as e:
+        print("ESPN SAFE erro:", league, repr(e))
+        return 0, None
+
+
 def espn_buscar_jogo(jogo, esporte="Futebol", aposta=""):
     time_a, time_b = espn_dividir_times(jogo)
     dois_times = bool(time_a and time_b)
@@ -5450,68 +5602,41 @@ def espn_buscar_jogo(jogo, esporte="Futebol", aposta=""):
     chave = f"{espn_normalizar_nome(esporte)}|{espn_normalizar_nome(jogo)}|{espn_normalizar_nome(aposta)}"
     agora_ts = time.time()
     cache = ESPN_CACHE.get(chave)
-    if cache and (agora_ts - cache.get("ts", 0)) <= ESPN_CACHE_TTL:
-        return cache.get("valor")
+    if cache:
+        cached_val = cache.get("valor")
+        cached_status = str((cached_val or {}).get("status_jogo", "")).lower()
+        cached_finalizado = cached_status.startswith("final")
+        # Também invalida se o horário do jogo em cache já passou há >3h (pode ter acabado e há novo jogo)
+        if not cached_finalizado:
+            try:
+                ciso = (cached_val or {}).get("horario_jogo_iso", "")
+                if ciso:
+                    cdt = datetime.fromisoformat(str(ciso).replace("Z", "+00:00"))
+                    if cdt < datetime.now(cdt.tzinfo) - timedelta(hours=3):
+                        cached_finalizado = True
+            except Exception:
+                pass
+        ttl = 60 if (cached_val or {}).get("ao_vivo") else (0 if cached_finalizado else ESPN_CACHE_TTL)
+        if (agora_ts - cache.get("ts", 0)) <= ttl:
+            return cached_val
 
+    ligas = espn_ligas_por_esporte(esporte)
     melhor = None
     melhor_score = 0
 
-    for sport, league in espn_ligas_por_esporte(esporte):
-        try:
-            r = requests.get(espn_scoreboard_url(sport, league), timeout=6)
-            if r.status_code != 200:
-                continue
-
-            for ev in r.json().get("events", []):
-                comp = (ev.get("competitions") or [{}])[0]
-                nomes = []
-                for c in comp.get("competitors", []):
-                    team = c.get("team", {}) or {}
-                    nomes.append(team.get("displayName") or team.get("shortDisplayName") or team.get("name") or "")
-
-                if len(nomes) < 2:
-                    continue
-
-                if dois_times:
-                    a1 = espn_similaridade(time_a, nomes[0])
-                    b1 = espn_similaridade(time_b, nomes[1])
-                    a2 = espn_similaridade(time_a, nomes[1])
-                    b2 = espn_similaridade(time_b, nomes[0])
-
-                    if a1 + b1 >= a2 + b2:
-                        score = a1 + b1
-                        min_side = min(a1, b1)
-                    else:
-                        score = a2 + b2
-                        min_side = min(a2, b2)
-
-                    # Não aceitar só um time quando há confronto completo.
-                    if min_side < 58 or score < 142:
-                        continue
-                else:
-                    score = max(espn_similaridade(time_unico, nomes[0]), espn_similaridade(time_unico, nomes[1]))
-                    if score < 82:
-                        continue
-
+    with ThreadPoolExecutor(max_workers=20) as ex:
+        futures = {
+            ex.submit(_espn_buscar_em_liga, sport, league, time_a, time_b, time_unico, dois_times): (sport, league)
+            for sport, league in ligas
+        }
+        for fut in as_completed(futures):
+            try:
+                score, resultado = fut.result()
                 if score > melhor_score:
-                    label, dt_br, ao_vivo, ordem = v98_status_espn_seguro(comp)
                     melhor_score = score
-                    melhor = {
-                        "espn_event_id": ev.get("id", ""),
-                        "espn_sport": sport,
-                        "espn_league": league,
-                        "espn_match_score": score,
-                        "espn_match_name": " x ".join(nomes),
-                        "horario_jogo": dt_br.strftime("%d/%m/%Y %H:%M") if dt_br else "",
-                        "horario_jogo_iso": dt_br.isoformat() if dt_br else "",
-                        "status_jogo": label,
-                        "ao_vivo": bool(ao_vivo),
-                        "ordem_jogo": ordem,
-                    }
-
-        except Exception as e:
-            print("ESPN SAFE erro:", league, repr(e))
-            continue
+                    melhor = resultado
+            except Exception:
+                pass
 
     ESPN_CACHE[chave] = {"ts": agora_ts, "valor": melhor}
     return melhor
@@ -5523,7 +5648,9 @@ def espn_aplicar_info_na_aposta(bet, forcar=False):
         bet.setdefault("horario_jogo_iso", "")
         bet.setdefault("status_jogo", "")
         bet.setdefault("ao_vivo", False)
-        if not forcar and bet.get("horario_jogo") and bet.get("status_jogo"):
+        ao_vivo = bet.get("ao_vivo", False)
+        ja_tem_info = bet.get("horario_jogo") and bet.get("status_jogo")
+        if not forcar and ja_tem_info and not ao_vivo:
             return bet
         info = espn_buscar_jogo(bet.get("jogo", ""), bet.get("esporte", "Futebol"), bet.get("aposta", ""))
         if info: bet.update(info)
@@ -5561,8 +5688,19 @@ def espn_lazy_preencher_horarios_dashboard(limit=25, user_id=None):
             if not isinstance(b, dict):
                 continue
 
-            if b.get("horario_jogo") or b.get("status_jogo"):
-                continue
+            # Pula se finalizado recentemente (placar não muda)
+            # Se o jogo foi há >24h, pode ser 1ª mão — tenta encontrar novo jogo
+            status = str(b.get("status_jogo", "") or "").lower()
+            if "final" in status or "encerr" in status:
+                jogo_iso = b.get("horario_jogo_iso", "") or ""
+                if not jogo_iso:
+                    continue
+                try:
+                    jdt = datetime.fromisoformat(str(jogo_iso).replace("Z", "+00:00"))
+                    if (datetime.now(jdt.tzinfo) - jdt).total_seconds() < 86400:
+                        continue  # finalizado há <24h: pula
+                except Exception:
+                    continue
 
             jogo = str(b.get("jogo", "") or "")
             aposta = str(b.get("aposta", "") or "")
@@ -6734,6 +6872,21 @@ def admin_promover(uid):
     return redirect("/admin")
 
 
+@app.route("/admin/apagar_apostas/<uid>", methods=["POST"])
+@admin_required
+def admin_apagar_apostas(uid):
+    # Nunca apaga as apostas do próprio admin logado
+    if not uid or uid == session.get("user_id"):
+        return redirect("/admin")
+
+    antes = len(dados.get("bets", []))
+    dados["bets"] = [b for b in dados.get("bets", []) if b.get("user_id") != uid]
+    removidas = antes - len(dados["bets"])
+    print(f"ADMIN apagar_apostas: uid={uid} removidas={removidas}")
+    threading.Thread(target=salvar, daemon=True).start()
+    return redirect("/admin")
+
+
 @app.route("/adicionar_ajax", methods=["POST"])
 @login_required
 @assinatura_required
@@ -6805,6 +6958,10 @@ def index():
     bets_main.sort(key=lambda b: str(b.get("data", "") or "")[:10], reverse=True)
     bets_main.sort(key=lambda b: str(b.get("jogo", "") or "").lower())
 
+    # Histórico: agrupa por jogo, depois ordena por horario do jogo desc
+    bets_historico.sort(key=lambda b: str(b.get("horario_jogo_iso", "") or b.get("data", "") or ""), reverse=True)
+    bets_historico.sort(key=lambda b: str(b.get("jogo", "") or "").lower())
+
     return render_template(
         "index.html",
         bets=bets_main,
@@ -6815,6 +6972,45 @@ def index():
         casas=CASAS_DISPONIVEIS,
         esportes=ESPORTES_DISPONIVEIS
     )
+
+
+def resumo_periodo(bets_lista):
+    lucro = round(sum(float(b.get("lucro", 0) or 0) for b in bets_lista), 2)
+    total = len(bets_lista)
+    ganhas = sum(1 for b in bets_lista if b.get("estado") == "ganha")
+    perdidas = sum(1 for b in bets_lista if b.get("estado") == "perdida")
+    anuladas = sum(1 for b in bets_lista if b.get("estado") == "anulada")
+    resolvidas = ganhas + perdidas
+    taxa = round(ganhas / resolvidas * 100, 1) if resolvidas else 0.0
+    valor_apostado = round(sum(float(b.get("valor", 0) or 0) for b in bets_lista), 2)
+    roi = round(lucro / valor_apostado * 100, 2) if valor_apostado else 0.0
+    return {"lucro": lucro, "total": total, "ganhas": ganhas, "perdidas": perdidas,
+            "anuladas": anuladas, "taxa": taxa, "roi": roi, "valor_apostado": valor_apostado}
+
+
+@app.route("/api/card_resumo")
+@login_required
+def api_card_resumo():
+    tipo = request.args.get("tipo", "mensal")
+    mes = int(request.args.get("mes", datetime.now().month))
+    ano = int(request.args.get("ano", datetime.now().year))
+    dia = int(request.args.get("dia", 0))
+    recalcular()
+    bets = bets_do_usuario()
+    if tipo == "diario":
+        alvo = agora_local().date() if not dia else datetime(ano, mes, dia).date()
+        filtrados = [b for b in bets if v154_parse_data_jogo_aposta(b) and v154_parse_data_jogo_aposta(b).date() == alvo]
+        titulo = alvo.strftime("%d/%m")
+        subtitulo = "RESUMO DIÁRIO"
+    else:
+        filtrados = [b for b in bets if (lambda dt: dt and dt.year == ano and dt.month == mes)(v154_parse_data_jogo_aposta(b))]
+        from calendar import month_name
+        titulo = f"{datetime(ano, mes, 1).strftime('%B').upper()} {ano}"
+        subtitulo = "RESUMO MENSAL"
+    dados_card = resumo_periodo(filtrados)
+    dados_card["titulo"] = titulo
+    dados_card["subtitulo"] = subtitulo
+    return jsonify(dados_card)
 
 
 @app.route("/estatisticas")
@@ -7429,6 +7625,87 @@ def definir_data_jogo():
                 return jsonify({"ok": False}), 500
 
     return jsonify({"ok": False}), 404
+
+
+@app.route("/api/meus_jogos")
+@login_required
+def api_meus_jogos():
+    uid = session.get("user_id", "")
+    bets = [b for b in dados.get("bets", []) if b.get("user_id") == uid and b.get("estado", "") not in ("ganha", "perdida", "anulada")]
+    vistos = {}
+    for b in bets:
+        jogo = str(b.get("jogo", "") or "").strip()
+        if not jogo or len(jogo) < 4:
+            continue
+        if jogo not in vistos:
+            vistos[jogo] = {
+                "jogo": jogo,
+                "esporte": b.get("esporte", ""),
+                "espn_event_id": b.get("espn_event_id", ""),
+                "espn_sport": b.get("espn_sport", "soccer"),
+                "espn_league": b.get("espn_league", ""),
+                "status_jogo": b.get("status_jogo", ""),
+                "horario_jogo": b.get("horario_jogo", ""),
+                "ao_vivo": bool(b.get("ao_vivo")),
+                "placar": b.get("placar_espn", ""),
+            }
+    jogos = sorted(vistos.values(), key=lambda x: (not x["ao_vivo"], x.get("horario_jogo") or ""))
+    return jsonify(jogos)
+
+
+@app.route("/api/stats_jogo")
+@login_required
+def api_stats_jogo():
+    sport = request.args.get("sport", "soccer")
+    league = request.args.get("league", "")
+    event_id = request.args.get("event_id", "")
+    if not event_id:
+        return jsonify({"ok": False, "erro": "event_id obrigatório"}), 400
+    try:
+        url = f"https://site.api.espn.com/apis/site/v2/sports/{sport}/{league}/summary?event={event_id}"
+        r = requests.get(url, timeout=8)
+        if r.status_code != 200:
+            return jsonify({"ok": False, "erro": "ESPN não respondeu"}), 502
+        data = r.json()
+        comp = (data.get("header", {}).get("competitions") or [{}])[0]
+        competitors = comp.get("competitors", [])
+        home = next((c for c in competitors if c.get("homeAway") == "home"), competitors[0] if competitors else {})
+        away = next((c for c in competitors if c.get("homeAway") == "away"), competitors[1] if len(competitors) > 1 else {})
+        # HT score from linescores (index 0 = 1st half)
+        home_ls = home.get("linescores", [])
+        away_ls = away.get("linescores", [])
+        def _ls_val(ls, idx):
+            try: return str(int(float(ls[idx].get("value", ""))))
+            except: return ""
+        ht_home = _ls_val(home_ls, 0)
+        ht_away = _ls_val(away_ls, 0)
+
+        stats_raw = data.get("boxscore", {}).get("teams", [])
+        stats = []
+        for t in stats_raw:
+            team = t.get("team", {})
+            stats.append({
+                "nome": team.get("displayName", ""),
+                "logo": team.get("logo", ""),
+                "stats": [{"label": s.get("label", ""), "valor": s.get("displayValue", "")} for s in t.get("statistics", [])],
+            })
+        return jsonify({
+            "ok": True,
+            "home": {"nome": home.get("team", {}).get("displayName", ""), "placar": home.get("score", ""), "logo": home.get("team", {}).get("logo", ""), "ht": ht_home},
+            "away": {"nome": away.get("team", {}).get("displayName", ""), "placar": away.get("score", ""), "logo": away.get("team", {}).get("logo", ""), "ht": ht_away},
+            "status": (comp.get("status") or {}).get("type", {}).get("shortDetail", ""),
+            "stats": stats,
+        })
+    except Exception as e:
+        return jsonify({"ok": False, "erro": str(e)}), 500
+
+
+@app.route("/teste_stats")
+@login_required
+def teste_stats():
+    """Abre o modal de stats com Levante x Osasuna (jogo real já encerrado)."""
+    return render_template("teste_stats.html")
+
 
 if __name__ == "__main__":
     app.run(debug=True)

@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html lang="pt">
+<head>
+<meta charset="UTF-8">
+<title>Teste Stats</title>
+<link rel="stylesheet" href="/static/style.css">
+<style>body{background:#080d16;display:flex;align-items:center;justify-content:center;height:100vh;margin:0}</style>
+</head>
+<body>
+
+<div id="statsModalOverlay" class="stats-modal-overlay" style="display:flex" onclick="">
+    <div class="stats-modal" onclick="event.stopPropagation()">
+        <div class="stats-modal-header">
+            <strong id="statsModalTitulo">Carregando...</strong>
+            <button class="stats-close" onclick="window.close()">✕</button>
+        </div>
+        <div class="stats-modal-placar">
+            <div class="stats-time">
+                <img id="statsLogoHome" src="" alt="" onerror="this.style.display='none'">
+                <div class="stats-time-nome" id="statsNomeHome"></div>
+            </div>
+            <div style="text-align:center">
+                <div class="stats-placar-num" id="statsPlacar">-</div>
+                <div class="stats-status-label" id="statsStatusLabel"></div>
+                <div class="stats-ht-row" id="statsHtRow" style="display:none">HT: <span id="statsHtScore"></span></div>
+            </div>
+            <div class="stats-time">
+                <img id="statsLogoAway" src="" alt="" onerror="this.style.display='none'">
+                <div class="stats-time-nome" id="statsNomeAway"></div>
+            </div>
+        </div>
+        <div class="stats-lista" id="statsLista"><div class="jogos-live-loading">Carregando...</div></div>
+    </div>
+</div>
+
+<script>
+const STATS_MAP = {
+    "Corner Kicks":  "Escanteios",
+    "SHOTS":         "Finalizações",
+    "ON GOAL":       "Chutes a Gol",
+    "Yellow Cards":  "Cartões Amarelos",
+    "Red Cards":     "Cartões Vermelhos",
+}
+
+fetch('/api/stats_jogo?sport=soccer&league=esp.1&event_id=748491')
+    .then(r=>r.json()).then(d=>{
+        if(!d.ok){ document.getElementById('statsLista').innerHTML='<div class="jogos-live-loading">'+d.erro+'</div>'; return }
+        document.getElementById('statsModalTitulo').textContent = d.home.nome + ' x ' + d.away.nome
+        document.getElementById('statsNomeHome').textContent = d.home.nome
+        document.getElementById('statsNomeAway').textContent = d.away.nome
+        document.getElementById('statsLogoHome').src = d.home.logo || ''
+        document.getElementById('statsLogoAway').src = d.away.logo || ''
+        document.getElementById('statsPlacar').textContent = `${d.home.placar} - ${d.away.placar}`
+        document.getElementById('statsStatusLabel').textContent = d.status || 'Finalizado'
+        const htH = d.home.ht ?? '', htA = d.away.ht ?? ''
+        if(htH !== '' && htA !== ''){
+            document.getElementById('statsHtScore').textContent = `${htH} - ${htA}`
+            document.getElementById('statsHtRow').style.display = 'block'
+        }
+        const mapH = {}, mapA = {}
+        ;(d.stats[0] ? d.stats[0].stats : []).forEach(s => mapH[s.label] = s.valor)
+        ;(d.stats[1] ? d.stats[1].stats : []).forEach(s => mapA[s.label] = s.valor)
+        let html = ''
+        for(const [key, ptLabel] of Object.entries(STATS_MAP)){
+            const vh = mapH[key] ?? '', va = mapA[key] ?? ''
+            if(vh === '' && va === '') continue
+            const n1 = parseFloat(vh)||0, n2 = parseFloat(va)||0
+            const total = n1+n2||1
+            const pctH = Math.round(n1/total*100), pctA = 100-pctH
+            html += `<div class="stats-row">
+                <div class="stats-val-home">${vh}</div>
+                <div class="stats-label">${ptLabel}</div>
+                <div class="stats-val-away">${va}</div>
+            </div>
+            <div class="stats-bar-wrap">
+                <div class="stats-bar home" style="width:${pctH}%"></div>
+                <div class="stats-bar away" style="width:${pctA}%"></div>
+            </div>`
+        }
+        document.getElementById('statsLista').innerHTML = html || '<div class="jogos-live-loading">Sem dados</div>'
+    })
+</script>
+</body>
+</html>

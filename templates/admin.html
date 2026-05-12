@@ -18,6 +18,19 @@
 .badge.yellow { background:rgba(251,191,36,.15); color:#fbbf24; border:1px solid rgba(251,191,36,.3); }
 .badge.blue { background:rgba(96,165,250,.15); color:#60a5fa; border:1px solid rgba(96,165,250,.3); }
 .admin-actions { display:flex; gap:6px; flex-wrap:wrap; }
+/* Modal de confirmação */
+.confirm-modal-bg { display:none; position:fixed; inset:0; background:rgba(0,0,0,.7); z-index:9999; align-items:center; justify-content:center; }
+.confirm-modal-bg.open { display:flex; }
+.confirm-modal { background:#0f172a; border:1px solid #334155; border-radius:16px; padding:28px 32px; max-width:440px; width:90%; }
+.confirm-modal h3 { font-size:16px; color:#f1f5f9; margin:0 0 8px; }
+.confirm-modal p { font-size:13px; color:#94a3b8; margin:0 0 18px; line-height:1.5; }
+.confirm-modal .nome-destaque { color:#f87171; font-weight:700; }
+.confirm-modal label { display:flex; align-items:center; gap:8px; font-size:13px; color:#cbd5e1; cursor:pointer; margin-bottom:20px; }
+.confirm-modal label input[type=checkbox] { width:16px; height:16px; cursor:pointer; }
+.confirm-modal-btns { display:flex; gap:10px; justify-content:flex-end; }
+.btn-cancel-modal { background:rgba(51,65,85,.6); color:#94a3b8; border:none; border-radius:8px; padding:8px 18px; cursor:pointer; font-size:13px; }
+.btn-apagar-modal { background:#dc2626; color:#fff; border:none; border-radius:8px; padding:8px 18px; cursor:pointer; font-size:13px; font-weight:700; }
+.btn-apagar-modal:disabled { opacity:.4; cursor:not-allowed; }
 </style>
 </head>
 <body>
@@ -102,6 +115,9 @@
                     <a href="/admin/toggle/{{ u.id }}"><button class="{{ 'dark' if u.ativo else 'blue' }}" style="font-size:11px;padding:4px 8px;">{{ 'Bloquear' if u.ativo else 'Ativar' }}</button></a>
                     <a href="/admin/assinatura/{{ u.id }}"><button class="blue" style="font-size:11px;padding:4px 8px;">{{ 'Sub OFF' if u.assinatura_ativa else 'Sub ON' }}</button></a>
                     <a href="/admin/promover/{{ u.id }}"><button class="blue" style="font-size:11px;padding:4px 8px;">{{ 'Rem. admin' if u.is_admin else 'Tornar admin' }}</button></a>
+                    {% if not u.is_admin %}
+                    <button class="red" style="font-size:11px;padding:4px 8px;" onclick="abrirConfirmarApagar('{{ u.id }}', '{{ u.nome }}')">🗑 Apostas</button>
+                    {% endif %}
                 </div>
             </td>
         </tr>
@@ -112,8 +128,43 @@
 </section>
 </main>
 
+<!-- Modal de confirmação dupla -->
+<div class="confirm-modal-bg" id="confirmarApagarModal">
+    <div class="confirm-modal">
+        <h3>Apagar apostas do usuário</h3>
+        <p>Você está prestes a apagar <strong>todas as apostas</strong> de <span class="nome-destaque" id="confirmarNomeUsuario"></span>. Esta ação é <strong style="color:#f87171;">irreversível</strong>.</p>
+        <label>
+            <input type="checkbox" id="confirmarCheckbox" onchange="toggleBtnApagar()">
+            Sim, entendo que todas as apostas serão apagadas permanentemente.
+        </label>
+        <div class="confirm-modal-btns">
+            <button class="btn-cancel-modal" onclick="fecharConfirmar()">Cancelar</button>
+            <form id="formApagarApostas" method="POST" action="" style="margin:0;">
+                <button type="submit" class="btn-apagar-modal" id="btnConfirmarApagar" disabled>Apagar apostas</button>
+            </form>
+        </div>
+    </div>
+</div>
+
 <script>
 function toggleUserMenu(ev){if(ev) ev.stopPropagation();const menu=document.getElementById("sidebarUserMenu");if(menu) menu.classList.toggle("open")}
 document.addEventListener("click",function(e){const menu=document.getElementById("sidebarUserMenu");const card=document.querySelector(".sidebar-user-card");if(menu&&card&&!menu.contains(e.target)&&!card.contains(e.target)) menu.classList.remove("open")})
+
+function abrirConfirmarApagar(uid, nome) {
+    document.getElementById("confirmarNomeUsuario").textContent = nome
+    document.getElementById("formApagarApostas").action = "/admin/apagar_apostas/" + uid
+    document.getElementById("confirmarCheckbox").checked = false
+    document.getElementById("btnConfirmarApagar").disabled = true
+    document.getElementById("confirmarApagarModal").classList.add("open")
+}
+function fecharConfirmar() {
+    document.getElementById("confirmarApagarModal").classList.remove("open")
+}
+function toggleBtnApagar() {
+    document.getElementById("btnConfirmarApagar").disabled = !document.getElementById("confirmarCheckbox").checked
+}
+document.getElementById("confirmarApagarModal").addEventListener("click", function(e) {
+    if(e.target === this) fecharConfirmar()
+})
 </script>
 </body></html>

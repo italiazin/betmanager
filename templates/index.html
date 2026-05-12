@@ -23,16 +23,54 @@ const valores = {{ valores | tojson }};
         <button type="button" class="sidebar-toggle" onclick="toggleSidebar()" title="Recolher menu">‹</button>
     </div>
     <nav>
-        <a class="active" href="/" data-title="Dashboard"><span class="nav-icon">⌂</span><span class="nav-text">Dashboard</span></a>
-        <a href="/calculadora" data-title="Calculadora"><span class="nav-icon">🧮</span><span class="nav-text">Calculadora</span></a>
-        <a href="/estatisticas" data-title="Estatísticas"><span class="nav-icon">▥</span><span class="nav-text">Estatísticas</span></a>
-        <a href="/saldos" data-title="Saldos"><span class="nav-icon">💰</span><span class="nav-text">Saldos</span></a>
-    {% if usuario and usuario.is_admin %}
-        <a href="/admin" data-title="Admin"><span class="nav-icon">⚙</span><span class="nav-text">Admin</span></a>
+        <div class="sidebar-nav-label">Menu</div>
+        <a class="active" href="/" data-title="Dashboard">
+            <span class="nav-icon">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>
+            </span>
+            <span class="nav-text">Dashboard</span>
+        </a>
+        <a href="/calculadora" data-title="Calculadora">
+            <span class="nav-icon">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="2" width="16" height="20" rx="2"/><line x1="8" y1="6" x2="16" y2="6"/><line x1="8" y1="10" x2="10" y2="10"/><line x1="14" y1="10" x2="16" y2="10"/><line x1="8" y1="14" x2="10" y2="14"/><line x1="14" y1="14" x2="16" y2="14"/><line x1="8" y1="18" x2="10" y2="18"/><line x1="14" y1="18" x2="16" y2="18"/></svg>
+            </span>
+            <span class="nav-text">Calculadora</span>
+        </a>
+        <a href="/estatisticas" data-title="Estatísticas">
+            <span class="nav-icon">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/><line x1="2" y1="20" x2="22" y2="20"/></svg>
+            </span>
+            <span class="nav-text">Estatísticas</span>
+        </a>
+        <a href="/saldos" data-title="Saldos">
+            <span class="nav-icon">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="5" width="20" height="14" rx="2"/><line x1="2" y1="10" x2="22" y2="10"/></svg>
+            </span>
+            <span class="nav-text">Saldos</span>
+        </a>
+        {% if usuario and usuario.is_admin %}
+        <div class="sidebar-nav-label">Admin</div>
+        <a href="/admin" data-title="Admin">
+            <span class="nav-icon">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M12 1v4M12 19v4M4.22 4.22l2.83 2.83M16.95 16.95l2.83 2.83M1 12h4M19 12h4M4.22 19.78l2.83-2.83M16.95 7.05l2.83-2.83"/></svg>
+            </span>
+            <span class="nav-text">Admin</span>
+        </a>
         {% endif %}
-        <a href="/configuracoes" data-title="Configurações"><span class="nav-icon">⚙</span><span class="nav-text">Configurações</span></a>
-        <a href="/logout" data-title="Sair"><span class="nav-icon">↪</span><span class="nav-text">Sair</span></a>
-</nav>
+        <div class="sidebar-nav-label">Conta</div>
+        <a href="/configuracoes" data-title="Configurações">
+            <span class="nav-icon">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M12 1v4M12 19v4M4.22 4.22l2.83 2.83M16.95 16.95l2.83 2.83M1 12h4M19 12h4M4.22 19.78l2.83-2.83M16.95 7.05l2.83-2.83"/></svg>
+            </span>
+            <span class="nav-text">Configurações</span>
+        </a>
+        <a href="/logout" data-title="Sair">
+            <span class="nav-icon">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+            </span>
+            <span class="nav-text">Sair</span>
+        </a>
+    </nav>
 
     <div class="sidebar-user-wrap">
         <div class="sidebar-user-card" onclick="toggleUserMenu(event)">
@@ -64,8 +102,28 @@ const valores = {{ valores | tojson }};
         <p>Controle sua banca, prints, resultados, OCR e API</p>
     </div>
 
-    {% if usuario and usuario.is_admin %}<a href="/atualizar_api" class="api-button">{% if usuario and usuario.is_admin %}Atualizar Resultados API{% endif %}</a>{% endif %}
-{% if usuario and usuario.is_admin %}<button class="api-button" type="button" onclick="atualizarHorariosEspn()">🕒 Atualizar horários</button>{% endif %}
+    <div class="topbar-right">
+        {% if usuario and usuario.is_admin %}
+        <a href="/atualizar_api" class="api-button">Atualizar Resultados API</a>
+        <button class="api-button" type="button" onclick="atualizarHorariosEspn()">🕒 Atualizar horários</button>
+        {% endif %}
+        <div class="jogos-live-wrap">
+            <button class="jogos-live-btn" id="jogosLiveBtn" onclick="toggleJogosLive()" title="Meus jogos">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+                Meus Jogos
+                <span class="jogos-live-dot" id="jogosLiveDot" style="display:none"></span>
+            </button>
+            <div class="jogos-live-panel" id="jogosLivePanel" style="display:none">
+                <div class="jogos-live-header">
+                    <strong>Jogos com aposta</strong>
+                    <button onclick="carregarJogosLive()" class="jogos-live-refresh" title="Atualizar">↻</button>
+                </div>
+                <div id="jogosLiveList" class="jogos-live-list">
+                    <div class="jogos-live-loading">Carregando...</div>
+                </div>
+            </div>
+        </div>
+    </div>
 </header>
 
 <section class="cards">
@@ -135,16 +193,16 @@ const valores = {{ valores | tojson }};
         <h2>Nova Aposta Manual</h2>
 
         <form method="POST" class="manual-form" id="manualForm">
+            <input name="casa" placeholder="Casa">
+            <input name="aposta" id="manualApostaAuto" placeholder="Aposta (mercado/seleção)">
+            <input name="esporte" placeholder="Esporte">
+            <input name="odd" type="number" step="0.01" placeholder="Odd" required>
+            <input name="jogo" placeholder="Jogo / Times">
+            <input name="valor" type="number" step="0.01" placeholder="Valor apostado" required>
+            <button type="submit">Adicionar</button>
             <input type="hidden" name="copiada_comunidade" id="copiadaComunidade" value="0">
             <input type="hidden" name="source_original_id" id="sourceOriginalId" value="">
             <input type="hidden" name="horario_jogo" id="horarioJogo" value="">
-            <input type="hidden" name="aposta" id="manualApostaAuto" value="">
-            <input name="casa" placeholder="Casa">
-            <input name="esporte" placeholder="Esporte">
-            <input name="jogo" placeholder="Jogo / Times">
-            <input name="odd" type="number" step="0.01" placeholder="Odd" required>
-            <input name="valor" type="number" step="0.01" placeholder="Valor apostado" required>
-            <button type="submit">Adicionar</button>
         </form>
 
         <h2>Colar Prints</h2>
@@ -519,6 +577,170 @@ const valores = {{ valores | tojson }};
 </div>
 
 
+<div id="statsModalOverlay" class="stats-modal-overlay" style="display:none" onclick="fecharStatsModal(event)">
+    <div class="stats-modal" onclick="event.stopPropagation()">
+        <div class="stats-modal-header">
+            <strong id="statsModalTitulo">Estatísticas</strong>
+            <button class="stats-close" onclick="fecharStatsModal()">✕</button>
+        </div>
+        <div class="stats-modal-placar">
+            <div class="stats-time">
+                <img id="statsLogoHome" src="" alt="" onerror="this.style.display='none'">
+                <div class="stats-time-nome" id="statsNomeHome"></div>
+            </div>
+            <div style="text-align:center">
+                <div class="stats-placar-num" id="statsPlacar">-</div>
+                <div class="stats-status-label" id="statsStatusLabel"></div>
+                <div class="stats-ht-row" id="statsHtRow" style="display:none">HT: <span id="statsHtScore"></span></div>
+            </div>
+            <div class="stats-time">
+                <img id="statsLogoAway" src="" alt="" onerror="this.style.display='none'">
+                <div class="stats-time-nome" id="statsNomeAway"></div>
+            </div>
+        </div>
+        <div class="stats-lista" id="statsLista"></div>
+    </div>
+</div>
+
+<script>
+let _jogosLivePanelAberto = false
+
+function toggleJogosLive(){
+    const panel = document.getElementById("jogosLivePanel")
+    _jogosLivePanelAberto = !_jogosLivePanelAberto
+    panel.style.display = _jogosLivePanelAberto ? "block" : "none"
+    if(_jogosLivePanelAberto) carregarJogosLive()
+}
+
+document.addEventListener("click", e => {
+    if(!e.target.closest(".jogos-live-wrap") && _jogosLivePanelAberto){
+        _jogosLivePanelAberto = false
+        document.getElementById("jogosLivePanel").style.display = "none"
+    }
+})
+
+function _jogosHidden(){ return JSON.parse(localStorage.getItem("jogosHidden")||"[]") }
+
+function esconderJogo(nome, ev){
+    ev.stopPropagation()
+    const h = _jogosHidden(); if(!h.includes(nome)) h.push(nome)
+    localStorage.setItem("jogosHidden", JSON.stringify(h))
+    ev.target.closest(".jogo-live-item").remove()
+}
+
+function carregarJogosLive(){
+    const list = document.getElementById("jogosLiveList")
+    const dot = document.getElementById("jogosLiveDot")
+    list.innerHTML = '<div class="jogos-live-loading">Buscando jogos...</div>'
+    fetch("/api/meus_jogos").then(r=>r.json()).then(jogos=>{
+        const hidden = _jogosHidden()
+        jogos = jogos.filter(j=>!hidden.includes(j.jogo))
+        const aoVivo = jogos.filter(j=>j.ao_vivo)
+        dot.style.display = aoVivo.length ? "inline-block" : "none"
+        if(!jogos.length){
+            list.innerHTML = '<div class="jogos-live-loading">Nenhum jogo encontrado</div>'
+            return
+        }
+        list.innerHTML = jogos.map(j=>{
+            const jData = JSON.stringify(j).replace(/"/g,'&quot;')
+            const statusTxt = j.ao_vivo ? '🔴 Ao vivo' : (j.status_jogo||j.horario_jogo||j.esporte||'')
+            return `<div class="jogo-live-item${j.ao_vivo?' ao-vivo':''}" onclick="abrirStatsJogo(${jData})">
+                <div style="flex:1;min-width:0">
+                    <div class="jogo-live-nome">${j.jogo}</div>
+                    <div class="jogo-live-status">${statusTxt}</div>
+                </div>
+                ${j.placar ? `<div class="jogo-live-placar">${j.placar}</div>` : ''}
+                <button class="jogo-live-trash" onclick="esconderJogo('${j.jogo.replace(/'/g,"\\'")}',event)" title="Esconder">🗑</button>
+            </div>`
+        }).join("")
+    }).catch(()=>{ list.innerHTML='<div class="jogos-live-loading">Erro ao carregar</div>' })
+}
+
+const STATS_MAP = {
+    "Corner Kicks":  "Escanteios",
+    "SHOTS":         "Finalizações",
+    "ON GOAL":       "Chutes a Gol",
+    "Yellow Cards":  "Cartões Amarelos",
+    "Red Cards":     "Cartões Vermelhos",
+}
+let _statsInterval = null
+let _statsJogoAtual = null
+
+function _renderStats(d, jogoAoVivo){
+    if(!d.ok){ document.getElementById("statsLista").innerHTML='<div class="jogos-live-loading">Stats indisponíveis</div>'; return }
+    document.getElementById("statsNomeHome").textContent = d.home.nome
+    document.getElementById("statsNomeAway").textContent = d.away.nome
+    document.getElementById("statsLogoHome").src = d.home.logo || ""
+    document.getElementById("statsLogoAway").src = d.away.logo || ""
+    document.getElementById("statsPlacar").textContent = `${d.home.placar} - ${d.away.placar}`
+    document.getElementById("statsStatusLabel").textContent = d.status || (jogoAoVivo ? "🔴 Ao vivo" : "")
+    const htRow = document.getElementById("statsHtRow")
+    const htH = d.home.ht ?? "", htA = d.away.ht ?? ""
+    if(htH !== "" && htA !== ""){
+        document.getElementById("statsHtScore").textContent = `${htH} - ${htA}`
+        htRow.style.display = "block"
+    } else { htRow.style.display = "none" }
+    const home = d.stats[0], away = d.stats[1]
+    if(!home && !away){ document.getElementById("statsLista").innerHTML='<div class="jogos-live-loading">Sem estatísticas disponíveis</div>'; return }
+    const mapH = {}, mapA = {}
+    ;(home ? home.stats : []).forEach(s => mapH[s.label] = s.valor)
+    ;(away ? away.stats : []).forEach(s => mapA[s.label] = s.valor)
+    let html = ""
+    for(const [key, ptLabel] of Object.entries(STATS_MAP)){
+        const vh = mapH[key] ?? "", va = mapA[key] ?? ""
+        if(vh === "" && va === "") continue
+        const n1 = parseFloat(vh)||0, n2 = parseFloat(va)||0
+        const total = n1+n2||1
+        const pctH = Math.round(n1/total*100), pctA = 100-pctH
+        html += `<div class="stats-row">
+            <div class="stats-val-home">${vh}</div>
+            <div class="stats-label">${ptLabel}</div>
+            <div class="stats-val-away">${va}</div>
+        </div>
+        <div class="stats-bar-wrap">
+            <div class="stats-bar home" style="width:${pctH}%"></div>
+            <div class="stats-bar away" style="width:${pctA}%"></div>
+        </div>`
+    }
+    if(!html) html = '<div class="jogos-live-loading">Sem estatísticas disponíveis</div>'
+    document.getElementById("statsLista").innerHTML = html
+}
+
+function _fetchStats(jogo){
+    fetch(`/api/stats_jogo?sport=${jogo.espn_sport||'soccer'}&league=${jogo.espn_league}&event_id=${jogo.espn_event_id}`)
+        .then(r=>r.json()).then(d=> _renderStats(d, jogo.ao_vivo))
+        .catch(()=>{ document.getElementById("statsLista").innerHTML='<div class="jogos-live-loading">Erro ao carregar</div>' })
+}
+
+function abrirStatsJogo(jogo){
+    if(!jogo.espn_event_id || !jogo.espn_league){ return }
+    _statsJogoAtual = jogo
+    clearInterval(_statsInterval)
+    _statsInterval = null
+    document.getElementById("statsModalTitulo").textContent = jogo.jogo
+    document.getElementById("statsPlacar").textContent = jogo.placar || "-"
+    document.getElementById("statsNomeHome").textContent = ""
+    document.getElementById("statsNomeAway").textContent = ""
+    document.getElementById("statsStatusLabel").textContent = jogo.ao_vivo ? "🔴 Ao vivo" : (jogo.status_jogo || "")
+    document.getElementById("statsStatusLabel").className = "stats-status-label" + (jogo.ao_vivo ? " stats-live-label" : "")
+    document.getElementById("statsHtRow").style.display = "none"
+    document.getElementById("statsLista").innerHTML = '<div class="jogos-live-loading">Carregando estatísticas...</div>'
+    document.getElementById("statsModalOverlay").style.display = "flex"
+    _fetchStats(jogo)
+    if(jogo.ao_vivo){
+        _statsInterval = setInterval(()=> _fetchStats(_statsJogoAtual), 30000)
+    }
+}
+
+function fecharStatsModal(e){
+    if(!e || e.target===document.getElementById("statsModalOverlay")){
+        document.getElementById("statsModalOverlay").style.display="none"
+        clearInterval(_statsInterval)
+        _statsInterval = null
+        _statsJogoAtual = null
+    }
+}
+</script>
 </body>
 </html>
 
