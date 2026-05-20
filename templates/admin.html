@@ -126,6 +126,18 @@
     </table>
     </div>
 </section>
+
+<section class="panel" style="padding:20px 24px; margin-top:16px;">
+    <h2 style="margin-bottom:8px; font-size:15px; color:#94a3b8; text-transform:uppercase; letter-spacing:.05em;">Backup de Dados</h2>
+    <p style="font-size:13px; color:#64748b; margin-bottom:16px;">Baixe um arquivo JSON com todas as apostas e usuários para salvar no seu PC.</p>
+    <div style="display:flex; gap:10px; flex-wrap:wrap; align-items:center;">
+        <a href="/admin/exportar" download>
+            <button class="blue" style="font-size:13px; padding:8px 18px;">⬇ Baixar Backup JSON</button>
+        </a>
+        <button class="dark" style="font-size:13px; padding:8px 18px;" onclick="criarSnapshot()">💾 Salvar Snapshot no Banco</button>
+        <span id="snapshotMsg" style="font-size:12px; color:#4ade80; display:none;">Snapshot salvo!</span>
+    </div>
+</section>
 </main>
 
 <!-- Modal de confirmação dupla -->
@@ -166,5 +178,29 @@ function toggleBtnApagar() {
 document.getElementById("confirmarApagarModal").addEventListener("click", function(e) {
     if(e.target === this) fecharConfirmar()
 })
+
+async function criarSnapshot() {
+    const btn = event.target
+    btn.disabled = true
+    btn.textContent = "Salvando..."
+    try {
+        const r = await fetch("/admin/backups/criar", {method:"POST"})
+        const d = await r.json()
+        const msg = document.getElementById("snapshotMsg")
+        if (d.status === "ok" || d.id) {
+            msg.textContent = "Snapshot salvo! ID: " + (d.id || "ok")
+            msg.style.color = "#4ade80"
+        } else {
+            msg.textContent = "Erro: " + (d.erro || "desconhecido")
+            msg.style.color = "#f87171"
+        }
+        msg.style.display = "inline"
+        setTimeout(() => { msg.style.display = "none" }, 4000)
+    } catch(e) {
+        alert("Erro ao salvar snapshot: " + e)
+    }
+    btn.disabled = false
+    btn.textContent = "💾 Salvar Snapshot no Banco"
+}
 </script>
 </body></html>
