@@ -22,8 +22,12 @@ from functools import wraps
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from werkzeug.security import generate_password_hash, check_password_hash
 
-import pytesseract
-from PIL import Image
+try:
+    import pytesseract
+    from PIL import Image
+    OCR_DISPONIVEL = True
+except ImportError:
+    OCR_DISPONIVEL = False
 
 app = Flask(__name__)
 Compress(app)
@@ -75,7 +79,9 @@ def get_db_engine():
         DB_ENGINE = create_engine(
             _normalizar_database_url(DATABASE_URL),
             pool_pre_ping=True,
-            pool_recycle=280
+            pool_recycle=280,
+            pool_size=2,
+            max_overflow=3
         )
         inicializar_banco()
 
@@ -5627,7 +5633,7 @@ def espn_buscar_jogo(jogo, esporte="Futebol", aposta=""):
     melhor = None
     melhor_score = 0
 
-    with ThreadPoolExecutor(max_workers=20) as ex:
+    with ThreadPoolExecutor(max_workers=4) as ex:
         futures = {
             ex.submit(_espn_buscar_em_liga, sport, league, time_a, time_b, time_unico, dois_times): (sport, league)
             for sport, league in ligas
@@ -5910,7 +5916,7 @@ def v94_cache_jogos_espn(forcar=False):
             return []
 
     jogos = []
-    with ThreadPoolExecutor(max_workers=min(len(tarefas), 12)) as executor:
+    with ThreadPoolExecutor(max_workers=min(len(tarefas), 4)) as executor:
         futuros = {executor.submit(buscar_liga, e, s, l): (e, s, l) for e, s, l in tarefas}
         for futuro in as_completed(futuros):
             try:
