@@ -115,8 +115,17 @@ const valores = {{ valores | tojson }};
             </button>
             <div class="jogos-live-panel" id="jogosLivePanel" style="display:none">
                 <div class="jogos-live-header">
-                    <strong>Jogos com aposta</strong>
+                    <strong>Jogos</strong>
+                    <input class="jogos-live-search" id="jogosLiveSearch" placeholder="Pesquisar..." oninput="filtrarJogos(this.value)">
                     <button onclick="carregarJogosLive()" class="jogos-live-refresh" title="Atualizar">↻</button>
+                    <button onclick="toggleJogosLive()" class="jogos-live-close" title="Fechar">✕</button>
+                </div>
+                <div class="jogos-live-switch">
+                    <div class="jls-track">
+                        <div class="jls-pill" id="jlsPill" style="display:none"></div>
+                        <button class="jls-opt" id="jlsAoVivo" onclick="setModoJogos('aovivo')">🔴 Ao Vivo</button>
+                        <button class="jls-opt" id="jlsFinalizado" onclick="setModoJogos('finalizado')">✓ Finalizados</button>
+                    </div>
                 </div>
                 <div id="jogosLiveList" class="jogos-live-list">
                     <div class="jogos-live-loading">Carregando...</div>
@@ -510,7 +519,7 @@ const valores = {{ valores | tojson }};
             <tbody>
                 {% for b in bets_historico %}
                 <tr class="bet-row-historico" data-id="{{ b.id if b.id is defined else loop.index0 }}" data-horario="{{ b.horario_jogo_iso if b.horario_jogo_iso is defined else '' }}">
-                    <td>{{ (b.data or '')[:10] }}</td>
+                    <td>{{ b.horario_jogo[:5] if b.horario_jogo else (b.data or '')[:10] }}</td>
                     <td class="casa-cell">{{ b.casa }}</td>
                     <td class="esporte-cell">{{ b.esporte }}</td>
                     <td class="jogo-cell">{{ b.jogo }}</td>
@@ -604,20 +613,41 @@ const valores = {{ valores | tojson }};
 
 <script>
 let _jogosLivePanelAberto = false
+let _jogosData = []
+let _jogoExpandido = null
+let _listRefreshInterval = null
+let _inlineStatsInterval = null
+let _filtroBusca = ""
+let _modoJogos = "todos"
+
+function setModoJogos(modo){
+    if(_modoJogos === modo) modo = "todos"
+    _modoJogos = modo
+    document.getElementById("jlsAoVivo").classList.toggle("active", modo === "aovivo")
+    document.getElementById("jlsFinalizado").classList.toggle("active", modo === "finalizado")
+    const pill = document.getElementById("jlsPill")
+    pill.style.display = modo === "todos" ? "none" : "block"
+    pill.style.left = modo === "aovivo" ? "3px" : "calc(50%)"
+    _renderJogos()
+}
 
 function toggleJogosLive(){
     const panel = document.getElementById("jogosLivePanel")
     _jogosLivePanelAberto = !_jogosLivePanelAberto
-    panel.style.display = _jogosLivePanelAberto ? "block" : "none"
-    if(_jogosLivePanelAberto) carregarJogosLive()
-}
-
-document.addEventListener("click", e => {
-    if(!e.target.closest(".jogos-live-wrap") && _jogosLivePanelAberto){
-        _jogosLivePanelAberto = false
-        document.getElementById("jogosLivePanel").style.display = "none"
+    panel.style.display = _jogosLivePanelAberto ? "flex" : "none"
+    if(_jogosLivePanelAberto){
+        // Se já há dados em cache, mostra imediatamente sem loading
+        if(_jogosData.length){
+            _renderJogos()
+            _buscarStatsAtivos()
+        }
+        carregarJogosLive()
+    } else {
+        clearInterval(_listRefreshInterval); _listRefreshInterval = null
+        clearInterval(_inlineStatsInterval); _inlineStatsInterval = null
+        _jogoExpandido = null
     }
-})
+}
 
 function _jogosHidden(){ return JSON.parse(localStorage.getItem("jogosHidden")||"[]") }
 
@@ -625,35 +655,262 @@ function esconderJogo(nome, ev){
     ev.stopPropagation()
     const h = _jogosHidden(); if(!h.includes(nome)) h.push(nome)
     localStorage.setItem("jogosHidden", JSON.stringify(h))
+    if(_jogoExpandido === nome){ _jogoExpandido = null; clearInterval(_inlineStatsInterval); _inlineStatsInterval = null }
     ev.target.closest(".jogo-live-item").remove()
+}
+
+function filtrarJogos(q){
+    _filtroBusca = q.toLowerCase()
+    _renderJogos()
+}
+
+function limparJogosHidden(){
+    localStorage.removeItem("jogosHidden")
+    carregarJogosLive()
+}
+
+function _sortJogos(arr){
+    const agora_ms = Date.now()
+    const _encerrado = j => {
+        if(String(j.status_jogo||"").toLowerCase().startsWith("final")) return true
+        if(j.horario_jogo_iso) return agora_ms > new Date(j.horario_jogo_iso).getTime() + 2*3600*1000
+        return false
+    }
+    arr.sort((a,b)=>{
+        const ord = j => j.ao_vivo ? 0 : (_encerrado(j) ? 2 : 1)
+        return ord(a)-ord(b) || (a.horario_jogo_iso||"").localeCompare(b.horario_jogo_iso||"")
+    })
+}
+
+function _buscarStatsAtivos(){
+    const agora_ms = Date.now()
+    _jogosData.filter(j=>{
+        if(!j.espn_event_id || !j.espn_league) return false
+        if(j.ao_vivo) return true
+        if(j.horario_jogo_iso){
+            const diff = agora_ms - new Date(j.horario_jogo_iso).getTime()
+            return diff >= 0 && diff < 3*3600*1000  // iniciado há menos de 3h
+        }
+        return false
+    }).forEach((j,i)=>{ setTimeout(()=>{ if(_jogosLivePanelAberto) _fetchInlineStats(j, false) }, i*500) })
 }
 
 function carregarJogosLive(){
     const list = document.getElementById("jogosLiveList")
-    const dot = document.getElementById("jogosLiveDot")
-    list.innerHTML = '<div class="jogos-live-loading">Buscando jogos...</div>'
+    if(!_jogosData.length) list.innerHTML = '<div class="jogos-live-loading">Buscando jogos...</div>'
     fetch("/api/meus_jogos").then(r=>r.json()).then(jogos=>{
         const hidden = _jogosHidden()
-        jogos = jogos.filter(j=>!hidden.includes(j.jogo))
-        const aoVivo = jogos.filter(j=>j.ao_vivo)
-        dot.style.display = aoVivo.length ? "inline-block" : "none"
-        if(!jogos.length){
-            list.innerHTML = '<div class="jogos-live-loading">Nenhum jogo encontrado</div>'
-            return
+        _jogosData = jogos.filter(j=>!hidden.includes(j.jogo))
+        _sortJogos(_jogosData)
+        _renderJogos()
+        _buscarStatsAtivos()
+        clearInterval(_listRefreshInterval); _listRefreshInterval = null
+        _listRefreshInterval = setInterval(()=>{
+            if(!_jogosLivePanelAberto) return
+            fetch("/api/meus_jogos").then(r=>r.json()).then(jogos=>{
+                const hidden = _jogosHidden()
+                _jogosData = jogos.filter(j=>!hidden.includes(j.jogo))
+                _sortJogos(_jogosData)
+                _renderJogos()
+                _buscarStatsAtivos()
+            })
+        }, 60000)
+        const dot = document.getElementById("jogosLiveDot")
+        dot.style.display = _jogosData.some(j=>j.ao_vivo) ? "inline-block" : "none"
+    }).catch(()=>{ list.innerHTML='<div class="jogos-live-loading">Erro ao carregar</div>' })
+}
+
+function _renderJogos(){
+    const list = document.getElementById("jogosLiveList")
+    const agora_ms = Date.now()
+    const _encerrado = j => {
+        if(String(j.status_jogo||"").toLowerCase().startsWith("final")) return true
+        if(j.horario_jogo_iso) return agora_ms > new Date(j.horario_jogo_iso).getTime() + 2*3600*1000
+        return false
+    }
+    // Hoje: jogos com horario_jogo_iso hoje ou sem data (inclui todos os "Hoje ...")
+    const _hoje = new Date()
+    const _hojeIni = new Date(_hoje.getFullYear(), _hoje.getMonth(), _hoje.getDate(), 0, 0, 0).getTime()
+    const _hoje_fim = new Date(_hoje.getFullYear(), _hoje.getMonth(), _hoje.getDate(), 23, 59, 59).getTime()
+    const _hojeDD = String(_hoje.getDate()).padStart(2,'0')+'/'+String(_hoje.getMonth()+1).padStart(2,'0')
+    const _ehHoje = j => {
+        if(j.ao_vivo) return true
+        if(j.horario_jogo_iso){
+            const t = new Date(j.horario_jogo_iso).getTime()
+            return t >= _hojeIni && t <= _hoje_fim
         }
-        list.innerHTML = jogos.map(j=>{
-            const jData = JSON.stringify(j).replace(/"/g,'&quot;')
-            const statusTxt = j.ao_vivo ? '🔴 Ao vivo' : (j.status_jogo||j.horario_jogo||j.esporte||'')
-            return `<div class="jogo-live-item${j.ao_vivo?' ao-vivo':''}" onclick="abrirStatsJogo(${jData})">
+        const s = j.status_jogo || ''
+        if(s.startsWith('Hoje')) return true
+        const m = s.match(/^(\d{2})[\/\\](\d{2})/)
+        if(m) return m[1]+'/'+m[2] === _hojeDD
+        return false  // sem data reconhecível: esconde
+    }
+    let filtrados = _jogosData.filter(j=>{
+        if(!_ehHoje(j) && !_encerrado(j) && !j.ao_vivo) return false
+        if(_filtroBusca && !j.jogo.toLowerCase().includes(_filtroBusca)) return false
+        if(_modoJogos === "aovivo") return j.ao_vivo === true
+        if(_modoJogos === "finalizado") return _encerrado(j)
+        return true
+    })
+    if(!filtrados.length){
+        const hidden = _jogosHidden()
+        let msg = _filtroBusca ? 'Nenhum resultado' : 'Nenhum jogo encontrado'
+        if(hidden.length && !_filtroBusca)
+            msg += '<br><button onclick="limparJogosHidden()" style="margin-top:8px;font-size:11px;padding:3px 10px;border-radius:6px;cursor:pointer;background:#1e3a5f;color:#90caf9;border:1px solid #1e3a5f">Restaurar ' + hidden.length + ' oculto(s)</button>'
+        list.innerHTML = '<div class="jogos-live-loading" style="text-align:center">' + msg + '</div>'
+        return
+    }
+    // Salva conteúdo dos stats visíveis para evitar flash "Carregando" no re-render
+    const _savedStats = {}
+    _jogosData.forEach(j=>{
+        const el = document.getElementById("stats-inline-"+_inlineId(j.jogo))
+        if(el && el.innerHTML && !el.innerHTML.includes('stats-inline-loading') && !el.innerHTML.includes('stats-inline-sem'))
+            _savedStats[j.jogo] = el.innerHTML
+    })
+    const _normStatus = j => {
+        if(j.ao_vivo) return '🔴 Ao vivo'
+        let s = j.status_jogo || j.horario_jogo || j.esporte || ''
+        const m = s.match(/^(\d{2})[\/\\](\d{2})(?:[\/\\]\d{4})? (\d{2}:\d{2})/)
+        if(m && m[1]+'/'+m[2] === _hojeDD) s = 'Hoje ' + m[3]
+        return s
+    }
+    list.innerHTML = filtrados.map(j=>{
+        const nome = j.jogo
+        const expandido = _jogoExpandido === nome
+        const id20 = btoa(encodeURIComponent(nome)).replace(/[^a-zA-Z0-9]/g,'').slice(0,20)
+        const nomeSafe = nome.replace(/\\/g,'\\\\').replace(/'/g,"\\'")
+        const statusTxt = _normStatus(j)
+        const savedHtml = _savedStats[nome] || '<div class="stats-inline-loading" style="display:none"></div>'
+        return `<div class="jogo-live-item${j.ao_vivo?' ao-vivo':''}${expandido?' expandido':''}" id="jogo-item-${id20}">
+            <div class="jogo-live-item-header" onclick="expandirJogo('${nomeSafe}')">
                 <div style="flex:1;min-width:0">
-                    <div class="jogo-live-nome">${j.jogo}</div>
+                    <div class="jogo-live-nome">${nome}</div>
                     <div class="jogo-live-status">${statusTxt}</div>
                 </div>
-                ${j.placar ? `<div class="jogo-live-placar">${j.placar}</div>` : ''}
-                <button class="jogo-live-trash" onclick="esconderJogo('${j.jogo.replace(/'/g,"\\'")}',event)" title="Esconder">🗑</button>
-            </div>`
-        }).join("")
-    }).catch(()=>{ list.innerHTML='<div class="jogos-live-loading">Erro ao carregar</div>' })
+                <div class="jogo-live-placar" data-jogo="${nomeSafe}" style="${j.placar?'':'display:none'}">${j.placar||''}</div>
+                <button class="jogo-live-trash" onclick="esconderJogo('${nomeSafe}',event)" title="Esconder">🗑</button>
+            </div>
+            <div class="jogo-stats-inline${expandido?' aberto':''}" id="stats-inline-${id20}">${savedHtml}</div>
+        </div>`
+    }).join("")
+    // Busca stats frescos do jogo expandido
+    if(_jogoExpandido){
+        const jogo = _jogosData.find(j=>j.jogo===_jogoExpandido)
+        if(jogo) _fetchInlineStats(jogo, false)
+    }
+}
+
+function _inlineId(nome){ return btoa(encodeURIComponent(nome)).replace(/[^a-zA-Z0-9]/g,'').slice(0,20) }
+
+function expandirJogo(nome){
+    const jogo = _jogosData.find(j=>j.jogo===nome)
+    if(!jogo || !jogo.espn_event_id) return
+    clearInterval(_inlineStatsInterval); _inlineStatsInterval = null
+    if(_jogoExpandido === nome){
+        // colapsa
+        _jogoExpandido = null
+        const el = document.getElementById("jogo-item-"+_inlineId(nome))
+        if(el){ el.classList.remove("expandido"); el.querySelector(".jogo-stats-inline").classList.remove("aberto") }
+        return
+    }
+    // fecha anterior
+    if(_jogoExpandido){
+        const old = document.getElementById("jogo-item-"+_inlineId(_jogoExpandido))
+        if(old){ old.classList.remove("expandido"); old.querySelector(".jogo-stats-inline").classList.remove("aberto") }
+    }
+    _jogoExpandido = nome
+    const el = document.getElementById("jogo-item-"+_inlineId(nome))
+    if(el){ el.classList.add("expandido"); el.querySelector(".jogo-stats-inline").classList.add("aberto") }
+    _fetchInlineStats(jogo, true)
+    if(jogo.ao_vivo){
+        _inlineStatsInterval = setInterval(()=>{ const j2 = _jogosData.find(x=>x.jogo===_jogoExpandido); if(j2) _fetchInlineStats(j2, false) }, 30000)
+    }
+}
+
+function _fetchInlineStats(jogo, showLoading){
+    const id = _inlineId(jogo.jogo)
+    const el = document.getElementById("stats-inline-"+id)
+    if(!el) return
+    if(!jogo.espn_league || !jogo.espn_event_id){
+        el.innerHTML = '<div class="stats-inline-sem">ESPN não encontrou este jogo ainda</div>'
+        return
+    }
+    if(showLoading) el.innerHTML = '<div class="stats-inline-loading">Carregando...</div>'
+    fetch(`/api/stats_jogo?sport=${jogo.espn_sport||'soccer'}&league=${jogo.espn_league}&event_id=${jogo.espn_event_id}`)
+        .then(r => {
+            if(r.redirected || r.url.includes('/login')) { window.location.href='/login'; throw new Error('sessão expirada') }
+            if(!r.ok && r.status !== 500 && r.status !== 502) throw new Error('HTTP ' + r.status)
+            return r.json()
+        })
+        .then(d=>{
+            if(!d.ok){ el.innerHTML='<div class="stats-inline-sem">'+(d.erro||'Stats indisponíveis')+'</div>'; return }
+            const home = d.home || {}, away = d.away || {}
+            const htH = home.ht ?? "", htA = away.ht ?? ""
+            const htStr = (htH !== "" && htA !== "") ? `HT: <span>${htH} - ${htA}</span>` : ""
+            // Usa status real-time do ESPN, não o dado stale do bet
+            const jogoAtivo = d.ao_vivo || d.finalizado
+            const placarStr = jogoAtivo ? `${home.placar||''} - ${away.placar||''}` : ""
+
+            // Atualiza destaque ao vivo na lista
+            const itemEl = el.closest(".jogo-live-item")
+            if(itemEl && d.ao_vivo) itemEl.classList.add("ao-vivo")
+            // Atualiza status na lista se estava desatualizado
+            if(d.ao_vivo){
+                const statusEl = itemEl?.querySelector(".jogo-live-status")
+                if(statusEl && statusEl.textContent !== "🔴 Ao vivo") statusEl.textContent = "🔴 Ao vivo"
+                const entry = _jogosData.find(x=>x.jogo===jogo.jogo)
+                if(entry) entry.ao_vivo = true
+            }
+            const placarEl = itemEl?.querySelector(".jogo-live-placar")
+            if(placarEl && placarStr){ placarEl.textContent = placarStr; placarEl.style.display = '' }
+            if(placarStr){
+                fetch("/api/salvar_placar_jogo", {method:"POST", headers:{"Content-Type":"application/json"},
+                    body: JSON.stringify({jogo: jogo.jogo, espn_event_id: jogo.espn_event_id, placar: placarStr, ht: d.ht_str||""})
+                }).catch(()=>{})
+            }
+
+            const STATS_MAP = {"Corner Kicks":"Escanteios","SHOTS":"Finalizações","ON GOAL":"Chutes a Gol","Yellow Cards":"Cartões Amarelos","Red Cards":"Cartões Vermelhos"}
+            const mapH = {}, mapA = {}
+            ;(d.stats && d.stats[0] ? d.stats[0].stats||[] : []).forEach(s=>{ if(s&&s.label) mapH[s.label]=s.valor })
+            ;(d.stats && d.stats[1] ? d.stats[1].stats||[] : []).forEach(s=>{ if(s&&s.label) mapA[s.label]=s.valor })
+            let rows = ""
+            for(const [key, lbl] of Object.entries(STATS_MAP)){
+                const vh = mapH[key]??"", va = mapA[key]??""
+                if(vh===""&&va==="") continue
+                const n1=parseFloat(vh)||0, n2=parseFloat(va)||0, tot=n1+n2||1
+                const pH=Math.round(n1/tot*100), pA=100-pH
+                rows += `<div class="stats-inline-row"><div class="stats-inline-val-h">${vh}</div><div class="stats-inline-label">${lbl}</div><div class="stats-inline-val-a">${va}</div></div>
+                <div class="stats-inline-bar"><div class="stats-inline-bar-h" style="width:${pH}%"></div><div class="stats-inline-bar-a" style="width:${pA}%"></div></div>`
+            }
+
+            let golsHtml = ""
+            if(d.gols && d.gols.length){
+                const gH = d.gols.filter(g=>g.time===home.nome)
+                const gA = d.gols.filter(g=>g.time===away.nome)
+                const maxG = Math.max(gH.length, gA.length)
+                let rows = ''
+                for(let i=0;i<maxG;i++){
+                    const gh = gH[i], ga = gA[i]
+                    rows += `<div class="gol-split-row">
+                        <div class="gol-split-h">${gh?`⚽ <span class="gol-min">${gh.minuto||''}</span> ${gh.jogador||''}`:'&nbsp;'}</div>
+                        <div class="gol-split-a">${ga?`${ga.jogador||''} <span class="gol-min">${ga.minuto||''}</span> ⚽`:'&nbsp;'}</div>
+                    </div>`
+                }
+                golsHtml = '<div class="stats-inline-gols">' + rows + '</div>'
+            }
+
+            el.innerHTML = `
+                <div class="stats-inline-placar">
+                    <div class="stats-inline-time"><img src="${home.logo||''}" onerror="this.style.display='none'">${home.nome||''}</div>
+                    <div class="stats-inline-score">${placarStr}</div>
+                    <div class="stats-inline-time"><img src="${away.logo||''}" onerror="this.style.display='none'">${away.nome||''}</div>
+                </div>
+                ${htStr ? '<div class="stats-inline-ht">'+htStr+'</div>' : ''}
+                <div class="stats-inline-status">${d.status||''}</div>
+                ${golsHtml}
+                ${rows || '<div class="stats-inline-sem">Sem estatísticas</div>'}
+            `
+        }).catch(err=>{ console.error('stats_jogo err:', err); el.innerHTML='<div class="stats-inline-sem">Erro: '+String(err.message||err)+'</div>' })
 }
 
 const STATS_MAP = {
@@ -740,6 +997,22 @@ function fecharStatsModal(e){
         _statsJogoAtual = null
     }
 }
+
+// Pré-carrega dados em background assim que a página carrega
+// Quando o usuário abrir o painel, os dados já estão prontos
+function _bgFetchJogos(){
+    fetch("/api/meus_jogos").then(r=>r.json()).then(jogos=>{
+        const hidden = _jogosHidden()
+        _jogosData = jogos.filter(j=>!hidden.includes(j.jogo))
+        _sortJogos(_jogosData)
+        const dot = document.getElementById("jogosLiveDot")
+        if(dot) dot.style.display = _jogosData.some(j=>j.ao_vivo) ? "inline-block" : "none"
+        // Se o painel estiver aberto, re-renderiza com dados frescos
+        if(_jogosLivePanelAberto){ _renderJogos(); _buscarStatsAtivos() }
+    }).catch(()=>{})
+}
+// Pré-carrega imediatamente e repete a cada 60s
+_bgFetchJogos(); setInterval(_bgFetchJogos, 60000)
 </script>
 </body>
 </html>
