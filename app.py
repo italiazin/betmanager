@@ -8102,6 +8102,39 @@ def admin_exportar():
         return jsonify({"erro": str(e)}), 500
 
 
+@app.route("/admin/exportar_sql")
+@admin_required
+def admin_exportar_sql():
+    try:
+        dados_val = db_get_json("dados", {"apostas": [], "saldos": {}})
+        usuarios_val = db_get_json("usuarios", {})
+        ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+        dados_sql = json.dumps(dados_val, ensure_ascii=False).replace("'", "''")
+        usuarios_sql = json.dumps(usuarios_val, ensure_ascii=False).replace("'", "''")
+        linhas = [
+            "-- Bet Manager SQL Backup",
+            f"-- Gerado em: {datetime.now().isoformat()}",
+            "-- Restaurar: psql <URL_DO_BANCO> < este_arquivo.sql",
+            "",
+            "INSERT INTO app_store (chave, valor, atualizado_em)",
+            f"VALUES ('dados', '{dados_sql}', NOW())",
+            "ON CONFLICT (chave) DO UPDATE SET valor = EXCLUDED.valor, atualizado_em = NOW();",
+            "",
+            "INSERT INTO app_store (chave, valor, atualizado_em)",
+            f"VALUES ('usuarios', '{usuarios_sql}', NOW())",
+            "ON CONFLICT (chave) DO UPDATE SET valor = EXCLUDED.valor, atualizado_em = NOW();",
+        ]
+        conteudo = "\n".join(linhas)
+        nome = f"betmanager_backup_{ts}.sql"
+        from flask import make_response
+        resp = make_response(conteudo)
+        resp.headers["Content-Type"] = "text/plain; charset=utf-8"
+        resp.headers["Content-Disposition"] = f"attachment; filename={nome}"
+        return resp
+    except Exception as e:
+        return jsonify({"erro": str(e)}), 500
+
+
 if __name__ == "__main__":
     threading.Thread(target=_backup_diario_loop, daemon=True).start()
     app.run(debug=True)
