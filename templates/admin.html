@@ -1,38 +1,6 @@
 <!DOCTYPE html>
 <html lang="pt-BR">
-<head><meta charset="UTF-8"><title>Admin</title><link rel="stylesheet" href="/static/style.css">
-<style>
-.admin-stats-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(160px,1fr)); gap:12px; margin-bottom:24px; }
-.admin-stat-card { background:rgba(30,41,59,.7); border:1px solid #1e293b; border-radius:12px; padding:14px 16px; }
-.admin-stat-card span { display:block; font-size:11px; color:#94a3b8; text-transform:uppercase; letter-spacing:.05em; margin-bottom:4px; }
-.admin-stat-card strong { font-size:22px; color:#f1f5f9; }
-.admin-stat-card.green strong { color:#4ade80; }
-.admin-stat-card.red strong { color:#f87171; }
-.admin-table { width:100%; border-collapse:collapse; font-size:13px; }
-.admin-table th { background:rgba(15,23,42,.8); color:#94a3b8; padding:10px 12px; text-align:left; font-size:11px; text-transform:uppercase; letter-spacing:.05em; border-bottom:1px solid #1e293b; white-space:nowrap; }
-.admin-table td { padding:12px; border-bottom:1px solid rgba(30,41,59,.6); color:#e2e8f0; vertical-align:middle; }
-.admin-table tr:hover td { background:rgba(30,41,59,.4); }
-.badge { display:inline-block; padding:3px 9px; border-radius:20px; font-size:11px; font-weight:700; }
-.badge.green { background:rgba(74,222,128,.15); color:#4ade80; border:1px solid rgba(74,222,128,.3); }
-.badge.red { background:rgba(248,113,113,.15); color:#f87171; border:1px solid rgba(248,113,113,.3); }
-.badge.yellow { background:rgba(251,191,36,.15); color:#fbbf24; border:1px solid rgba(251,191,36,.3); }
-.badge.blue { background:rgba(96,165,250,.15); color:#60a5fa; border:1px solid rgba(96,165,250,.3); }
-.admin-actions { display:flex; gap:6px; flex-wrap:wrap; }
-/* Modal de confirmação */
-.confirm-modal-bg { display:none; position:fixed; inset:0; background:rgba(0,0,0,.7); z-index:9999; align-items:center; justify-content:center; }
-.confirm-modal-bg.open { display:flex; }
-.confirm-modal { background:#0f172a; border:1px solid #334155; border-radius:16px; padding:28px 32px; max-width:440px; width:90%; }
-.confirm-modal h3 { font-size:16px; color:#f1f5f9; margin:0 0 8px; }
-.confirm-modal p { font-size:13px; color:#94a3b8; margin:0 0 18px; line-height:1.5; }
-.confirm-modal .nome-destaque { color:#f87171; font-weight:700; }
-.confirm-modal label { display:flex; align-items:center; gap:8px; font-size:13px; color:#cbd5e1; cursor:pointer; margin-bottom:20px; }
-.confirm-modal label input[type=checkbox] { width:16px; height:16px; cursor:pointer; }
-.confirm-modal-btns { display:flex; gap:10px; justify-content:flex-end; }
-.btn-cancel-modal { background:rgba(51,65,85,.6); color:#94a3b8; border:none; border-radius:8px; padding:8px 18px; cursor:pointer; font-size:13px; }
-.btn-apagar-modal { background:#dc2626; color:#fff; border:none; border-radius:8px; padding:8px 18px; cursor:pointer; font-size:13px; font-weight:700; }
-.btn-apagar-modal:disabled { opacity:.4; cursor:not-allowed; }
-</style>
-</head>
+<head><meta charset="UTF-8"><title>Admin</title><link rel="stylesheet" href="/static/style.css"></head>
 <body>
 <aside class="sidebar">
     <div class="sidebar-top"><div class="logo"><span class="logo-icon">🎯</span><span class="logo-text">Bet Manager</span></div></div>
@@ -42,6 +10,7 @@
         <a class="active" href="/admin" data-title="Admin"><span class="nav-icon">⚙</span><span class="nav-text">Admin</span></a>
         <a href="/logout" data-title="Sair"><span class="nav-icon">↪</span><span class="nav-text">Sair</span></a>
     </nav>
+
     <div class="sidebar-user-wrap">
         <div class="sidebar-user-card" onclick="toggleUserMenu(event)">
             <div class="sidebar-user-avatar">{{ usuario_inicial if usuario_inicial else "U" }}</div>
@@ -51,120 +20,53 @@
             </div>
             <span class="sidebar-user-arrow">⌄</span>
         </div>
+
         <div id="sidebarUserMenu" class="sidebar-user-menu">
             <a href="/configuracoes">👤 Perfil / Configurações</a>
             <a href="/saldos">💰 Saldos</a>
-            {% if usuario and usuario.is_admin %}<a href="/admin">⚙ Admin</a>{% endif %}
+            {% if usuario and usuario.is_admin %}
+            <a href="/admin">⚙ Admin</a>
+            {% endif %}
             <a href="/logout" class="logout-link">🚪 Sair</a>
         </div>
     </div>
+
 </aside>
-
 <main class="app">
-<header class="topbar"><div><h1>Painel Admin</h1><p>Visão geral do sistema</p></div></header>
-
-<section class="panel" style="padding:20px 24px; margin-bottom:16px;">
-    <h2 style="margin-bottom:16px; font-size:15px; color:#94a3b8; text-transform:uppercase; letter-spacing:.05em;">Resumo Geral</h2>
-    <div class="admin-stats-grid">
-        <div class="admin-stat-card">
-            <span>Usuários</span>
-            <strong>{{ total_geral.usuarios }}</strong>
-        </div>
-        <div class="admin-stat-card">
-            <span>Total de Apostas</span>
-            <strong>{{ total_geral.bets }}</strong>
-        </div>
-        <div class="admin-stat-card">
-            <span>Total Apostado</span>
-            <strong>R$ {{ "%.2f"|format(total_geral.valor_apostado) }}</strong>
-        </div>
-        <div class="admin-stat-card {{ 'green' if total_geral.lucro >= 0 else 'red' }}">
-            <span>Lucro Total (plataforma)</span>
-            <strong>R$ {{ "%.2f"|format(total_geral.lucro) }}</strong>
-        </div>
-    </div>
-</section>
-
-<section class="panel" style="padding:20px 24px;">
-    <h2 style="margin-bottom:16px; font-size:15px; color:#94a3b8; text-transform:uppercase; letter-spacing:.05em;">Usuários ({{ usuarios|length }})</h2>
-    <div style="overflow-x:auto;">
-    <table class="admin-table">
-        <thead>
-            <tr>
-                <th>Usuário</th>
-                <th>Email</th>
-                <th>Cadastro</th>
-                <th>Status</th>
-                <th>Plano</th>
-                <th>Ações</th>
-            </tr>
-        </thead>
-        <tbody>
+<header class="topbar"><div><h1>Painel Admin</h1><p>Usuários cadastrados em usuarios.json</p></div></header>
+<section class="panel">
+    <h2>Usuários</h2>
+    <div class="admin-grid">
         {% for u in usuarios %}
-        <tr>
-            <td><strong>{{ u.nome }}</strong>{% if u.is_admin %} <span class="badge blue">admin</span>{% endif %}</td>
-            <td style="color:#94a3b8;">{{ u.email }}</td>
-            <td style="color:#64748b; font-size:12px;">{{ u.criado_em[:10] if u.criado_em else '—' }}</td>
-            <td>
-                <span class="badge {{ 'green' if u.ativo else 'red' }}">{{ 'Ativo' if u.ativo else 'Bloqueado' }}</span>
-                {% if u.assinatura_ativa %}<span class="badge green" style="margin-left:4px;">Sub ON</span>{% else %}<span class="badge yellow" style="margin-left:4px;">Sem sub</span>{% endif %}
-            </td>
-            <td><span class="badge blue">{{ u.plano or 'free' }}</span></td>
-            <td>
-                <div class="admin-actions">
-                    <a href="/admin/toggle/{{ u.id }}"><button class="{{ 'dark' if u.ativo else 'blue' }}" style="font-size:11px;padding:4px 8px;">{{ 'Bloquear' if u.ativo else 'Ativar' }}</button></a>
-                    <a href="/admin/assinatura/{{ u.id }}"><button class="blue" style="font-size:11px;padding:4px 8px;">{{ 'Sub OFF' if u.assinatura_ativa else 'Sub ON' }}</button></a>
-                    <a href="/admin/promover/{{ u.id }}"><button class="blue" style="font-size:11px;padding:4px 8px;">{{ 'Rem. admin' if u.is_admin else 'Tornar admin' }}</button></a>
-                    {% if not u.is_admin %}
-                    <button class="red" style="font-size:11px;padding:4px 8px;" onclick="abrirConfirmarApagar('{{ u.id }}', '{{ u.nome }}')">🗑 Apostas</button>
-                    {% endif %}
-                </div>
-            </td>
-        </tr>
+        <div class="admin-row">
+            <strong>{{ u.nome }}</strong>
+            <span>{{ u.email }}</span>
+            <span class="badge {{ 'green' if u.ativo else 'red' }}">{{ 'Ativo' if u.ativo else 'Bloqueado' }}</span>
+            <span class="badge {{ 'green' if u.assinatura_ativa else 'yellow' }}">{{ 'Assinatura ON' if u.assinatura_ativa else 'Sem assinatura' }}</span>
+            <span class="badge blue plan-badge">{{ u.plano }}</span>
+            <a href="/admin/toggle/{{ u.id }}"><button class="dark">{{ 'Bloquear' if u.ativo else 'Ativar' }}</button></a>
+            <a href="/admin/assinatura/{{ u.id }}"><button class="blue">{{ 'Desativar assinatura' if u.assinatura_ativa else 'Ativar assinatura' }}</button></a>
+            <a href="/admin/promover/{{ u.id }}"><button class="blue">{{ 'Remover admin' if u.is_admin else 'Tornar admin' }}</button></a>
+        </div>
         {% endfor %}
-        </tbody>
-    </table>
     </div>
 </section>
 </main>
 
-<!-- Modal de confirmação dupla -->
-<div class="confirm-modal-bg" id="confirmarApagarModal">
-    <div class="confirm-modal">
-        <h3>Apagar apostas do usuário</h3>
-        <p>Você está prestes a apagar <strong>todas as apostas</strong> de <span class="nome-destaque" id="confirmarNomeUsuario"></span>. Esta ação é <strong style="color:#f87171;">irreversível</strong>.</p>
-        <label>
-            <input type="checkbox" id="confirmarCheckbox" onchange="toggleBtnApagar()">
-            Sim, entendo que todas as apostas serão apagadas permanentemente.
-        </label>
-        <div class="confirm-modal-btns">
-            <button class="btn-cancel-modal" onclick="fecharConfirmar()">Cancelar</button>
-            <form id="formApagarApostas" method="POST" action="" style="margin:0;">
-                <button type="submit" class="btn-apagar-modal" id="btnConfirmarApagar" disabled>Apagar apostas</button>
-            </form>
-        </div>
-    </div>
-</div>
+<script id="v62-userbox-js">
+function toggleUserMenu(ev){
+    if(ev) ev.stopPropagation()
+    const menu = document.getElementById("sidebarUserMenu")
+    if(menu) menu.classList.toggle("open")
+}
 
-<script>
-function toggleUserMenu(ev){if(ev) ev.stopPropagation();const menu=document.getElementById("sidebarUserMenu");if(menu) menu.classList.toggle("open")}
-document.addEventListener("click",function(e){const menu=document.getElementById("sidebarUserMenu");const card=document.querySelector(".sidebar-user-card");if(menu&&card&&!menu.contains(e.target)&&!card.contains(e.target)) menu.classList.remove("open")})
-
-function abrirConfirmarApagar(uid, nome) {
-    document.getElementById("confirmarNomeUsuario").textContent = nome
-    document.getElementById("formApagarApostas").action = "/admin/apagar_apostas/" + uid
-    document.getElementById("confirmarCheckbox").checked = false
-    document.getElementById("btnConfirmarApagar").disabled = true
-    document.getElementById("confirmarApagarModal").classList.add("open")
-}
-function fecharConfirmar() {
-    document.getElementById("confirmarApagarModal").classList.remove("open")
-}
-function toggleBtnApagar() {
-    document.getElementById("btnConfirmarApagar").disabled = !document.getElementById("confirmarCheckbox").checked
-}
-document.getElementById("confirmarApagarModal").addEventListener("click", function(e) {
-    if(e.target === this) fecharConfirmar()
+document.addEventListener("click", function(e){
+    const menu = document.getElementById("sidebarUserMenu")
+    const card = document.querySelector(".sidebar-user-card")
+    if(menu && card && !menu.contains(e.target) && !card.contains(e.target)){
+        menu.classList.remove("open")
+    }
 })
 </script>
+
 </body></html>

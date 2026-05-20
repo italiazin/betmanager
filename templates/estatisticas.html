@@ -4,7 +4,6 @@
     <meta charset="UTF-8">
     <title>Estatísticas</title>
     <link rel="stylesheet" href="/static/style.css">
-    <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
 </head>
 
 <body>
@@ -101,7 +100,7 @@
     <div class="panel">
         <div class="calendar-title-row">
             <a class="calendar-nav" href="/estatisticas?mes={{ calendario.prev_mes }}&ano={{ calendario.prev_ano }}">‹</a>
-            <h2>Calendário - {{ calendario.mes_nome }} {{ calendario.ano }}</h2><small class="calendar-help-v154">PNL por data do jogo</small>
+            <h2>Calendário - {{ calendario.mes_nome }} {{ calendario.ano }}</h2>
             <a class="calendar-nav" href="/estatisticas?mes={{ calendario.next_mes }}&ano={{ calendario.next_ano }}">›</a>
         </div>
 
@@ -118,13 +117,10 @@
         <div class="calendar">
             {% for semana in calendario.semanas %}
                 {% for dia in semana %}
-                    <div class="calendar-day {{ dia.classe }}" style="position:relative;">
+                    <div class="calendar-day {{ dia.classe }}">
                         <span class="day-number">{{ dia.dia }}</span>
 
                         {% if dia.dia %}
-                            {% if dia.apostas > 0 %}
-                            <button class="cal-share-btn" onclick="gerarCard('diario',{{ dia.dia }},{{ calendario.mes }},{{ calendario.ano }})" title="Gerar card do dia"><svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor"><path d="M21 19V5c0-1.1-.9-2-2-2H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2zM8.5 13.5l2.5 3.01L14.5 12l4.5 6H5l3.5-4.5z"/></svg></button>
-                            {% endif %}
                             <strong class="{{ 'green-text' if dia.lucro > 0 else 'red-text' if dia.lucro < 0 else '' }}">
                                 R$ {{ "%.2f"|format(dia.lucro) }}
                             </strong>
@@ -136,38 +132,7 @@
         </div>
     </div>
 
-    <div class="panel stats-panel" style="display:flex;flex-direction:column;gap:16px;">
-
-        <!-- Card lucro do mês -->
-        {% set rm = calendario.resumo_mes %}
-        <div class="lucro-mes-card {% if rm.lucro >= 0 %}lucro-mes-pos{% else %}lucro-mes-neg{% endif %}">
-            <div class="lucro-mes-top">
-                <span class="lucro-mes-label">{{ calendario.mes_nome }} {{ calendario.ano }}</span>
-                <span class="lucro-mes-icon">{% if rm.lucro >= 0 %}▲{% else %}▼{% endif %}</span>
-            </div>
-            <div class="lucro-mes-valor">R$ {{ "%.2f"|format(rm.lucro) }}</div>
-            <div class="lucro-mes-stats">
-                <span>{{ rm.apostas }} aposta(s)</span>
-                <span class="lucro-mes-dot">·</span>
-                <span class="lucro-mes-pos-txt">{{ rm.dias_positivos }}d ▲</span>
-                <span class="lucro-mes-dot">·</span>
-                <span class="lucro-mes-neg-txt">{{ rm.dias_negativos }}d ▼</span>
-            </div>
-            {% if rm.melhor_dia %}
-            <div class="lucro-mes-detalhe">
-                <span>Melhor dia: <strong>dia {{ rm.melhor_dia }}</strong> <span class="green-text">R$ {{ "%.2f"|format(rm.melhor_dia_lucro) }}</span></span>
-            </div>
-            {% endif %}
-            {% if rm.pior_dia and rm.pior_dia_lucro < 0 %}
-            <div class="lucro-mes-detalhe">
-                <span>Pior dia: <strong>dia {{ rm.pior_dia }}</strong> <span class="red-text">R$ {{ "%.2f"|format(rm.pior_dia_lucro) }}</span></span>
-            </div>
-            {% endif %}
-        </div>
-
-        <!-- Botão card mensal -->
-        <button class="blue" style="width:100%;font-size:12px;padding:8px 10px;" onclick="gerarCard('mensal')">📊 Gerar Card Mensal</button>
-
+    <div class="panel stats-panel">
         <h2>Resumo avançado</h2>
 
         <div class="extra-stat">
@@ -196,7 +161,7 @@
     <div class="panel">
         <h2>Ranking por Casa</h2>
 
-        {% for item in extras.ranking_casas %}
+        {% for item in extras.ranking_casas[:8] %}
         <div class="ranking-row">
             <span>{{ item.nome }}</span>
             <small>{{ item.apostas }} aposta(s)</small>
@@ -272,133 +237,6 @@ document.addEventListener("click", function(e){
         menu.classList.remove("open")
     }
 })
-</script>
-
-
-<!-- Modal card compartilhável -->
-<div id="cardModalBg" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.85);z-index:9999;align-items:center;justify-content:center;flex-direction:column;gap:16px;">
-    <div id="cardShareWrap" style="position:relative;">
-        <div id="cardShare" style="width:360px;background:#0d1117;border-radius:20px;overflow:hidden;font-family:'Segoe UI',sans-serif;padding:0;">
-            <!-- Header -->
-            <div style="background:linear-gradient(135deg,#1d4ed8,#1e3a8a);padding:18px 20px 14px;display:flex;align-items:center;gap:12px;">
-                <div style="background:rgba(255,255,255,.15);border-radius:12px;width:44px;height:44px;display:flex;align-items:center;justify-content:center;font-size:22px;">🏆</div>
-                <div>
-                    <div style="font-size:15px;font-weight:800;color:#fff;letter-spacing:.03em;">GESTOR DE APOSTAS</div>
-                    <div id="cardSubtitulo" style="font-size:10px;color:rgba(255,255,255,.7);text-transform:uppercase;letter-spacing:.1em;margin-top:1px;">RESUMO MENSAL</div>
-                </div>
-            </div>
-            <!-- Título mês/dia -->
-            <div style="text-align:center;padding:20px 20px 4px;">
-                <div id="cardTitulo" style="font-size:26px;font-weight:900;color:#f1f5f9;letter-spacing:.04em;"></div>
-            </div>
-            <!-- Resultado líquido -->
-            <div style="margin:12px 20px;border-radius:14px;padding:16px 20px;text-align:center;" id="cardResultBox">
-                <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.12em;margin-bottom:6px;color:rgba(255,255,255,.6);">Resultado Líquido</div>
-                <div id="cardLucro" style="font-size:38px;font-weight:900;letter-spacing:.02em;"></div>
-            </div>
-            <!-- Grid stats -->
-            <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;padding:0 16px 16px;">
-                <div class="cs" style="background:rgba(255,255,255,.05);border-radius:12px;padding:12px 8px;text-align:center;">
-                    <div style="font-size:18px;margin-bottom:4px;">🎯</div>
-                    <div style="font-size:9px;color:#94a3b8;text-transform:uppercase;letter-spacing:.08em;margin-bottom:4px;">Apostas</div>
-                    <div id="cs-total" style="font-size:20px;font-weight:800;color:#f1f5f9;"></div>
-                </div>
-                <div class="cs" style="background:rgba(255,255,255,.05);border-radius:12px;padding:12px 8px;text-align:center;">
-                    <div style="font-size:18px;margin-bottom:4px;">✅</div>
-                    <div style="font-size:9px;color:#94a3b8;text-transform:uppercase;letter-spacing:.08em;margin-bottom:4px;">Vencidas</div>
-                    <div id="cs-ganhas" style="font-size:20px;font-weight:800;color:#4ade80;"></div>
-                </div>
-                <div class="cs" style="background:rgba(255,255,255,.05);border-radius:12px;padding:12px 8px;text-align:center;">
-                    <div style="font-size:18px;margin-bottom:4px;">❌</div>
-                    <div style="font-size:9px;color:#94a3b8;text-transform:uppercase;letter-spacing:.08em;margin-bottom:4px;">Perdidas</div>
-                    <div id="cs-perdidas" style="font-size:20px;font-weight:800;color:#f87171;"></div>
-                </div>
-                <div class="cs" style="background:rgba(255,255,255,.05);border-radius:12px;padding:12px 8px;text-align:center;">
-                    <div style="font-size:18px;margin-bottom:4px;">↩️</div>
-                    <div style="font-size:9px;color:#94a3b8;text-transform:uppercase;letter-spacing:.08em;margin-bottom:4px;">Devolvidas</div>
-                    <div id="cs-anuladas" style="font-size:20px;font-weight:800;color:#94a3b8;"></div>
-                </div>
-                <div class="cs" style="background:rgba(255,255,255,.05);border-radius:12px;padding:12px 8px;text-align:center;">
-                    <div style="font-size:18px;margin-bottom:4px;">📈</div>
-                    <div style="font-size:9px;color:#94a3b8;text-transform:uppercase;letter-spacing:.08em;margin-bottom:4px;">Taxa Acerto</div>
-                    <div id="cs-taxa" style="font-size:20px;font-weight:800;color:#60a5fa;"></div>
-                </div>
-                <div class="cs" style="background:rgba(255,255,255,.05);border-radius:12px;padding:12px 8px;text-align:center;">
-                    <div style="font-size:18px;margin-bottom:4px;">%</div>
-                    <div style="font-size:9px;color:#94a3b8;text-transform:uppercase;letter-spacing:.08em;margin-bottom:4px;">ROI</div>
-                    <div id="cs-roi" style="font-size:20px;font-weight:800;color:#4ade80;"></div>
-                </div>
-            </div>
-            <!-- Footer -->
-            <div style="border-top:1px solid rgba(255,255,255,.07);padding:10px 20px;">
-                <div id="cs-footer-data" style="font-size:9px;color:#475569;text-transform:uppercase;letter-spacing:.08em;"></div>
-            </div>
-        </div>
-    </div>
-    <div style="display:flex;gap:10px;">
-        <button onclick="baixarCard()" style="background:#1d4ed8;color:#fff;border:none;border-radius:10px;padding:10px 24px;font-size:14px;font-weight:700;cursor:pointer;">⬇ Baixar imagem</button>
-        <button onclick="fecharCardModal()" style="background:rgba(51,65,85,.8);color:#94a3b8;border:none;border-radius:10px;padding:10px 20px;font-size:14px;cursor:pointer;">Fechar</button>
-    </div>
-</div>
-
-<script>
-const _cardMes = {{ calendario.mes }};
-const _cardAno = {{ calendario.ano }};
-
-function gerarCard(tipo, dia, mes, ano) {
-    dia = dia || 0; mes = mes || _cardMes; ano = ano || _cardAno;
-    const url = `/api/card_resumo?tipo=${tipo}&mes=${mes}&ano=${ano}&dia=${dia}`
-    fetch(url).then(r=>r.json()).then(d=>{
-        document.getElementById("cardTitulo").textContent = d.titulo
-        document.getElementById("cardSubtitulo").textContent = d.subtitulo
-        const pos = d.lucro >= 0
-        const box = document.getElementById("cardResultBox")
-        box.style.background = pos ? "linear-gradient(135deg,rgba(20,83,45,.8),rgba(21,128,61,.5))" : "linear-gradient(135deg,rgba(127,29,29,.8),rgba(185,28,28,.5))"
-        box.style.border = pos ? "1px solid rgba(74,222,128,.3)" : "1px solid rgba(248,113,113,.3)"
-        const lucroEl = document.getElementById("cardLucro")
-        lucroEl.textContent = (pos ? "+" : "") + "R$ " + d.lucro.toFixed(2).replace(".",",")
-        lucroEl.style.color = pos ? "#4ade80" : "#f87171"
-        document.getElementById("cs-total").textContent = d.total
-        document.getElementById("cs-ganhas").textContent = d.ganhas
-        document.getElementById("cs-perdidas").textContent = d.perdidas
-        document.getElementById("cs-anuladas").textContent = d.anuladas
-        document.getElementById("cs-taxa").textContent = d.taxa.toFixed(1) + "%"
-        const roiEl = document.getElementById("cs-roi")
-        roiEl.textContent = (d.roi >= 0 ? "+" : "") + d.roi.toFixed(2) + "%"
-        roiEl.style.color = d.roi >= 0 ? "#4ade80" : "#f87171"
-        const now = new Date()
-        document.getElementById("cs-footer-data").textContent = `Gerado em ${now.toLocaleDateString("pt-BR")} ${now.toLocaleTimeString("pt-BR",{hour:"2-digit",minute:"2-digit"})}`
-        const bg = document.getElementById("cardModalBg")
-        bg.style.display = "flex"
-    }).catch(e=>alert("Erro ao gerar card: " + e))
-}
-
-function fecharCardModal() {
-    document.getElementById("cardModalBg").style.display = "none"
-}
-
-function baixarCard() {
-    const el = document.getElementById("cardShare")
-    html2canvas(el, {scale:2, backgroundColor:"#0d1117", useCORS:true}).then(canvas=>{
-        const a = document.createElement("a")
-        a.download = "resumo-apostas.png"
-        a.href = canvas.toDataURL("image/png")
-        a.click()
-    })
-}
-
-document.getElementById("cardModalBg").addEventListener("click", function(e){
-    if(e.target === this) fecharCardModal()
-})
-</script>
-
-<script id="v72-global-scroll-js">
-function v72SaveScroll(){sessionStorage.setItem("restoreScrollY", String(window.scrollY || 0))}
-function v72RestoreScroll(){const y=sessionStorage.getItem("restoreScrollY"); if(y!==null){sessionStorage.removeItem("restoreScrollY"); setTimeout(()=>window.scrollTo(0, Number(y||0)),0)}}
-document.addEventListener("DOMContentLoaded", v72RestoreScroll)
-window.addEventListener("beforeunload", v72SaveScroll)
-document.addEventListener("click", e=>{if(e.target.closest("a,button")) v72SaveScroll()}, true)
-document.addEventListener("submit", e=>v72SaveScroll(), true)
 </script>
 
 </body>

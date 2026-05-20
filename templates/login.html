@@ -4,33 +4,14 @@
 <body class="auth-page">
 <div class="auth-card">
     <h1>🎯 Bet Manager</h1>
-    <p>Entre para acessar seu painel de gestão de apostas.</p>
+    <p>Entre para acessar seu painel.</p>
     {% if erro %}<div class="auth-error">{{ erro }}</div>{% endif %}
-    <form method="POST" class="auth-form" id="loginForm">
+    <form method="POST" class="auth-form">
         <input name="email" type="email" placeholder="E-mail" required>
         <input name="senha" type="password" placeholder="Senha" required>
-        <button type="submit" id="loginBtn">Entrar</button>
+        <button type="submit">Entrar</button>
     </form>
     <p style="margin-top:16px;">Não tem conta? <a class="auth-link" href="/criar-conta">Criar conta</a></p>
+    <p style="font-size:12px;color:#64748b;">Admin inicial: admin@admin.com / admin123</p>
 </div>
-
-<script>
-document.getElementById("loginForm")?.addEventListener("submit", ()=>{
-    const btn = document.getElementById("loginBtn")
-    if(btn){
-        btn.disabled = true
-        btn.innerText = "Entrando..."
-    }
-})
-</script>
-
-<script id="v72-global-scroll-js">
-function v72SaveScroll(){sessionStorage.setItem("restoreScrollY", String(window.scrollY || 0))}
-function v72RestoreScroll(){const y=sessionStorage.getItem("restoreScrollY"); if(y!==null){sessionStorage.removeItem("restoreScrollY"); setTimeout(()=>window.scrollTo(0, Number(y||0)),0)}}
-document.addEventListener("DOMContentLoaded", v72RestoreScroll)
-window.addEventListener("beforeunload", v72SaveScroll)
-document.addEventListener("click", e=>{if(e.target.closest("a,button")) v72SaveScroll()}, true)
-document.addEventListener("submit", e=>v72SaveScroll(), true)
-</script>
-
 </body></html>
