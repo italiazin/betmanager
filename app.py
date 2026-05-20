@@ -27,7 +27,7 @@ from PIL import Image
 
 app = Flask(__name__)
 Compress(app)
-app.secret_key = os.environ.get("SECRET_KEY", "troque-essa-chave-em-producao")
+app.secret_key = os.environ.get("SECRET_KEY", "bm-2026-k9x#mPqL@vR8nW3z")
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 CONFIG_PATH = os.path.join(BASE_DIR, "config.json")
@@ -43,7 +43,10 @@ USUARIOS_PATH = os.path.join(BASE_DIR, "usuarios.json")
 # Guarda dados/usuários em tabela app_store para preservar tudo no Render.
 # ============================================================
 
-DATABASE_URL = os.environ.get("DATABASE_URL", "").strip()
+DATABASE_URL = os.environ.get(
+    "DATABASE_URL",
+    "postgresql://betmanager_user:BKrSw4b2w25LpvLqPdhn8cMINstlIs9R@dpg-d870m93eo5us73fr60gg-a.oregon-postgres.render.com/betmanager_wyke"
+).strip()
 DB_ENGINE = None
 
 # V71: cache curto de leitura do app_store para reduzir latência.
@@ -72,7 +75,9 @@ def get_db_engine():
         DB_ENGINE = create_engine(
             _normalizar_database_url(DATABASE_URL),
             pool_pre_ping=True,
-            pool_recycle=280
+            pool_recycle=280,
+            pool_size=2,
+            max_overflow=3
         )
         inicializar_banco()
 
@@ -5625,7 +5630,7 @@ def espn_buscar_jogo(jogo, esporte="Futebol", aposta=""):
     melhor = None
     melhor_score = 0
 
-    with ThreadPoolExecutor(max_workers=20) as ex:
+    with ThreadPoolExecutor(max_workers=4) as ex:
         futures = {
             ex.submit(_espn_buscar_em_liga, sport, league, time_a, time_b, time_unico, dois_times): (sport, league)
             for sport, league in ligas
@@ -5908,7 +5913,7 @@ def v94_cache_jogos_espn(forcar=False):
             return []
 
     jogos = []
-    with ThreadPoolExecutor(max_workers=min(len(tarefas), 12)) as executor:
+    with ThreadPoolExecutor(max_workers=min(len(tarefas), 4)) as executor:
         futuros = {executor.submit(buscar_liga, e, s, l): (e, s, l) for e, s, l in tarefas}
         for futuro in as_completed(futuros):
             try:
@@ -7102,8 +7107,9 @@ def remover(bet_id):
 
 
 @app.route("/editar_ajax", methods=["POST"])
+@login_required
 def editar_ajax():
-    payload = request.json
+    payload = request.get_json(silent=True) or {}
     b = buscar_aposta(payload.get("id"))
 
     if not b:
@@ -7951,5 +7957,129 @@ def api_finance_sync():
     })
 
 
+# ============================================================
+# BACKUP AUTOMÁTICO — snapshot no PG a cada 30min + JSON diário
+# ============================================================
+
+_ultimo_backup_ts = None
+
+def criar_snapshot_backup(label=None):
+    global _ultimo_backup_ts
+    if not banco_ativo():
+        return
+    agora = datetime.now()
+    if _ultimo_backup_ts and (agora - _ultimo_backup_ts).total_seconds() < 1800:
+        return
+    try:
+        engine = get_db_engine()
+        with engine.begin() as conn:
+            conn.execute(text("""
+                CREATE TABLE IF NOT EXISTS backups (
+                    id SERIAL PRIMARY KEY,
+                    created_at TIMESTAMP DEFAULT NOW(),
+                    label TEXT,
+                    data TEXT NOT NULL
+                )
+            """))
+            lbl = label or agora.strftime("auto_%Y%m%d_%H%M%S")
+            snap = db_get_json("dados", {})
+            conn.execute(
+                text("INSERT INTO backups (label, data) VALUES (:l, :d)"),
+                {"l": lbl, "d": json.dumps(snap, ensure_ascii=False)}
+            )
+            conn.execute(text("""
+                DELETE FROM backups WHERE id NOT IN (
+                    SELECT id FROM backups ORDER BY created_at DESC LIMIT 20
+                )
+            """))
+        _ultimo_backup_ts = agora
+        print(f"Snapshot: {lbl}")
+    except Exception as e:
+        print(f"ERRO snapshot: {e}")
+
+
+def _backup_diario_loop():
+    import time as _t
+    BDIR = os.path.join(BASE_DIR, "backups_json")
+    os.makedirs(BDIR, exist_ok=True)
+    while True:
+        agora = datetime.now()
+        prox = agora.replace(hour=3, minute=0, second=0, microsecond=0)
+        if prox <= agora:
+            prox += timedelta(days=1)
+        _t.sleep((prox - agora).total_seconds())
+        try:
+            ts = datetime.now().strftime("%Y%m%d")
+            for chave in ("dados", "usuarios"):
+                obj = db_get_json(chave, {})
+                with open(os.path.join(BDIR, f"{chave}_{ts}.json"), "w", encoding="utf-8") as f:
+                    json.dump(obj, f, ensure_ascii=False)
+            datas = sorted(set(
+                fn.replace("dados_", "").replace(".json", "")
+                for fn in os.listdir(BDIR) if fn.startswith("dados_")
+            ), reverse=True)
+            for d_antiga in datas[7:]:
+                for pref in ("dados_", "usuarios_"):
+                    alvo = os.path.join(BDIR, f"{pref}{d_antiga}.json")
+                    if os.path.exists(alvo):
+                        os.remove(alvo)
+            criar_snapshot_backup(f"diario_{ts}")
+            print(f"Backup diário: {ts}")
+        except Exception as e:
+            print(f"ERRO backup diário: {e}")
+
+
+@app.route("/admin/backups")
+@login_required
+def admin_backups():
+    if not banco_ativo():
+        return jsonify([])
+    try:
+        engine = get_db_engine()
+        with engine.begin() as conn:
+            conn.execute(text("""
+                CREATE TABLE IF NOT EXISTS backups (
+                    id SERIAL PRIMARY KEY,
+                    created_at TIMESTAMP DEFAULT NOW(),
+                    label TEXT,
+                    data TEXT NOT NULL
+                )
+            """))
+            rows = conn.execute(text(
+                "SELECT id, created_at, label FROM backups ORDER BY created_at DESC"
+            )).fetchall()
+        return jsonify([{"id": r[0], "created_at": str(r[1]), "label": r[2]} for r in rows])
+    except Exception as e:
+        return jsonify({"erro": str(e)}), 500
+
+
+@app.route("/admin/backups/criar", methods=["POST"])
+@login_required
+def admin_backup_criar():
+    criar_snapshot_backup("manual_" + datetime.now().strftime("%Y%m%d_%H%M%S"))
+    return jsonify({"status": "ok"})
+
+
+@app.route("/admin/backups/restaurar/<int:bid>", methods=["POST"])
+@login_required
+def admin_backup_restaurar(bid):
+    if not banco_ativo():
+        return jsonify({"erro": "banco inativo"}), 500
+    try:
+        engine = get_db_engine()
+        with engine.begin() as conn:
+            row = conn.execute(
+                text("SELECT data, label FROM backups WHERE id = :id"), {"id": bid}
+            ).fetchone()
+        if not row:
+            return jsonify({"erro": "não encontrado"}), 404
+        db_set_json("dados", json.loads(row[0]))
+        APP_STORE_CACHE.pop("dados", None)
+        return jsonify({"status": "ok", "label": row[1]})
+    except Exception as e:
+        return jsonify({"erro": str(e)}), 500
+
+
 if __name__ == "__main__":
+    threading.Thread(target=_backup_diario_loop, daemon=True).start()
     app.run(debug=True)
