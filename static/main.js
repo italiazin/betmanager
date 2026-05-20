@@ -45,6 +45,7 @@ function formatarLinhaApostaNova(b){
 document.addEventListener("DOMContentLoaded", function(){
     const form = document.getElementById("manualForm")
     if(!form || form.dataset.ajaxReady === "1") return
+    if(form.classList.contains("manual-form")) return
     form.dataset.ajaxReady = "1"
     form.addEventListener("submit", function(e){
         e.preventDefault()
