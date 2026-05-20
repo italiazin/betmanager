@@ -8080,6 +8080,30 @@ def admin_backup_restaurar(bid):
         return jsonify({"erro": str(e)}), 500
 
 
+@app.route("/admin/exportar")
+@login_required
+def admin_exportar():
+    if session.get("role") != "admin":
+        return redirect(url_for("index"))
+    try:
+        dados = db_get_json("dados", {"apostas": [], "saldos": {}})
+        usuarios = db_get_json("usuarios", {})
+        export = {
+            "exportado_em": datetime.now().isoformat(),
+            "dados": dados,
+            "usuarios": usuarios
+        }
+        conteudo = json.dumps(export, ensure_ascii=False, indent=2)
+        nome = f"betmanager_backup_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
+        from flask import make_response
+        resp = make_response(conteudo)
+        resp.headers["Content-Type"] = "application/json; charset=utf-8"
+        resp.headers["Content-Disposition"] = f"attachment; filename={nome}"
+        return resp
+    except Exception as e:
+        return jsonify({"erro": str(e)}), 500
+
+
 if __name__ == "__main__":
     threading.Thread(target=_backup_diario_loop, daemon=True).start()
     app.run(debug=True)
