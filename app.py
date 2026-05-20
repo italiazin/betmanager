@@ -22,12 +22,8 @@ from functools import wraps
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from werkzeug.security import generate_password_hash, check_password_hash
 
-try:
-    import pytesseract
-    from PIL import Image
-    OCR_DISPONIVEL = True
-except ImportError:
-    OCR_DISPONIVEL = False
+import pytesseract
+from PIL import Image
 
 app = Flask(__name__)
 Compress(app)
@@ -47,10 +43,7 @@ USUARIOS_PATH = os.path.join(BASE_DIR, "usuarios.json")
 # Guarda dados/usuários em tabela app_store para preservar tudo no Render.
 # ============================================================
 
-DATABASE_URL = os.environ.get(
-    "DATABASE_URL",
-    "postgresql://betmanager_user:BKrSw4b2w25LpvLqPdhn8cMINstlIs9R@dpg-d870m93eo5us73fr60gg-a.oregon-postgres.render.com/betmanager_wyke"
-).strip()
+DATABASE_URL = os.environ.get("DATABASE_URL", "").strip()
 DB_ENGINE = None
 
 # V71: cache curto de leitura do app_store para reduzir latência.
@@ -79,9 +72,7 @@ def get_db_engine():
         DB_ENGINE = create_engine(
             _normalizar_database_url(DATABASE_URL),
             pool_pre_ping=True,
-            pool_recycle=280,
-            pool_size=2,
-            max_overflow=3
+            pool_recycle=280
         )
         inicializar_banco()
 
@@ -5571,7 +5562,8 @@ def _espn_buscar_em_liga(sport, league, time_a, time_b, time_unico, dois_times):
                 away = next((c for c in competidores if c.get("homeAway") == "away"), competidores[1] if len(competidores) > 1 else {})
                 placar_home = str(home.get("score", "")).strip()
                 placar_away = str(away.get("score", "")).strip()
-                placar = f"{placar_home}-{placar_away}" if placar_home != "" and placar_away != "" else ""
+                # Só mostra placar se jogo estiver ao vivo ou finalizado (não para pré-jogo)
+                placar = f"{placar_home}-{placar_away}" if (placar_home != "" and placar_away != "" and (ao_vivo or finalizado)) else ""
                 liga_display = ""
                 for lg in ev.get("leagues", []) or r.json().get("leagues", []):
                     liga_display = lg.get("name") or lg.get("abbreviation") or ""
@@ -5633,7 +5625,7 @@ def espn_buscar_jogo(jogo, esporte="Futebol", aposta=""):
     melhor = None
     melhor_score = 0
 
-    with ThreadPoolExecutor(max_workers=4) as ex:
+    with ThreadPoolExecutor(max_workers=20) as ex:
         futures = {
             ex.submit(_espn_buscar_em_liga, sport, league, time_a, time_b, time_unico, dois_times): (sport, league)
             for sport, league in ligas
@@ -5916,7 +5908,7 @@ def v94_cache_jogos_espn(forcar=False):
             return []
 
     jogos = []
-    with ThreadPoolExecutor(max_workers=min(len(tarefas), 4)) as executor:
+    with ThreadPoolExecutor(max_workers=min(len(tarefas), 12)) as executor:
         futuros = {executor.submit(buscar_liga, e, s, l): (e, s, l) for e, s, l in tarefas}
         for futuro in as_completed(futuros):
             try:
@@ -6967,9 +6959,19 @@ def index():
     bets_main.sort(key=lambda b: str(b.get("data", "") or "")[:10], reverse=True)
     bets_main.sort(key=lambda b: str(b.get("jogo", "") or "").lower())
 
-    # Histórico: agrupa por jogo, depois ordena por horario do jogo desc
-    bets_historico.sort(key=lambda b: str(b.get("horario_jogo_iso", "") or b.get("data", "") or ""), reverse=True)
-    bets_historico.sort(key=lambda b: str(b.get("jogo", "") or "").lower())
+    # Histórico: ordem cronológica pela data do jogo (mais recente primeiro)
+    def _chave_data_jogo(b):
+        iso = str(b.get("horario_jogo_iso", "") or "").strip()
+        if iso:
+            return iso
+        # fallback: data de registro DD/MM/YYYY → YYYY/MM/DD para ordenar
+        d = str(b.get("data", "") or "")[:10]
+        if d and "/" in d:
+            p = d.split("/")
+            if len(p) == 3:
+                return f"{p[2]}/{p[1]}/{p[0]}"
+        return d
+    bets_historico.sort(key=_chave_data_jogo, reverse=True)
 
     return render_template(
         "index.html",
@@ -7100,9 +7102,8 @@ def remover(bet_id):
 
 
 @app.route("/editar_ajax", methods=["POST"])
-@login_required
 def editar_ajax():
-    payload = request.get_json(silent=True) or {}
+    payload = request.json
     b = buscar_aposta(payload.get("id"))
 
     if not b:
@@ -7379,6 +7380,32 @@ def saldo_movimento():
     return redirect("/saldos")
 
 
+@app.route("/saldos/renomear", methods=["POST"])
+@login_required
+@assinatura_required
+def renomear_saldo_casa():
+    casa_antiga = limpar_casa(request.form.get("casa_original", ""))
+    casa_nova = limpar_casa(request.form.get("casa", ""))
+    saldo = float(request.form.get("saldo", 0) or 0)
+
+    if casa_antiga and casa_nova:
+        sc = saldo_casas_usuario()
+        chave_antiga = encontrar_chave_saldo_casa(casa_antiga)
+        # Remove antiga, cria nova com saldo informado
+        if chave_antiga in sc:
+            del sc[chave_antiga]
+        sc[casa_nova] = saldo
+        # Atualiza apostas que referenciam a casa antiga
+        if casa_antiga != casa_nova:
+            uid = session.get("user_id", "")
+            for b in dados.get("bets", []):
+                if b.get("user_id") == uid and limpar_casa(b.get("casa", "")) == casa_antiga:
+                    b["casa"] = casa_nova
+        salvar()
+
+    return redirect("/saldos")
+
+
 @app.route("/saldos/remover/<path:casa>")
 @login_required
 @assinatura_required
@@ -7641,23 +7668,102 @@ def definir_data_jogo():
 @login_required
 def api_meus_jogos():
     uid = session.get("user_id", "")
-    bets = [b for b in dados.get("bets", []) if b.get("user_id") == uid and b.get("estado", "") not in ("ganha", "perdida", "anulada")]
+    # Dispara lazy preencher a cada 60s (mantém ao_vivo e placar atualizados)
+    agora_ts = time.time()
+    if not hasattr(app, "_meus_jogos_last") or (agora_ts - app._meus_jogos_last) > 60:
+        app._meus_jogos_last = agora_ts
+        threading.Thread(target=espn_lazy_preencher_horarios_dashboard, kwargs={"limit": 25, "user_id": uid}, daemon=True).start()
+    agora = datetime.now(ZoneInfo("America/Sao_Paulo"))
+    hoje_ini = agora.replace(hour=0, minute=0, second=0, microsecond=0)
+    hoje_fim = agora.replace(hour=23, minute=59, second=59, microsecond=999999)
+
+    def _bet_relevante(b):
+        if b.get("user_id") != uid:
+            return False
+        estado = b.get("estado", "")
+        if estado not in ("ganha", "perdida", "anulada"):
+            # Pendente: só mostra se o jogo é hoje (não amanhã+, não ontem)
+            iso = b.get("horario_jogo_iso", "")
+            if iso:
+                try:
+                    jdt = datetime.fromisoformat(str(iso).replace("Z", "+00:00"))
+                    if jdt.tzinfo is None:
+                        jdt = jdt.replace(tzinfo=ZoneInfo("America/Sao_Paulo"))
+                    if jdt > hoje_fim:
+                        return False
+                    if jdt < hoje_ini and not b.get("ao_vivo"):
+                        return False
+                except Exception:
+                    pass
+            else:
+                st = str(b.get("status_jogo", "") or "")
+                m = re.match(r"^(\d{2})/(\d{2})", st)
+                if m:
+                    try:
+                        dia, mes = int(m.group(1)), int(m.group(2))
+                        dt_jogo = agora.replace(month=mes, day=dia, hour=0, minute=0, second=0, microsecond=0)
+                        if dt_jogo > hoje_fim or dt_jogo < hoje_ini:
+                            return False
+                    except Exception:
+                        pass
+            return True
+        # resolvida: mostra só jogos de hoje ou recentes (até 6h atrás, para jogos de madrugada)
+        iso = b.get("horario_jogo_iso", "")
+        if iso:
+            try:
+                jdt = datetime.fromisoformat(str(iso).replace("Z", "+00:00"))
+                if jdt.tzinfo is None:
+                    jdt = jdt.replace(tzinfo=ZoneInfo("America/Sao_Paulo"))
+                jogo_hoje = jdt.date() == agora.date()
+                jogo_recente = jdt >= agora - timedelta(hours=6)
+                return jogo_hoje or jogo_recente
+            except Exception:
+                pass
+        # fallback: data de registro da aposta
+        data_str = str(b.get("data", "") or "")[:10]
+        if data_str:
+            try:
+                dbet = datetime.strptime(data_str, "%d/%m/%Y").replace(tzinfo=ZoneInfo("America/Sao_Paulo"))
+                return dbet.date() == agora.date()
+            except Exception:
+                pass
+        return False
+
     vistos = {}
-    for b in bets:
+    for b in dados.get("bets", []):
+        if not _bet_relevante(b):
+            continue
         jogo = str(b.get("jogo", "") or "").strip()
         if not jogo or len(jogo) < 4:
             continue
         if jogo not in vistos:
+            _ao_vivo = bool(b.get("ao_vivo"))
+            _status = b.get("status_jogo", "") or ""
+            _finalizado = "final" in _status.lower()
+            # Também mostra placar se horario_jogo_iso já passou (jogo pode ter terminado sem status atualizado)
+            _jogo_passou = False
+            _iso = b.get("horario_jogo_iso", "") or ""
+            if _iso and not _ao_vivo and not _finalizado:
+                try:
+                    _jdt = datetime.fromisoformat(str(_iso).replace("Z", "+00:00"))
+                    _jogo_passou = datetime.now(_jdt.tzinfo) > _jdt + timedelta(hours=2)
+                except Exception:
+                    pass
+            _placar = b.get("placar_espn", "") if (_ao_vivo or _finalizado or _jogo_passou) else ""
+            # Ignora "0-0" salvo durante pré-jogo se não confirmado ao vivo/finalizado
+            if _placar in ("0-0", "0 - 0") and not _ao_vivo and not _finalizado:
+                _placar = ""
             vistos[jogo] = {
                 "jogo": jogo,
                 "esporte": b.get("esporte", ""),
                 "espn_event_id": b.get("espn_event_id", ""),
                 "espn_sport": b.get("espn_sport", "soccer"),
                 "espn_league": b.get("espn_league", ""),
-                "status_jogo": b.get("status_jogo", ""),
+                "status_jogo": _status,
                 "horario_jogo": b.get("horario_jogo", ""),
-                "ao_vivo": bool(b.get("ao_vivo")),
-                "placar": b.get("placar_espn", ""),
+                "horario_jogo_iso": b.get("horario_jogo_iso", ""),
+                "ao_vivo": _ao_vivo,
+                "placar": _placar,
             }
     jogos = sorted(vistos.values(), key=lambda x: (not x["ao_vivo"], x.get("horario_jogo") or ""))
     return jsonify(jogos)
@@ -7699,15 +7805,69 @@ def api_stats_jogo():
                 "logo": team.get("logo", ""),
                 "stats": [{"label": s.get("label", ""), "valor": s.get("displayValue", "")} for s in t.get("statistics", [])],
             })
+        # Gols dos details
+        gols = []
+        for d in comp.get("details", []):
+            if not d.get("scoringPlay"):
+                continue
+            minuto = (d.get("clock") or {}).get("displayValue", "")
+            time_nome = (d.get("team") or {}).get("displayName", "")
+            jogador = ""
+            for p in d.get("participants", []):
+                jogador = (p.get("athlete") or {}).get("shortName", "") or (p.get("athlete") or {}).get("displayName", "")
+                break
+            gols.append({"minuto": minuto, "time": time_nome, "jogador": jogador})
+
+        status_type = (comp.get("status") or {}).get("type", {}) or {}
+        espn_state = status_type.get("state", "")
+        espn_ao_vivo = espn_state == "in"
+        espn_finalizado = espn_state == "post"
+        placar_str = f"{home.get('score','')} - {away.get('score','')}"
+        ht_str = f"{ht_home} - {ht_away}" if ht_home != "" and ht_away != "" else ""
         return jsonify({
             "ok": True,
+            "ao_vivo": espn_ao_vivo,
+            "finalizado": espn_finalizado,
             "home": {"nome": home.get("team", {}).get("displayName", ""), "placar": home.get("score", ""), "logo": home.get("team", {}).get("logo", ""), "ht": ht_home},
             "away": {"nome": away.get("team", {}).get("displayName", ""), "placar": away.get("score", ""), "logo": away.get("team", {}).get("logo", ""), "ht": ht_away},
-            "status": (comp.get("status") or {}).get("type", {}).get("shortDetail", ""),
+            "status": status_type.get("shortDetail", ""),
             "stats": stats,
+            "gols": gols,
+            "placar_str": placar_str,
+            "ht_str": ht_str,
         })
     except Exception as e:
         return jsonify({"ok": False, "erro": str(e)}), 500
+
+
+@app.route("/api/salvar_placar_jogo", methods=["POST"])
+@login_required
+def api_salvar_placar_jogo():
+    data = request.get_json(silent=True) or {}
+    uid = session.get("user_id", "")
+    jogo = str(data.get("jogo", "")).strip()
+    placar = str(data.get("placar", "")).strip()
+    ht = str(data.get("ht", "")).strip()
+    event_id = str(data.get("espn_event_id", "")).strip()
+    if not jogo and not event_id:
+        return jsonify({"ok": False}), 400
+    atualizadas = 0
+    for b in dados.get("bets", []):
+        if b.get("user_id") != uid:
+            continue
+        match = (event_id and b.get("espn_event_id") == event_id) or (jogo and str(b.get("jogo", "")).strip() == jogo)
+        if match:
+            if placar:
+                b["placar_espn"] = placar
+            if ht:
+                b["placar_ht"] = ht
+            atualizadas += 1
+    if atualizadas:
+        try:
+            salvar()
+        except Exception:
+            pass
+    return jsonify({"ok": True, "atualizadas": atualizadas})
 
 
 @app.route("/teste_stats")
@@ -7717,136 +7877,79 @@ def teste_stats():
     return render_template("teste_stats.html")
 
 
-# ============================================================
-# BACKUP AUTOMÁTICO
-# ============================================================
+# ── Finance App Sync ─────────────────────────────────────────────────────────
+import secrets as _secrets
 
-_ultimo_backup_ts = None
-BACKUP_INTERVALO_MIN = 30
-BACKUP_MAX_SNAPSHOTS = 20
-
-
-def criar_snapshot_backup(label=None):
-    global _ultimo_backup_ts
-    if not banco_ativo():
-        return
-    agora = datetime.now()
-    if _ultimo_backup_ts and (agora - _ultimo_backup_ts).total_seconds() < BACKUP_INTERVALO_MIN * 60:
-        return
-    try:
-        engine = get_db_engine()
-        with engine.begin() as conn:
-            conn.execute(text("""
-                CREATE TABLE IF NOT EXISTS backups (
-                    id SERIAL PRIMARY KEY,
-                    created_at TIMESTAMP DEFAULT NOW(),
-                    label TEXT,
-                    data TEXT NOT NULL
-                )
-            """))
-            lbl = label or agora.strftime("auto_%Y%m%d_%H%M%S")
-            dados_snap = db_get_json("dados", {})
-            conn.execute(
-                text("INSERT INTO backups (label, data) VALUES (:l, :d)"),
-                {"l": lbl, "d": json.dumps(dados_snap, ensure_ascii=False)}
-            )
-            conn.execute(text("""
-                DELETE FROM backups WHERE id NOT IN (
-                    SELECT id FROM backups ORDER BY created_at DESC LIMIT :n
-                )
-            """), {"n": BACKUP_MAX_SNAPSHOTS})
-        _ultimo_backup_ts = agora
-        print(f"Snapshot criado: {lbl}")
-    except Exception as e:
-        print(f"ERRO snapshot: {e}")
-
-
-def _backup_diario_loop():
-    import time as _time
-    BACKUP_DIR = os.path.join(BASE_DIR, "backups_json")
-    os.makedirs(BACKUP_DIR, exist_ok=True)
-    while True:
-        agora = datetime.now()
-        prox = agora.replace(hour=3, minute=0, second=0, microsecond=0)
-        if prox <= agora:
-            prox += timedelta(days=1)
-        _time.sleep((prox - agora).total_seconds())
-        try:
-            ts = datetime.now().strftime("%Y%m%d")
-            dados_bkp = db_get_json("dados", {})
-            usuarios_bkp = db_get_json("usuarios", {})
-            with open(os.path.join(BACKUP_DIR, f"dados_{ts}.json"), "w", encoding="utf-8") as f:
-                json.dump(dados_bkp, f, ensure_ascii=False)
-            with open(os.path.join(BACKUP_DIR, f"usuarios_{ts}.json"), "w", encoding="utf-8") as f:
-                json.dump(usuarios_bkp, f, ensure_ascii=False)
-            # Mantém últimos 7 dias
-            datas = sorted(set(
-                fn.replace("dados_","").replace(".json","")
-                for fn in os.listdir(BACKUP_DIR) if fn.startswith("dados_")
-            ), reverse=True)
-            for data_antiga in datas[7:]:
-                for pref in ("dados_", "usuarios_"):
-                    alvo = os.path.join(BACKUP_DIR, f"{pref}{data_antiga}.json")
-                    if os.path.exists(alvo):
-                        os.remove(alvo)
-            print(f"Backup diário JSON: dados_{ts}.json")
-            criar_snapshot_backup(f"diario_{ts}")
-        except Exception as e:
-            print(f"ERRO backup diário: {e}")
-
-
-@app.route("/admin/backups")
+@app.route('/finance_sync_config', methods=['GET', 'POST'])
 @login_required
-def admin_backups():
-    if not banco_ativo():
-        return jsonify([])
-    try:
-        engine = get_db_engine()
-        with engine.begin() as conn:
-            conn.execute(text("""
-                CREATE TABLE IF NOT EXISTS backups (
-                    id SERIAL PRIMARY KEY,
-                    created_at TIMESTAMP DEFAULT NOW(),
-                    label TEXT,
-                    data TEXT NOT NULL
-                )
-            """))
-            rows = conn.execute(text(
-                "SELECT id, created_at, label FROM backups ORDER BY created_at DESC"
-            )).fetchall()
-        return jsonify([{"id": r[0], "created_at": str(r[1]), "label": r[2]} for r in rows])
-    except Exception as e:
-        return jsonify({"erro": str(e)}), 500
+def finance_sync_config():
+    usuarios = carregar_usuarios()
+    uid = session.get('user_id')
+    user = next((u for u in usuarios.get('users', []) if u.get('id') == uid), None)
+    if not user:
+        return redirect('/login')
+    if request.method == 'POST':
+        user['sync_token'] = _secrets.token_urlsafe(32)
+        salvar_usuarios(usuarios)
+    return render_template('finance_sync_config.html', user=user)
 
 
-@app.route("/admin/backups/criar", methods=["POST"])
-@login_required
-def admin_backup_criar():
-    criar_snapshot_backup("manual_" + datetime.now().strftime("%Y%m%d_%H%M%S"))
-    return jsonify({"status": "ok"})
+@app.route('/api/finance_sync')
+def api_finance_sync():
+    token = request.args.get('token', '').strip()
+    if not token:
+        return jsonify({'erro': 'Token obrigatório'}), 401
 
+    usuarios = carregar_usuarios()
+    user = next((u for u in usuarios.get('users', []) if u.get('sync_token') == token), None)
+    if not user:
+        return jsonify({'erro': 'Token inválido'}), 401
 
-@app.route("/admin/backups/restaurar/<int:bid>", methods=["POST"])
-@login_required
-def admin_backup_restaurar(bid):
-    if not banco_ativo():
-        return jsonify({"erro": "banco inativo"}), 500
-    try:
-        engine = get_db_engine()
-        with engine.begin() as conn:
-            row = conn.execute(
-                text("SELECT data, label FROM backups WHERE id = :id"), {"id": bid}
-            ).fetchone()
-        if not row:
-            return jsonify({"erro": "não encontrado"}), 404
-        db_set_json("dados", json.loads(row[0]))
-        APP_STORE_CACHE.pop("dados", None)
-        return jsonify({"status": "ok", "label": row[1]})
-    except Exception as e:
-        return jsonify({"erro": str(e)}), 500
+    uid = user['id']
+    d = dados
+
+    user_bets = [b for b in d.get('bets', []) if b.get('user_id') == uid]
+    lucro_total = round(sum(float(b.get('lucro', 0)) for b in user_bets), 2)
+
+    saldo_casas_u = d.get('saldo_casas_por_usuario', {}).get(uid, {})
+    saldo_total_casas = round(sum(float(v) for v in saldo_casas_u.values() if isinstance(v, (int, float))), 2)
+    banca_inicial = float(d.get('banca_inicial', 0))
+    banca_atual = saldo_total_casas if saldo_total_casas > 0 else round(banca_inicial + lucro_total, 2)
+
+    greens = len([b for b in user_bets if b.get('estado') == 'ganha'])
+    reds   = len([b for b in user_bets if b.get('estado') == 'perdida'])
+    total_apostado = sum(float(b.get('valor', 0)) for b in user_bets if b.get('estado') in ['ganha', 'perdida'])
+    roi  = round((lucro_total / total_apostado * 100), 2) if total_apostado else 0
+    taxa = round((greens / (greens + reds) * 100), 2) if (greens + reds) else 0
+
+    bets_recentes = sorted(
+        [b for b in user_bets if b.get('estado') in ['ganha', 'perdida', 'anulada']],
+        key=lambda b: b.get('data', ''), reverse=True
+    )[:15]
+
+    resultados = [{
+        'data': b.get('data', ''),
+        'descricao': (b.get('jogo') or b.get('texto_bruto') or '')[:60],
+        'valor': float(b.get('valor', 0)),
+        'lucro': float(b.get('lucro', 0)),
+        'estado': b.get('estado', ''),
+        'casa': b.get('casa', '')
+    } for b in bets_recentes]
+
+    return jsonify({
+        'usuario': user.get('nome', 'Usuário'),
+        'banca_atual': banca_atual,
+        'banca_inicial': banca_inicial,
+        'lucro_total': lucro_total,
+        'roi': roi,
+        'taxa': taxa,
+        'greens': greens,
+        'reds': reds,
+        'total_apostas': len(user_bets),
+        'resultados_recentes': resultados,
+        'sync_em': datetime.now().strftime('%d/%m/%Y %H:%M')
+    })
 
 
 if __name__ == "__main__":
-    t = threading.Thread(target=_backup_diario_loop, daemon=True)
-    t.start()
     app.run(debug=True)
