@@ -1,3 +1,5 @@
+APP_VERSION = "v1.0-release"  # 2026-05-20 — PostgreSQL, backup 3x/day, fix duplicação
+
 from dotenv import load_dotenv
 load_dotenv()
 from flask import Flask, render_template, request, redirect, jsonify, session, url_for, g
