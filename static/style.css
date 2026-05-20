@@ -112,23 +112,59 @@ body {
 .jogos-live-btn:hover { background:rgba(255,255,255,0.09); color:#e2e8f0; border-color:rgba(255,255,255,0.22); }
 .jogos-live-dot { width:7px; height:7px; border-radius:50%; background:#ef4444; animation:placar-pulse 1.4s ease-in-out infinite; }
 @keyframes placar-pulse { 0%,100%{opacity:1} 50%{opacity:.4} }
-.jogos-live-panel { position:absolute; top:calc(100% + 10px); right:0; width:340px; background:#0f172a; border:1px solid rgba(255,255,255,0.1); border-radius:14px; box-shadow:0 16px 40px rgba(0,0,0,.6); z-index:9999; overflow:hidden; }
-.jogos-live-header { display:flex; justify-content:space-between; align-items:center; padding:12px 16px; border-bottom:1px solid rgba(255,255,255,0.07); }
-.jogos-live-header strong { color:#e2e8f0; font-size:14px; }
-.jogos-live-refresh { background:transparent; border:none; color:#64748b; font-size:18px; cursor:pointer; padding:0 4px; transition:.15s; }
+.jogos-live-panel { position:fixed; top:72px; right:16px; width:360px; max-height:calc(100vh - 90px); background:#0f172a; border:1px solid rgba(255,255,255,0.1); border-radius:14px; box-shadow:0 16px 40px rgba(0,0,0,.7); z-index:9999; display:flex; flex-direction:column; overflow:hidden; }
+.jogos-live-header { display:flex; align-items:center; gap:8px; padding:10px 12px; border-bottom:1px solid rgba(255,255,255,0.07); flex-shrink:0; }
+.jogos-live-header strong { color:#e2e8f0; font-size:13px; flex-shrink:0; }
+.jogos-live-search { flex:1; background:rgba(255,255,255,0.05); border:1px solid rgba(255,255,255,0.1); border-radius:7px; color:#e2e8f0; font-size:12px; padding:4px 8px; outline:none; min-width:0; }
+.jogos-live-search::placeholder { color:#475569; }
+.jogos-live-search:focus { border-color:rgba(59,130,246,0.4); }
+.jogos-live-refresh { background:transparent; border:none; color:#64748b; font-size:16px; cursor:pointer; padding:0 2px; transition:.15s; flex-shrink:0; }
 .jogos-live-refresh:hover { color:#93c5fd; }
-.jogos-live-list { max-height:380px; overflow-y:auto; padding:8px; display:flex; flex-direction:column; gap:4px; }
+.jogos-live-close { background:transparent; border:none; color:#64748b; font-size:18px; cursor:pointer; padding:0 2px; transition:.15s; flex-shrink:0; line-height:1; }
+.jogos-live-close:hover { color:#e2e8f0; }
+.jogos-live-switch { padding:8px 10px; border-bottom:1px solid rgba(255,255,255,0.07); flex-shrink:0; }
+.jls-track { position:relative; display:flex; background:rgba(255,255,255,0.06); border-radius:10px; padding:3px; gap:0; }
+.jls-pill { position:absolute; top:3px; left:3px; width:calc(50% - 3px); height:calc(100% - 6px); background:#3b82f6; border-radius:7px; transition:left .22s cubic-bezier(.4,0,.2,1); pointer-events:none; z-index:0; }
+.jls-opt { flex:1; position:relative; z-index:1; background:transparent; border:none; color:#64748b; font-size:12px; font-weight:500; padding:7px 0; cursor:pointer; border-radius:7px; transition:color .2s; }
+.jls-opt.active { color:#fff; font-weight:600; }
+.jogos-live-list { overflow-y:auto; padding:6px; display:flex; flex-direction:column; gap:2px; flex:1; }
 .jogos-live-loading { color:#64748b; font-size:13px; text-align:center; padding:20px; }
-.jogo-live-item { display:flex; align-items:center; justify-content:space-between; gap:10px; padding:10px 12px; border-radius:10px; cursor:pointer; transition:.14s ease; border:1px solid transparent; }
-.jogo-live-item:hover { background:rgba(255,255,255,0.05); border-color:rgba(255,255,255,0.08); }
-.jogo-live-item.ao-vivo { border-color:rgba(239,68,68,.2); background:rgba(239,68,68,.05); }
+.jogo-live-item { border-radius:9px; cursor:pointer; transition:.14s ease; border:1px solid transparent; }
+.jogo-live-item:hover { background:rgba(255,255,255,0.04); }
+.jogo-live-item.ao-vivo { border-color:rgba(239,68,68,.2); background:rgba(239,68,68,.04); }
+.jogo-live-item.expandido { border-color:rgba(59,130,246,.25); background:rgba(59,130,246,.05); }
+.jogo-live-item-header { display:flex; align-items:center; gap:8px; padding:9px 10px; }
 .jogo-live-nome { font-size:13px; color:#e2e8f0; font-weight:500; }
 .jogo-live-status { font-size:11px; color:#64748b; margin-top:2px; }
 .jogo-live-item.ao-vivo .jogo-live-status { color:#f87171; }
-.jogo-live-placar { font-size:15px; font-weight:700; color:#93c5fd; white-space:nowrap; }
+.jogo-live-placar { font-size:14px; font-weight:700; color:#93c5fd; white-space:nowrap; }
 .jogo-live-item.ao-vivo .jogo-live-placar { color:#f87171; }
-.jogo-live-trash { background:transparent; border:none; color:#475569; font-size:13px; cursor:pointer; padding:2px 4px; border-radius:6px; flex-shrink:0; transition:.12s; line-height:1; }
+.jogo-live-trash { background:transparent; border:none; color:#475569; font-size:12px; cursor:pointer; padding:2px 4px; border-radius:6px; flex-shrink:0; transition:.12s; line-height:1; }
 .jogo-live-trash:hover { color:#ef4444; background:rgba(239,68,68,.1); }
+/* Stats inline */
+.jogo-stats-inline { padding:10px 12px 12px; border-top:1px solid rgba(255,255,255,0.06); display:none; }
+.jogo-stats-inline.aberto { display:block; }
+.stats-inline-placar { display:flex; align-items:center; justify-content:space-between; gap:6px; margin-bottom:8px; }
+.stats-inline-time { text-align:center; flex:1; font-size:11px; color:#94a3b8; }
+.stats-inline-time img { width:24px; height:24px; object-fit:contain; display:block; margin:0 auto 3px; }
+.stats-inline-score { font-size:20px; font-weight:800; color:#e2e8f0; white-space:nowrap; text-align:center; }
+.stats-inline-ht { font-size:10px; color:#64748b; text-align:center; margin-bottom:6px; }
+.stats-inline-ht span { color:#94a3b8; font-weight:600; }
+.stats-inline-status { font-size:10px; color:#64748b; text-align:center; margin-bottom:8px; }
+.stats-inline-row { display:grid; grid-template-columns:1fr auto 1fr; align-items:center; gap:6px; font-size:12px; margin-bottom:2px; }
+.stats-inline-val-h { text-align:right; color:#93c5fd; font-weight:600; }
+.stats-inline-val-a { text-align:left; color:#93c5fd; font-weight:600; }
+.stats-inline-label { color:#64748b; font-size:10px; text-align:center; white-space:nowrap; }
+.stats-inline-bar { display:grid; grid-template-columns:1fr 1fr; gap:3px; margin-bottom:5px; }
+.stats-inline-bar-h { height:2px; background:#3b82f6; border-radius:2px 0 0 2px; justify-self:end; }
+.stats-inline-bar-a { height:2px; background:#3b82f6; border-radius:0 2px 2px 0; }
+.stats-inline-sem { font-size:11px; color:#475569; text-align:center; padding:8px 0; }
+.stats-inline-loading { font-size:11px; color:#475569; text-align:center; padding:10px 0; }
+.stats-inline-gols { padding:6px 0 4px; border-bottom:1px solid rgba(255,255,255,0.06); margin-bottom:6px; }
+.gol-split-row { display:flex; gap:4px; font-size:11px; color:#94a3b8; padding:1px 0; }
+.gol-split-h { flex:1; text-align:left; }
+.gol-split-a { flex:1; text-align:right; }
+.gol-min { color:#93c5fd; font-weight:700; font-size:11px; }
 
 /* Modal de stats do jogo */
 .stats-modal-overlay { position:fixed; inset:0; background:rgba(0,0,0,.65); z-index:10000; display:flex; align-items:center; justify-content:center; backdrop-filter:blur(4px); }
