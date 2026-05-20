@@ -8081,10 +8081,8 @@ def admin_backup_restaurar(bid):
 
 
 @app.route("/admin/exportar")
-@login_required
+@admin_required
 def admin_exportar():
-    if session.get("role") != "admin":
-        return redirect(url_for("index"))
     try:
         dados = db_get_json("dados", {"apostas": [], "saldos": {}})
         usuarios = db_get_json("usuarios", {})
