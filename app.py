@@ -8000,33 +8000,23 @@ def criar_snapshot_backup(label=None):
 
 def _backup_diario_loop():
     import time as _t
-    BDIR = os.path.join(BASE_DIR, "backups_json")
-    os.makedirs(BDIR, exist_ok=True)
+    HORARIOS = [0, 12, 19]  # meia-noite, meio-dia, 19h
     while True:
         agora = datetime.now()
-        prox = agora.replace(hour=3, minute=0, second=0, microsecond=0)
-        if prox <= agora:
-            prox += timedelta(days=1)
+        proximos = []
+        for h in HORARIOS:
+            candidate = agora.replace(hour=h, minute=0, second=0, microsecond=0)
+            if candidate <= agora:
+                candidate += timedelta(days=1)
+            proximos.append(candidate)
+        prox = min(proximos)
         _t.sleep((prox - agora).total_seconds())
         try:
-            ts = datetime.now().strftime("%Y%m%d")
-            for chave in ("dados", "usuarios"):
-                obj = db_get_json(chave, {})
-                with open(os.path.join(BDIR, f"{chave}_{ts}.json"), "w", encoding="utf-8") as f:
-                    json.dump(obj, f, ensure_ascii=False)
-            datas = sorted(set(
-                fn.replace("dados_", "").replace(".json", "")
-                for fn in os.listdir(BDIR) if fn.startswith("dados_")
-            ), reverse=True)
-            for d_antiga in datas[7:]:
-                for pref in ("dados_", "usuarios_"):
-                    alvo = os.path.join(BDIR, f"{pref}{d_antiga}.json")
-                    if os.path.exists(alvo):
-                        os.remove(alvo)
-            criar_snapshot_backup(f"diario_{ts}")
-            print(f"Backup diário: {ts}")
+            ts = datetime.now().strftime("%Y%m%d_%H%M")
+            criar_snapshot_backup(f"auto_{ts}")
+            print(f"Backup automático: {ts}")
         except Exception as e:
-            print(f"ERRO backup diário: {e}")
+            print(f"ERRO backup automático: {e}")
 
 
 @app.route("/admin/backups")
