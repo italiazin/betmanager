@@ -157,14 +157,16 @@
             <button type="button" onclick="fecharEditarSaldo()">×</button>
         </div>
 
-        <form method="POST" action="/saldos/salvar" class="saldo-form">
-            <label>Casa</label>
-            <input id="editSaldoCasa" name="casa" readonly>
+        <form method="POST" action="/saldos/renomear" class="saldo-form">
+            <input type="hidden" id="editSaldoCasaOriginal" name="casa_original">
+
+            <label>Nome da casa</label>
+            <input id="editSaldoCasa" name="casa" required>
 
             <label>Novo saldo</label>
             <input id="editSaldoValor" name="saldo" type="number" step="0.01" required>
 
-            <button type="submit">Salvar novo saldo</button>
+            <button type="submit">Salvar</button>
         </form>
     </div>
 </div>
@@ -231,12 +233,9 @@ document.addEventListener("click", function(e){
 <script>
 function editarSaldoCasa(casa, saldo){
     const modal = document.getElementById("saldoEditModal")
-    const casaInput = document.getElementById("editSaldoCasa")
-    const valorInput = document.getElementById("editSaldoValor")
-
-    if(casaInput) casaInput.value = casa
-    if(valorInput) valorInput.value = String(saldo || "0").replace(",", ".")
-
+    document.getElementById("editSaldoCasaOriginal").value = casa
+    document.getElementById("editSaldoCasa").value = casa
+    document.getElementById("editSaldoValor").value = String(saldo || "0").replace(",", ".")
     if(modal) modal.classList.add("show")
 }
 
