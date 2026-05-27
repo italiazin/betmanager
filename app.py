@@ -4788,7 +4788,16 @@ def _usuarios_aplicar_defaults(data):
     return data
 
 
+_usuarios_cache = {"data": None, "ts": 0.0}
+_USUARIOS_CACHE_TTL = 60  # segundos
+
 def carregar_usuarios():
+    global _usuarios_cache
+    import time
+    agora = time.monotonic()
+    if _usuarios_cache["data"] is not None and (agora - _usuarios_cache["ts"]) < _USUARIOS_CACHE_TTL:
+        return _usuarios_cache["data"]
+
     # Lê de app_store (fonte principal)
     conn = get_pg_conn()
     if conn:
@@ -4800,34 +4809,45 @@ def carregar_usuarios():
             conn.close()
             if row:
                 val = row[0] if isinstance(row[0], dict) else json.loads(row[0])
-                return _usuarios_aplicar_defaults(val)
+                resultado = _usuarios_aplicar_defaults(val)
             else:
-                u = _usuarios_default()
-                salvar_usuarios(u)
-                return u
+                resultado = _usuarios_default()
+                salvar_usuarios(resultado)
+            _usuarios_cache = {"data": resultado, "ts": agora}
+            return resultado
         except Exception as e:
             print("ERRO AO CARREGAR USUARIOS DO POSTGRES:", e)
             try:
                 conn.close()
             except Exception:
                 pass
+            if _usuarios_cache["data"] is not None:
+                return _usuarios_cache["data"]
 
     # Fallback: arquivo local
     if not os.path.exists(USUARIOS_PATH):
         u = _usuarios_default()
         with open(USUARIOS_PATH, "w", encoding="utf-8") as f:
             json.dump(u, f, indent=4, ensure_ascii=False)
+        _usuarios_cache = {"data": u, "ts": time.monotonic()}
         return u
 
     try:
         with open(USUARIOS_PATH, "r", encoding="utf-8") as f:
             data = json.load(f)
-        return _usuarios_aplicar_defaults(data)
+        resultado = _usuarios_aplicar_defaults(data)
+        _usuarios_cache = {"data": resultado, "ts": time.monotonic()}
+        return resultado
     except Exception:
         return {"users": []}
 
 
 def salvar_usuarios(data):
+    global _usuarios_cache
+    import time
+    # Atualiza cache imediatamente (não espera TTL)
+    _usuarios_cache = {"data": data, "ts": time.monotonic()}
+
     # Salva em app_store (fonte principal)
     conn = get_pg_conn()
     if conn:
@@ -5051,9 +5071,6 @@ def index():
         salvar()
         return redirect("/")
 
-    recalcular()
-    salvar()
-
     labels, valores = grafico()
 
     return render_template(
@@ -5071,9 +5088,6 @@ def index():
 @login_required
 @assinatura_required
 def estatisticas():
-    recalcular()
-    salvar()
-
     mes = int(request.args.get("mes", datetime.now().month))
     ano = int(request.args.get("ano", datetime.now().year))
 
