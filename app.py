@@ -1682,10 +1682,16 @@ def limpar_odd(texto):
     if odds:
         return odds[-1]
 
-    matches_int = re.findall(r"\d+", texto)
-    if matches_int:
+    # Fallback: inteiro sem ponto decimal
+    for m in reversed(re.findall(r"\d+", texto)):
         try:
-            return float(matches_int[-1])
+            v = float(m)
+            if 1.01 <= v <= 100:
+                return v
+            # OCR às vezes lê "4.30" como "430" — tenta dividir por 100
+            v_div = round(v / 100, 2)
+            if 1.01 <= v_div <= 30.0:
+                return v_div
         except:
             pass
 
@@ -5456,6 +5462,13 @@ def v20_e_odd(linha):
         val = float(match.group(1))
         return 1.01 <= val <= 100
 
+    # OCR às vezes lê "4.30" como "430" — detecta inteiro de 3 dígitos que pode ser odd
+    match = re.search(r"\b(\d{3})\b", l)
+    if match:
+        val = float(match.group(1)) / 100
+        if 1.01 <= val <= 30.0:
+            return True
+
     return False
 
 
@@ -5472,7 +5485,7 @@ def v20_e_lixo_total(linha):
         "retorno possivel", "retorno possível", "criar aposta", "adicionar aposta",
         "remover selecao", "remover seleção", "remover", "bilhete", "cupom",
         "cashout", "cash out", "turbinada", "casadinha", "stake", "saldo",
-        "deposito", "depósito", "compartilhar", "copiar", "fechar",
+        "deposito", "depósito", "compartilhar", "copiar", "fechar", "ganhe",
     ]
 
     if any(x in n for x in lixo):
@@ -5489,13 +5502,16 @@ def v20_e_lixo_total(linha):
 
 def v20_limpar_linha_sem_destruir(linha):
     l = limpar_linha(linha)
+    n = v20_norm(l)
+
+    # Descarta linha inteira para evitar que valor de "Limite da aposta" ou "Ganhe" vaze
+    if any(x in n for x in ["limite da aposta", "limite", "ganhe", "possivel retorno", "possível retorno"]):
+        return ""
 
     for termo in [
         "Golden Boost", "Ganhos aumentados", "Ganho aumentado",
-        "Limite da aposta", "Possível retorno", "Possivel retorno",
-        "Retorno possível", "Retorno possivel", "Criar aposta",
-        "Remover seleção", "Remover selecao", "Bilhete", "Cupom",
-        "Cash out", "Cashout"
+        "Criar aposta", "Remover seleção", "Remover selecao",
+        "Bilhete", "Cupom", "Cash out", "Cashout"
     ]:
         l = re.sub(rf"\b{re.escape(termo)}\b", " ", l, flags=re.I)
 
@@ -5517,7 +5533,8 @@ def v20_valores_linha(linha):
 
     if any(x in n for x in [
         "possivel retorno", "possível retorno", "retorno", "odd", "odds",
-        "boost", "ganhos aumentados", "cupom", "bilhete", "cashout", "cash out"
+        "boost", "ganhos aumentados", "cupom", "bilhete", "cashout", "cash out",
+        "ganhe",
     ]):
         return []
 
