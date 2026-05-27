@@ -750,6 +750,14 @@ def ultimas_apostas_comunidade_base(limit=10):
 def buscar_aposta(bet_id):
     return buscar_aposta_segura_v61(bet_id)
 
+
+def _parse_float(v, default=0.0):
+    try:
+        return float(str(v).replace(",", ".").strip())
+    except Exception:
+        return default
+
+
 def remover_emojis(texto):
     texto = "".join(
         ch for ch in str(texto)
@@ -4710,8 +4718,8 @@ def criar_aposta_manual_payload(form):
         "casa": limpar_casa(form.get("casa", "")),
         "esporte": limpar_linha(form.get("esporte", "")),
         "jogo": jogo,
-        "odd": float(form.get("odd", 0) or 0),
-        "valor": float(form.get("valor", 0) or 0),
+        "odd": _parse_float(form.get("odd", 0)),
+        "valor": _parse_float(form.get("valor", 0)),
         "estado": "",
         "lucro": 0,
         "origem": "manual",
@@ -5089,7 +5097,7 @@ def atualizar_api():
 @app.route("/banca", methods=["POST"])
 @login_required
 def banca():
-    dados["banca_inicial"] = float(request.form["banca"])
+    dados["banca_inicial"] = _parse_float(request.form.get("banca", 0))
     salvar()
     return redirect("/")
 
@@ -5143,8 +5151,8 @@ def editar_ajax():
     b["casa"] = limpar_casa(payload.get("casa", ""))
     b["esporte"] = limpar_linha(payload.get("esporte", ""))
     b["jogo"] = limpar_linha(payload.get("jogo", ""))
-    b["odd"] = float(payload.get("odd", 1))
-    b["valor"] = float(payload.get("valor", 0))
+    b["odd"] = _parse_float(payload.get("odd", 1), default=1.0)
+    b["valor"] = _parse_float(payload.get("valor", 0))
     b["estado"] = payload.get("estado", b.get("estado", ""))
 
     classificacao = classificar_aposta(b["aposta"], b["jogo"])
@@ -5261,8 +5269,8 @@ def salvar_preview():
             "casa": limpar_casa(a.get("casa", "")),
             "esporte": limpar_linha(a.get("esporte", "")),
             "jogo": jogo,
-            "odd": float(a["odd"]),
-            "valor": float(a["valor"]),
+            "odd": _parse_float(a.get("odd", 0)),
+            "valor": _parse_float(a.get("valor", 0)),
             "estado": "",
             "lucro": 0,
             "origem": "print",
@@ -8116,7 +8124,7 @@ def saldos():
 @assinatura_required
 def salvar_saldo_casa():
     casa = limpar_casa(request.form.get("casa", ""))
-    saldo = float(request.form.get("saldo", 0) or 0)
+    saldo = _parse_float(request.form.get("saldo", 0))
 
     if casa:
         set_saldo_casa(casa, saldo)
@@ -8133,7 +8141,7 @@ def saldo_movimento():
     casa = request.form.get("casa", "")
     destino = request.form.get("destino", "")
     tipo = request.form.get("tipo", "deposito")
-    valor = float(request.form.get("valor", 0) or 0)
+    valor = _parse_float(request.form.get("valor", 0))
 
     aplicar_movimento_manual_casa(casa, tipo, valor, destino)
     salvar()
@@ -8335,8 +8343,8 @@ def calculadora_planilhar():
             casa = limpar_casa(a.get("casa", ""))
             selecao = limpar_linha(a.get("selecao", ""))
             jogo = limpar_linha(a.get("jogo", "Calculadora de Arbitragem"))
-            odd = float(a.get("odd", 0) or 0)
-            valor = float(a.get("valor", 0) or 0)
+            odd = _parse_float(a.get("odd", 0))
+            valor = _parse_float(a.get("valor", 0))
 
             if not casa or not selecao or odd <= 1 or valor <= 0:
                 continue
