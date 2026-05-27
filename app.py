@@ -1608,18 +1608,19 @@ def ranking_por_campo(campo):
 
 
 def estatisticas_extras():
-    if dados["bets"]:
-        ticket_medio = sum(float(b.get("valor", 0)) for b in dados["bets"]) / len(dados["bets"])
+    meus_bets = bets_do_usuario()
+    if meus_bets:
+        ticket_medio = sum(float(b.get("valor", 0)) for b in meus_bets) / len(meus_bets)
     else:
         ticket_medio = 0
 
-    maior_green = max([float(b.get("lucro", 0)) for b in dados["bets"]] or [0])
-    maior_red = min([float(b.get("lucro", 0)) for b in dados["bets"]] or [0])
+    maior_green = max([float(b.get("lucro", 0)) for b in meus_bets] or [0])
+    maior_red = min([float(b.get("lucro", 0)) for b in meus_bets] or [0])
 
     sequencia = 0
     tipo_seq = ""
 
-    for b in reversed(dados["bets"]):
+    for b in reversed(meus_bets):
         if b.get("estado") not in ["ganha", "perdida"]:
             continue
 
