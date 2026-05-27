@@ -4963,7 +4963,16 @@ def logout():
 @admin_required
 def admin():
     usuarios = carregar_usuarios().get("users", [])
-    return render_template("admin.html", usuarios=usuarios)
+    bets = dados.get("bets", [])
+    valor_apostado = sum(float(b.get("valor", 0) or 0) for b in bets)
+    lucro = sum(float(b.get("lucro", 0) or 0) for b in bets if b.get("estado") in ("win", "lose", "green", "red", "cashout", "void", "reembolso"))
+    total_geral = {
+        "usuarios": len(usuarios),
+        "bets": len(bets),
+        "valor_apostado": valor_apostado,
+        "lucro": lucro,
+    }
+    return render_template("admin.html", usuarios=usuarios, total_geral=total_geral)
 
 
 @app.route("/admin/toggle/<uid>")
