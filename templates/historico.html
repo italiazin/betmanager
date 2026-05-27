@@ -1,0 +1,364 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <title>Histórico de Apostas</title>
+    <link rel="stylesheet" href="/static/style.css">
+    <style>
+        .hist-filters {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+            align-items: flex-end;
+            margin-bottom: 18px;
+        }
+        .hist-filters label {
+            display: flex;
+            flex-direction: column;
+            font-size: 0.78rem;
+            color: var(--text-muted, #aaa);
+            gap: 4px;
+        }
+        .hist-filters input,
+        .hist-filters select {
+            padding: 7px 10px;
+            border-radius: 6px;
+            border: 1px solid var(--border, #333);
+            background: var(--bg-card, #1e1e2e);
+            color: var(--text, #eee);
+            font-size: 0.85rem;
+            min-width: 130px;
+        }
+        .hist-filters button {
+            padding: 7px 18px;
+            border-radius: 6px;
+            border: none;
+            background: var(--accent, #6c63ff);
+            color: #fff;
+            cursor: pointer;
+            font-size: 0.85rem;
+            align-self: flex-end;
+        }
+        .hist-filters a.limpar {
+            align-self: flex-end;
+            font-size: 0.8rem;
+            color: var(--text-muted, #aaa);
+            text-decoration: none;
+            padding: 7px 0;
+        }
+        .hist-summary {
+            display: flex;
+            gap: 12px;
+            flex-wrap: wrap;
+            margin-bottom: 18px;
+        }
+        .hist-summary .metric-card {
+            flex: 1;
+            min-width: 120px;
+        }
+        .hist-table-wrap {
+            overflow-x: auto;
+        }
+        .hist-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 0.83rem;
+        }
+        .hist-table th {
+            text-align: left;
+            padding: 8px 10px;
+            border-bottom: 1px solid var(--border, #333);
+            color: var(--text-muted, #aaa);
+            font-weight: 600;
+            white-space: nowrap;
+        }
+        .hist-table td {
+            padding: 8px 10px;
+            border-bottom: 1px solid var(--border-soft, #2a2a3a);
+            vertical-align: middle;
+        }
+        .hist-table tr:hover td {
+            background: var(--bg-hover, #22223a);
+        }
+        .hist-table .aposta-cell {
+            max-width: 220px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+        .hist-pagination {
+            display: flex;
+            gap: 6px;
+            align-items: center;
+            justify-content: center;
+            margin-top: 22px;
+            flex-wrap: wrap;
+        }
+        .hist-pagination a,
+        .hist-pagination span {
+            padding: 5px 12px;
+            border-radius: 5px;
+            font-size: 0.85rem;
+            text-decoration: none;
+        }
+        .hist-pagination a {
+            background: var(--bg-card, #1e1e2e);
+            color: var(--text, #eee);
+            border: 1px solid var(--border, #333);
+        }
+        .hist-pagination a:hover {
+            background: var(--accent, #6c63ff);
+            color: #fff;
+            border-color: transparent;
+        }
+        .hist-pagination span.current {
+            background: var(--accent, #6c63ff);
+            color: #fff;
+        }
+        .hist-pagination span.disabled {
+            color: var(--text-muted, #555);
+        }
+        .empty-hist {
+            text-align: center;
+            padding: 40px 0;
+            color: var(--text-muted, #aaa);
+        }
+    </style>
+</head>
+
+<body>
+
+<aside class="sidebar">
+    <div class="sidebar-top">
+        <div class="logo">
+            <span class="logo-icon">🎯</span>
+            <span class="logo-text">Bet Manager</span>
+        </div>
+        <button type="button" class="sidebar-toggle" onclick="toggleSidebar()">‹</button>
+    </div>
+
+    <nav>
+        <a href="/" data-title="Dashboard"><span class="nav-icon">⌂</span><span class="nav-text">Dashboard</span></a>
+        <a href="/calculadora" data-title="Calculadora"><span class="nav-icon">🧮</span><span class="nav-text">Calculadora</span></a>
+        <a href="/estatisticas" data-title="Estatísticas"><span class="nav-icon">▥</span><span class="nav-text">Estatísticas</span></a>
+        <a class="active" href="/historico" data-title="Histórico"><span class="nav-icon">📋</span><span class="nav-text">Histórico</span></a>
+        <a href="/saldos" data-title="Saldos"><span class="nav-icon">💰</span><span class="nav-text">Saldos</span></a>
+        {% if usuario and usuario.is_admin %}
+        <a href="/admin" data-title="Admin"><span class="nav-icon">⚙</span><span class="nav-text">Admin</span></a>
+        {% endif %}
+        <a href="/configuracoes" data-title="Configurações"><span class="nav-icon">⚙</span><span class="nav-text">Configurações</span></a>
+        <a href="/logout" data-title="Sair"><span class="nav-icon">↪</span><span class="nav-text">Sair</span></a>
+    </nav>
+
+    <div class="sidebar-user-wrap">
+        <div class="sidebar-user-card" onclick="toggleUserMenu(event)">
+            <div class="sidebar-user-avatar">{{ usuario_inicial if usuario_inicial else "U" }}</div>
+            <div class="sidebar-user-info">
+                <strong>{{ usuario.nome if usuario else "Usuário" }}</strong>
+                <span>{{ usuario.email if usuario else "" }}</span>
+            </div>
+            <span class="sidebar-user-arrow">⌄</span>
+        </div>
+
+        <div id="sidebarUserMenu" class="sidebar-user-menu">
+            <a href="/configuracoes">👤 Perfil / Configurações</a>
+            <a href="/saldos">💰 Saldos</a>
+            {% if usuario and usuario.is_admin %}
+            <a href="/admin">⚙ Admin</a>
+            {% endif %}
+            <a href="/logout" class="logout-link">🚪 Sair</a>
+        </div>
+    </div>
+</aside>
+
+<main class="app">
+
+<header class="topbar">
+    <div>
+        <h1>Histórico de Apostas</h1>
+        <p>{{ total }} aposta(s) encontrada(s)</p>
+    </div>
+    <a href="/" class="api-button">Voltar ao Dashboard</a>
+</header>
+
+<section class="panel">
+
+    <form method="get" action="/historico" class="hist-filters">
+        <label>
+            Data início
+            <input type="date" name="data_inicio" value="{{ data_inicio }}">
+        </label>
+        <label>
+            Data fim
+            <input type="date" name="data_fim" value="{{ data_fim }}">
+        </label>
+        <label>
+            Estado
+            <select name="estado">
+                <option value="">Todos</option>
+                <option value="ganha"   {% if estado_filtro == "ganha"   %}selected{% endif %}>Ganha</option>
+                <option value="perdida" {% if estado_filtro == "perdida" %}selected{% endif %}>Perdida</option>
+                <option value="pendente"{% if estado_filtro == "pendente"%}selected{% endif %}>Pendente</option>
+                <option value="anulada" {% if estado_filtro == "anulada" %}selected{% endif %}>Anulada</option>
+            </select>
+        </label>
+        <label>
+            Casa
+            <select name="casa">
+                <option value="">Todas</option>
+                {% for c in casas_usuario %}
+                <option value="{{ c }}" {% if casa_filtro == c %}selected{% endif %}>{{ c }}</option>
+                {% endfor %}
+            </select>
+        </label>
+        <button type="submit">Filtrar</button>
+        {% if estado_filtro or casa_filtro or data_inicio or data_fim %}
+        <a class="limpar" href="/historico">Limpar filtros</a>
+        {% endif %}
+    </form>
+
+    <div class="hist-summary">
+        <div class="metric-card">
+            <span>Apostas</span>
+            <strong>{{ total }}</strong>
+        </div>
+        <div class="metric-card">
+            <span>Ganhas</span>
+            <strong class="green-text">{{ ganhas }}</strong>
+        </div>
+        <div class="metric-card">
+            <span>Perdidas</span>
+            <strong class="red-text">{{ perdidas }}</strong>
+        </div>
+        <div class="metric-card">
+            <span>Valor apostado</span>
+            <strong>R$ {{ "%.2f"|format(valor_apostado) }}</strong>
+        </div>
+        <div class="metric-card">
+            <span>Lucro do período</span>
+            <strong class="{{ 'green-text' if lucro >= 0 else 'red-text' }}">
+                R$ {{ "%.2f"|format(lucro) }}
+            </strong>
+        </div>
+    </div>
+
+    {% if bets %}
+    <div class="hist-table-wrap">
+        <table class="hist-table">
+            <thead>
+                <tr>
+                    <th>Data</th>
+                    <th>Casa</th>
+                    <th>Esporte</th>
+                    <th>Jogo</th>
+                    <th>Aposta</th>
+                    <th>Odd</th>
+                    <th>Valor</th>
+                    <th>Estado</th>
+                    <th>Lucro</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for b in bets %}
+                {% set lucro_b = b.lucro | float %}
+                <tr>
+                    <td>{{ b.data or "—" }}</td>
+                    <td>{{ b.casa or "—" }}</td>
+                    <td>{{ b.esporte or "—" }}</td>
+                    <td>{{ b.jogo or "—" }}</td>
+                    <td class="aposta-cell" title="{{ b.aposta or '' }}">{{ b.aposta or "—" }}</td>
+                    <td>{{ b.odd }}</td>
+                    <td>R$ {{ "%.2f"|format(b.valor | float) }}</td>
+                    <td>
+                        {% if b.estado == "ganha" %}
+                            <span class="badge green">Ganha</span>
+                        {% elif b.estado == "perdida" %}
+                            <span class="badge red">Perdida</span>
+                        {% elif b.estado == "anulada" %}
+                            <span class="badge gray">Anulada</span>
+                        {% else %}
+                            <span class="badge yellow">Pendente</span>
+                        {% endif %}
+                    </td>
+                    <td class="{{ 'green-text' if lucro_b > 0 else 'red-text' if lucro_b < 0 else '' }}">
+                        R$ {{ "%.2f"|format(lucro_b) }}
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+
+    {% if total_paginas > 1 %}
+    <div class="hist-pagination">
+        {% if pagina > 1 %}
+            <a href="?p={{ pagina - 1 }}&estado={{ estado_filtro }}&casa={{ casa_filtro }}&data_inicio={{ data_inicio }}&data_fim={{ data_fim }}">‹ Anterior</a>
+        {% else %}
+            <span class="disabled">‹ Anterior</span>
+        {% endif %}
+
+        {% for i in range(1, total_paginas + 1) %}
+            {% if i == pagina %}
+                <span class="current">{{ i }}</span>
+            {% elif i <= 3 or i >= total_paginas - 2 or (i >= pagina - 2 and i <= pagina + 2) %}
+                <a href="?p={{ i }}&estado={{ estado_filtro }}&casa={{ casa_filtro }}&data_inicio={{ data_inicio }}&data_fim={{ data_fim }}">{{ i }}</a>
+            {% elif i == 4 or i == total_paginas - 3 %}
+                <span class="disabled">…</span>
+            {% endif %}
+        {% endfor %}
+
+        {% if pagina < total_paginas %}
+            <a href="?p={{ pagina + 1 }}&estado={{ estado_filtro }}&casa={{ casa_filtro }}&data_inicio={{ data_inicio }}&data_fim={{ data_fim }}">Próxima ›</a>
+        {% else %}
+            <span class="disabled">Próxima ›</span>
+        {% endif %}
+    </div>
+    {% endif %}
+
+    {% else %}
+    <div class="empty-hist">
+        <p>Nenhuma aposta encontrada com os filtros selecionados.</p>
+    </div>
+    {% endif %}
+
+</section>
+
+</main>
+
+<script>
+function toggleSidebar(){
+    document.body.classList.toggle("sidebar-collapsed")
+    const collapsed = document.body.classList.contains("sidebar-collapsed")
+    localStorage.setItem("sidebarCollapsed", collapsed ? "1" : "0")
+    const btn = document.querySelector(".sidebar-toggle")
+    if(btn) btn.innerText = collapsed ? "›" : "‹"
+}
+
+document.addEventListener("DOMContentLoaded", ()=>{
+    const collapsed = localStorage.getItem("sidebarCollapsed") === "1"
+    if(collapsed){
+        document.body.classList.add("sidebar-collapsed")
+        const btn = document.querySelector(".sidebar-toggle")
+        if(btn) btn.innerText = "›"
+    }
+})
+</script>
+
+<script id="v62-userbox-js">
+function toggleUserMenu(ev){
+    if(ev) ev.stopPropagation()
+    const menu = document.getElementById("sidebarUserMenu")
+    if(menu) menu.classList.toggle("open")
+}
+
+document.addEventListener("click", function(e){
+    const menu = document.getElementById("sidebarUserMenu")
+    const card = document.querySelector(".sidebar-user-card")
+    if(menu && card && !menu.contains(e.target) && !card.contains(e.target)){
+        menu.classList.remove("open")
+    }
+})
+</script>
+
+</body>
+</html>
