@@ -24,6 +24,14 @@ from PIL import Image
 app = Flask(__name__)
 app.secret_key = os.environ.get("SECRET_KEY", "troque-essa-chave-em-producao")
 
+_IS_PROD = bool(os.environ.get("DATABASE_URL"))  # Render sempre seta DATABASE_URL
+app.config.update(
+    SESSION_COOKIE_HTTPONLY=True,
+    SESSION_COOKIE_SAMESITE="Lax",
+    SESSION_COOKIE_SECURE=_IS_PROD,
+    PERMANENT_SESSION_LIFETIME=timedelta(days=14),
+)
+
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 CONFIG_PATH = os.path.join(BASE_DIR, "config.json")
 ARQUIVO = os.path.join(BASE_DIR, "dados.json")
@@ -97,9 +105,10 @@ def criar_backup_pg(label=None):
     try:
         cur = conn.cursor()
         lbl = label or agora.strftime("auto_%Y%m%d_%H%M%S")
+        snapshot = {"dados": dados, "usuarios": carregar_usuarios()}
         cur.execute(
             "INSERT INTO backups (label, data) VALUES (%s, %s)",
-            (lbl, json.dumps(dados, ensure_ascii=False))
+            (lbl, json.dumps(snapshot, ensure_ascii=False))
         )
         # Remove snapshots antigos, mantém os últimos BACKUP_MAX_SNAPSHOTS
         cur.execute("""
@@ -4896,6 +4905,36 @@ def buscar_usuario_email(email):
 
 
 
+_login_attempts = {}  # {ip: {"count": N, "locked_until": datetime | None}}
+_MAX_LOGIN_ATTEMPTS = 5
+_LOCK_DURATION_MIN = 15
+
+
+def _login_bloqueado(ip):
+    info = _login_attempts.get(ip)
+    if not info:
+        return False
+    if info["locked_until"] and datetime.now() < info["locked_until"]:
+        return True
+    return False
+
+
+def _registrar_falha_login(ip):
+    agora = datetime.now()
+    info = _login_attempts.get(ip, {"count": 0, "locked_until": None})
+    if info["locked_until"] and agora >= info["locked_until"]:
+        info = {"count": 0, "locked_until": None}
+    info["count"] += 1
+    if info["count"] >= _MAX_LOGIN_ATTEMPTS:
+        info["locked_until"] = agora + timedelta(minutes=_LOCK_DURATION_MIN)
+        print(f"[security] IP bloqueado por tentativas excessivas: {ip}")
+    _login_attempts[ip] = info
+
+
+def _registrar_sucesso_login(ip):
+    _login_attempts.pop(ip, None)
+
+
 def login_required(fn):
     @wraps(fn)
     def wrapper(*args, **kwargs):
@@ -4947,14 +4986,22 @@ def login():
     erro = ""
 
     if request.method == "POST":
+        ip = request.remote_addr or "unknown"
+
+        if _login_bloqueado(ip):
+            erro = f"Muitas tentativas incorretas. Aguarde {_LOCK_DURATION_MIN} minutos."
+            return render_template("login.html", erro=erro)
+
         email = request.form.get("email", "").strip().lower()
         senha = request.form.get("senha", "")
 
         u = buscar_usuario_email(email)
 
         if not u or not u.get("ativo", True) or not check_password_hash(u.get("senha_hash", ""), senha):
+            _registrar_falha_login(ip)
             erro = "E-mail ou senha inválidos."
         else:
+            _registrar_sucesso_login(ip)
             session["user_id"] = u["id"]
             return redirect("/")
 
@@ -8261,9 +8308,10 @@ def admin_backup_criar():
     try:
         cur = conn.cursor()
         lbl = "manual_" + datetime.now().strftime("%Y%m%d_%H%M%S")
+        snapshot = {"dados": dados, "usuarios": carregar_usuarios()}
         cur.execute(
             "INSERT INTO backups (label, data) VALUES (%s, %s)",
-            (lbl, json.dumps(dados, ensure_ascii=False))
+            (lbl, json.dumps(snapshot, ensure_ascii=False))
         )
         conn.commit()
         cur.close()
@@ -8288,9 +8336,16 @@ def admin_backup_restaurar(backup_id):
         conn.close()
         if not row:
             return jsonify({"status": "erro", "msg": "Backup não encontrado"}), 404
-        dados_restaurados = json.loads(row[0])
-        dados.clear()
-        dados.update(dados_restaurados)
+        parsed = json.loads(row[0])
+        # Formato novo: {"dados": {...}, "usuarios": {...}}
+        # Formato antigo: direto o objeto dados
+        if "dados" in parsed and "usuarios" in parsed:
+            dados.clear()
+            dados.update(parsed["dados"])
+            salvar_usuarios(parsed["usuarios"])
+        else:
+            dados.clear()
+            dados.update(parsed)
         salvar()
         return jsonify({"status": "ok", "label": row[1], "created_at": str(row[2])})
     except Exception as e:
