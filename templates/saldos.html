@@ -21,6 +21,7 @@
         <a href="/" data-title="Dashboard"><span class="nav-icon">⌂</span><span class="nav-text">Dashboard</span></a>
         <a href="/calculadora" data-title="Calculadora"><span class="nav-icon">🧮</span><span class="nav-text">Calculadora</span></a>
         <a href="/estatisticas" data-title="Estatísticas"><span class="nav-icon">▥</span><span class="nav-text">Estatísticas</span></a>
+        <a href="/historico" data-title="Histórico"><span class="nav-icon">📋</span><span class="nav-text">Histórico</span></a>
         <a class="active" href="/saldos" data-title="Saldos"><span class="nav-icon">💰</span><span class="nav-text">Saldos</span></a>
     {% if usuario and usuario.is_admin %}
         <a href="/admin" data-title="Admin"><span class="nav-icon">⚙</span><span class="nav-text">Admin</span></a>
@@ -157,16 +158,14 @@
             <button type="button" onclick="fecharEditarSaldo()">×</button>
         </div>
 
-        <form method="POST" action="/saldos/renomear" class="saldo-form">
-            <input type="hidden" id="editSaldoCasaOriginal" name="casa_original">
-
-            <label>Nome da casa</label>
-            <input id="editSaldoCasa" name="casa" required>
+        <form method="POST" action="/saldos/salvar" class="saldo-form">
+            <label>Casa</label>
+            <input id="editSaldoCasa" name="casa" readonly>
 
             <label>Novo saldo</label>
             <input id="editSaldoValor" name="saldo" type="number" step="0.01" required>
 
-            <button type="submit">Salvar</button>
+            <button type="submit">Salvar novo saldo</button>
         </form>
     </div>
 </div>
@@ -233,9 +232,12 @@ document.addEventListener("click", function(e){
 <script>
 function editarSaldoCasa(casa, saldo){
     const modal = document.getElementById("saldoEditModal")
-    document.getElementById("editSaldoCasaOriginal").value = casa
-    document.getElementById("editSaldoCasa").value = casa
-    document.getElementById("editSaldoValor").value = String(saldo || "0").replace(",", ".")
+    const casaInput = document.getElementById("editSaldoCasa")
+    const valorInput = document.getElementById("editSaldoValor")
+
+    if(casaInput) casaInput.value = casa
+    if(valorInput) valorInput.value = String(saldo || "0").replace(",", ".")
+
     if(modal) modal.classList.add("show")
 }
 
@@ -243,16 +245,6 @@ function fecharEditarSaldo(){
     const modal = document.getElementById("saldoEditModal")
     if(modal) modal.classList.remove("show")
 }
-</script>
-
-
-<script id="v72-global-scroll-js">
-function v72SaveScroll(){sessionStorage.setItem("restoreScrollY", String(window.scrollY || 0))}
-function v72RestoreScroll(){const y=sessionStorage.getItem("restoreScrollY"); if(y!==null){sessionStorage.removeItem("restoreScrollY"); setTimeout(()=>window.scrollTo(0, Number(y||0)),0)}}
-document.addEventListener("DOMContentLoaded", v72RestoreScroll)
-window.addEventListener("beforeunload", v72SaveScroll)
-document.addEventListener("click", e=>{if(e.target.closest("a,button")) v72SaveScroll()}, true)
-document.addEventListener("submit", e=>v72SaveScroll(), true)
 </script>
 
 </body>
