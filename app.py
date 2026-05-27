@@ -218,18 +218,19 @@ def _aplicar_defaults_bets(dados):
 def carregar():
     dados_padrao = {"banca_inicial": 1000, "bets": [], "saldo_casas": {}, "saldo_casas_por_usuario": {}, "movimentacoes_casas_por_usuario": {}}
 
-    # Tenta carregar do PostgreSQL
+    # Tenta carregar do PostgreSQL (app_store)
     conn = get_pg_conn()
     if conn:
         try:
             cur = conn.cursor()
-            cur.execute("SELECT data FROM storage WHERE key = 'dados'")
+            cur.execute("SELECT valor FROM app_store WHERE chave = 'dados'")
             row = cur.fetchone()
             cur.close()
             conn.close()
             if row:
+                val = row[0] if isinstance(row[0], dict) else json.loads(row[0])
                 print("PostgreSQL: dados carregados com sucesso.")
-                return _aplicar_defaults_bets(json.loads(row[0]))
+                return _aplicar_defaults_bets(val)
             else:
                 # Primeira vez: migra arquivo local para PG se existir
                 if os.path.exists(ARQUIVO):
@@ -275,8 +276,8 @@ def _pg_salvar_dados(d):
     try:
         cur = conn.cursor()
         cur.execute(
-            "INSERT INTO storage (key, data) VALUES ('dados', %s) "
-            "ON CONFLICT (key) DO UPDATE SET data = EXCLUDED.data",
+            "INSERT INTO app_store (chave, valor, atualizado_em) VALUES ('dados', %s::jsonb, NOW()) "
+            "ON CONFLICT (chave) DO UPDATE SET valor = EXCLUDED.valor, atualizado_em = NOW()",
             (json.dumps(d, ensure_ascii=False),)
         )
         conn.commit()
@@ -1558,6 +1559,24 @@ def calendario_historico(ano=None, mes=None):
         next_mes = 1
         next_ano += 1
 
+    lucro_mes = round(sum(v["lucro"] for v in por_dia.values()), 2)
+    apostas_mes = sum(v["apostas"] for v in por_dia.values())
+    dias_pos = sum(1 for v in por_dia.values() if v["lucro"] > 0)
+    dias_neg = sum(1 for v in por_dia.values() if v["lucro"] < 0)
+    melhor = max(por_dia.items(), key=lambda x: x[1]["lucro"]) if por_dia else (None, {"lucro": 0})
+    pior   = min(por_dia.items(), key=lambda x: x[1]["lucro"]) if por_dia else (None, {"lucro": 0})
+
+    resumo_mes = {
+        "lucro": lucro_mes,
+        "apostas": apostas_mes,
+        "dias_positivos": dias_pos,
+        "dias_negativos": dias_neg,
+        "melhor_dia": melhor[0],
+        "melhor_dia_lucro": round(melhor[1]["lucro"], 2),
+        "pior_dia": pior[0],
+        "pior_dia_lucro": round(pior[1]["lucro"], 2),
+    }
+
     return {
         "mes_nome": mes_ref.strftime("%B").capitalize(),
         "ano": ano,
@@ -1566,7 +1585,8 @@ def calendario_historico(ano=None, mes=None):
         "prev_ano": prev_ano,
         "next_mes": next_mes,
         "next_ano": next_ano,
-        "semanas": semanas
+        "semanas": semanas,
+        "resumo_mes": resumo_mes,
     }
 
 
