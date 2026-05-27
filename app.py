@@ -4760,28 +4760,19 @@ def _usuarios_aplicar_defaults(data):
 
 
 def carregar_usuarios():
-    # Tenta carregar do PostgreSQL
+    # Lê de app_store (fonte principal)
     conn = get_pg_conn()
     if conn:
         try:
             cur = conn.cursor()
-            cur.execute("SELECT data FROM storage WHERE key = 'usuarios'")
+            cur.execute("SELECT valor FROM app_store WHERE chave = 'usuarios'")
             row = cur.fetchone()
             cur.close()
             conn.close()
             if row:
-                return _usuarios_aplicar_defaults(json.loads(row[0]))
+                val = row[0] if isinstance(row[0], dict) else json.loads(row[0])
+                return _usuarios_aplicar_defaults(val)
             else:
-                # Migra arquivo local para PG se existir
-                if os.path.exists(USUARIOS_PATH):
-                    try:
-                        with open(USUARIOS_PATH, "r", encoding="utf-8") as f:
-                            data = json.load(f)
-                        salvar_usuarios(data)
-                        print("PostgreSQL: usuarios.json migrado com sucesso.")
-                        return _usuarios_aplicar_defaults(data)
-                    except Exception as e:
-                        print("ERRO na migração usuarios.json → PG:", e)
                 u = _usuarios_default()
                 salvar_usuarios(u)
                 return u
@@ -4808,14 +4799,14 @@ def carregar_usuarios():
 
 
 def salvar_usuarios(data):
-    # Salva no PostgreSQL
+    # Salva em app_store (fonte principal)
     conn = get_pg_conn()
     if conn:
         try:
             cur = conn.cursor()
             cur.execute(
-                "INSERT INTO storage (key, data) VALUES ('usuarios', %s) "
-                "ON CONFLICT (key) DO UPDATE SET data = EXCLUDED.data",
+                "INSERT INTO app_store (chave, valor, atualizado_em) VALUES ('usuarios', %s::jsonb, NOW()) "
+                "ON CONFLICT (chave) DO UPDATE SET valor = EXCLUDED.valor, atualizado_em = NOW()",
                 (json.dumps(data, ensure_ascii=False),)
             )
             conn.commit()
