@@ -8406,6 +8406,73 @@ def movimentacoes_usuario():
     return movimentacoes_usuario_v61()
 
 
+@app.route("/historico")
+@login_required
+def historico():
+    POR_PAGINA = 50
+
+    estado_filtro = request.args.get("estado", "")
+    casa_filtro   = request.args.get("casa", "").strip()
+    data_inicio   = request.args.get("data_inicio", "")
+    data_fim      = request.args.get("data_fim", "")
+    pagina        = max(1, int(request.args.get("p", 1) or 1))
+
+    meus = list(reversed(bets_do_usuario()))
+
+    if estado_filtro == "pendente":
+        meus = [b for b in meus if not b.get("estado")]
+    elif estado_filtro:
+        meus = [b for b in meus if b.get("estado") == estado_filtro]
+
+    if casa_filtro:
+        casa_lower = casa_filtro.lower()
+        meus = [b for b in meus if casa_lower in (b.get("casa") or "").lower()]
+
+    if data_inicio:
+        try:
+            di = datetime.strptime(data_inicio, "%Y-%m-%d")
+            meus = [b for b in meus if parse_data(b.get("data", "")) and parse_data(b.get("data", "")) >= di]
+        except Exception:
+            pass
+
+    if data_fim:
+        try:
+            df = datetime.strptime(data_fim, "%Y-%m-%d").replace(hour=23, minute=59)
+            meus = [b for b in meus if parse_data(b.get("data", "")) and parse_data(b.get("data", "")) <= df]
+        except Exception:
+            pass
+
+    total_filtrado    = len(meus)
+    ganhas_filtrado   = sum(1 for b in meus if b.get("estado") == "ganha")
+    perdidas_filtrado = sum(1 for b in meus if b.get("estado") == "perdida")
+    lucro_filtrado    = round(sum(float(b.get("lucro", 0) or 0) for b in meus), 2)
+    valor_filtrado    = round(sum(float(b.get("valor", 0) or 0) for b in meus), 2)
+
+    total_paginas = max(1, (total_filtrado + POR_PAGINA - 1) // POR_PAGINA)
+    pagina        = min(pagina, total_paginas)
+    offset        = (pagina - 1) * POR_PAGINA
+    bets_pagina   = meus[offset:offset + POR_PAGINA]
+
+    casas_usuario = sorted({b.get("casa", "") for b in bets_do_usuario() if b.get("casa", "")})
+
+    return render_template(
+        "historico.html",
+        bets=bets_pagina,
+        total=total_filtrado,
+        pagina=pagina,
+        total_paginas=total_paginas,
+        ganhas=ganhas_filtrado,
+        perdidas=perdidas_filtrado,
+        lucro=lucro_filtrado,
+        valor_apostado=valor_filtrado,
+        estado_filtro=estado_filtro,
+        casa_filtro=casa_filtro,
+        data_inicio=data_inicio,
+        data_fim=data_fim,
+        casas_usuario=casas_usuario,
+    )
+
+
 def total_saldos_casas():
     return total_saldos_casas_v61()
 
