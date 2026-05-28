@@ -79,10 +79,17 @@ def init_pg_db():
                 data TEXT NOT NULL
             )
         """)
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS app_store (
+                chave TEXT PRIMARY KEY,
+                valor JSONB NOT NULL,
+                atualizado_em TIMESTAMP DEFAULT NOW()
+            )
+        """)
         conn.commit()
         cur.close()
         conn.close()
-        print("PostgreSQL: tabelas storage e backups OK")
+        print("PostgreSQL: tabelas storage, backups e app_store OK")
     except Exception as e:
         print("ERRO AO INICIALIZAR POSTGRES:", e)
         try:
@@ -5036,8 +5043,8 @@ def criar_conta():
                 "senha_hash": generate_password_hash(senha),
                 "is_admin": False,
                 "ativo": True,
-                "assinatura_ativa": False,
-                "plano": "free",
+                "assinatura_ativa": True,
+                "plano": "pro",
                 "apostas_publicas_padrao": False,
                 "criado_em": datetime.now().strftime("%d/%m/%Y %H:%M")
             })
@@ -5373,7 +5380,15 @@ def salvar_preview():
         dados["bets"].append(bet_preview)
 
     salvar()
-    return jsonify({"status": "ok"})
+    recalcular()
+    bets_salvas = [limpar_aposta_display_v39(b) for b in dados["bets"][-len(apostas):]] if apostas else []
+    return jsonify({
+        "status": "ok",
+        "ok": True,
+        "salvas": len(apostas),
+        "bets": bets_salvas,
+        "metricas": metricas()
+    })
 
 
 
