@@ -10022,6 +10022,34 @@ def api_buscar_jogos():
 
         scored.sort(key=lambda x: (-x.get("score", 0), x.get("horario_jogo_iso", "")))
         jogos = scored[:12]
+
+        # Fallback: complementar com nomes de apostas históricas do próprio usuário
+        if len(jogos) < 6:
+            q_norm = espn_normalizar_nome(q)
+            vistos = {espn_normalizar_nome(j.get("jogo", "")) for j in jogos}
+            for b in bets_do_usuario():
+                jogo_nome = str(b.get("jogo", "") or "").strip()
+                if not jogo_nome or len(jogo_nome) < 4:
+                    continue
+                jogo_norm = espn_normalizar_nome(jogo_nome)
+                if q_norm not in jogo_norm:
+                    continue
+                if jogo_norm in vistos:
+                    continue
+                vistos.add(jogo_norm)
+                jogos.append({
+                    "jogo": jogo_nome,
+                    "jogo_norm": jogo_norm,
+                    "esporte": b.get("esporte", ""),
+                    "horario_jogo": "",
+                    "horario_jogo_iso": "",
+                    "status_jogo": "histórico",
+                    "ao_vivo": False,
+                    "liga_nome": "Histórico",
+                    "score": 20,
+                })
+                if len(jogos) >= 12:
+                    break
     else:
         jogos = sorted(jogos, key=lambda x: x.get("horario_jogo_iso", ""))[:60]
 
