@@ -554,7 +554,10 @@ document.addEventListener("DOMContentLoaded", ()=>{
             <input name="aposta" placeholder="Nome da aposta" required>
             <input name="casa" placeholder="Casa">
             <input name="esporte" placeholder="Esporte">
-            <input name="jogo" placeholder="Jogo / Times">
+            <input name="jogo" placeholder="Jogo / Times" list="jogos-list" autocomplete="off">
+            <datalist id="jogos-list">
+                {% for j in jogos_usuario %}<option value="{{ j }}">{% endfor %}
+            </datalist>
             <input name="odd" type="number" step="0.01" placeholder="Odd" required>
             <input name="valor" type="number" step="0.01" placeholder="Valor apostado" required>
             <button type="submit">Adicionar</button>
@@ -699,10 +702,18 @@ document.addEventListener("DOMContentLoaded", ()=>{
                 </div>
             </div>
 
-            <input 
-                type="number" 
-                id="minValue" 
-                class="small-filter" 
+            <input
+                type="text"
+                id="jogoFilter"
+                class="search-input"
+                placeholder="Buscar time / jogo..."
+                oninput="filtrarApostas()"
+            >
+
+            <input
+                type="number"
+                id="minValue"
+                class="small-filter"
                 placeholder="Valor mín."
                 onkeyup="filtrarApostas()"
                 onchange="filtrarApostas()"
@@ -1110,6 +1121,7 @@ function converterDataBR(dataTexto){
 
 function filtrarApostas(){
     const busca = document.getElementById("searchInput").value.toLowerCase()
+    const jogoFiltro = (document.getElementById("jogoFilter") || {}).value?.toLowerCase() || ""
     const status = document.getElementById("statusFilter").value
     const dataFiltro = document.getElementById("dateFilter").value
     const casas = valoresSelecionados(".casa-linha")
@@ -1124,6 +1136,7 @@ function filtrarApostas(){
 
     linhas.forEach(linha=>{
         const texto = linha.innerText.toLowerCase()
+        const jogoTexto = linha.querySelector(".jogo-cell") ? linha.querySelector(".jogo-cell").innerText.toLowerCase().trim() : ""
         const statusTexto = linha.querySelector(".status-cell").innerText.toLowerCase()
         const casaTexto = linha.querySelector(".casa-cell") ? linha.querySelector(".casa-cell").innerText.toLowerCase().trim() : ""
         const esporteTexto = linha.querySelector(".esporte-cell") ? linha.querySelector(".esporte-cell").innerText.toLowerCase().trim() : ""
@@ -1134,6 +1147,7 @@ function filtrarApostas(){
         let mostrar = true
 
         if(busca && !texto.includes(busca)) mostrar = false
+        if(jogoFiltro && !jogoTexto.includes(jogoFiltro)) mostrar = false
         if(status !== "todos" && !statusTexto.includes(status)) mostrar = false
         if(casas.length > 0 && !casas.includes(casaTexto)) mostrar = false
         if(esportes.length > 0 && !esportes.includes(esporteTexto)) mostrar = false
