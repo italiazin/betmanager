@@ -5126,6 +5126,12 @@ def index():
 
     labels, valores = grafico()
 
+    jogos_usuario = sorted(set(
+        b.get("jogo", "").strip()
+        for b in bets_do_usuario()
+        if b.get("jogo", "").strip()
+    ))
+
     return render_template(
         "index.html",
         bets=bets_display_v39(),
@@ -5133,7 +5139,8 @@ def index():
         labels=labels,
         valores=valores,
         casas=CASAS_DISPONIVEIS,
-        esportes=ESPORTES_DISPONIVEIS
+        esportes=ESPORTES_DISPONIVEIS,
+        jogos_usuario=jogos_usuario
     )
 
 
@@ -5390,29 +5397,26 @@ def preparar_imagem(caminho):
 def ler_imagem(caminho):
     img = preparar_imagem(caminho)
 
-    configs = [
-        "--oem 3 --psm 6",
-        "--oem 3 --psm 4",
-        "--oem 3 --psm 11"
-    ]
+    try:
+        texto = pytesseract.image_to_string(img, lang="por+eng", config="--oem 3 --psm 6")
+    except Exception as e:
+        print("ERRO TESSERACT psm6:", e)
+        texto = ""
 
-    melhor_texto = ""
-
-    for cfg in configs:
+    # Fallback só se o resultado for insuficiente (imagem com layout diferente)
+    if len(texto.strip()) < 60:
         try:
-            texto = pytesseract.image_to_string(img, lang="por+eng", config=cfg)
-        except Exception as e:
-            print("ERRO TESSERACT:", e)
-            texto = ""
-
-        if len(texto.strip()) > len(melhor_texto.strip()):
-            melhor_texto = texto
+            t2 = pytesseract.image_to_string(img, lang="por+eng", config="--oem 3 --psm 4")
+            if len(t2.strip()) > len(texto.strip()):
+                texto = t2
+        except Exception:
+            pass
 
     print("===== OCR BRUTO V20 =====")
-    print(melhor_texto)
+    print(texto)
     print("===== FIM OCR BRUTO V20 =====")
 
-    return melhor_texto
+    return texto
 
 
 def limpar_valor(texto):
