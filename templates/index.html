@@ -1,4 +1,4 @@
-﻿<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="pt-BR">
 <head>
     <meta charset="UTF-8">
@@ -212,10 +212,7 @@ const valores = {{ valores | tojson }};
             <input name="aposta" id="manualApostaAuto" placeholder="Aposta (mercado/seleção)">
             <input name="esporte" placeholder="Esporte">
             <input name="odd" type="number" step="0.01" placeholder="Odd" required>
-            <input name="jogo" placeholder="Jogo / Times" list="jogos-list" autocomplete="off">
-            <datalist id="jogos-list">
-                {% for j in jogos_usuario %}<option value="{{ j }}">{% endfor %}
-            </datalist>
+            <input name="jogo" placeholder="Jogo / Times" autocomplete="off">
             <input name="valor" type="number" step="0.01" placeholder="Valor apostado" required>
             <button type="submit">Adicionar</button>
             <input type="hidden" name="copiada_comunidade" id="copiadaComunidade" value="0">
