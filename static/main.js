@@ -357,6 +357,7 @@ function converterDataBR(dataTexto){
 }
 function filtrarApostas(){
     const busca = document.getElementById("searchInput").value.toLowerCase()
+    const jogoFiltro = (document.getElementById("jogoFilter")?.value || "").toLowerCase()
     const status = document.getElementById("statusFilter").value
     const dataFiltro = document.getElementById("dateFilter").value
     const casas = valoresSelecionados(".casa-linha")
@@ -366,6 +367,7 @@ function filtrarApostas(){
     const hoje = new Date(); hoje.setHours(0,0,0,0)
     document.querySelectorAll("tbody tr").forEach(linha=>{
         const texto = linha.innerText.toLowerCase()
+        const jogoTexto = linha.querySelector(".jogo-cell")?.innerText.toLowerCase().trim() || ""
         const statusTexto = linha.querySelector(".status-cell")?.innerText.toLowerCase() || ""
         const casaTexto = linha.querySelector(".casa-cell")?.innerText.toLowerCase().trim() || ""
         const esporteTexto = linha.querySelector(".esporte-cell")?.innerText.toLowerCase().trim() || ""
@@ -374,6 +376,7 @@ function filtrarApostas(){
         const dataAposta = converterDataBR(dataTexto)
         let mostrar = true
         if(busca && !texto.includes(busca)) mostrar = false
+        if(jogoFiltro && !jogoTexto.includes(jogoFiltro)) mostrar = false
         if(status !== "todos" && !statusTexto.includes(status)) mostrar = false
         if(casas.length > 0 && !casas.includes(casaTexto)) mostrar = false
         if(esportes.length > 0 && !esportes.includes(esporteTexto)) mostrar = false
