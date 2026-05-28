@@ -10256,7 +10256,7 @@ def api_meus_jogos():
             return False
         estado = b.get("estado", "")
         if estado not in ("ganha", "perdida", "anulada"):
-            # Pendente: só mostra se o jogo é hoje (não amanhã+, não ontem)
+            # Pendente com horario_jogo_iso: não mostra jogos de amanhã em diante
             iso = b.get("horario_jogo_iso", "")
             if iso:
                 try:
@@ -10265,21 +10265,9 @@ def api_meus_jogos():
                         jdt = jdt.replace(tzinfo=ZoneInfo("America/Sao_Paulo"))
                     if jdt > hoje_fim:
                         return False
-                    if jdt < hoje_ini and not b.get("ao_vivo"):
-                        return False
                 except Exception:
                     pass
-            else:
-                st = str(b.get("status_jogo", "") or "")
-                m = re.match(r"^(\d{2})/(\d{2})", st)
-                if m:
-                    try:
-                        dia, mes = int(m.group(1)), int(m.group(2))
-                        dt_jogo = agora.replace(month=mes, day=dia, hour=0, minute=0, second=0, microsecond=0)
-                        if dt_jogo > hoje_fim or dt_jogo < hoje_ini:
-                            return False
-                    except Exception:
-                        pass
+            # Pendente sem data ESPN: sempre aparece (o usuario ainda não resolveu)
             return True
         # resolvida: mostra só jogos de hoje ou recentes (até 6h atrás, para jogos de madrugada)
         iso = b.get("horario_jogo_iso", "")
