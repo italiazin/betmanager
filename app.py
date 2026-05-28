@@ -10468,6 +10468,7 @@ def _iniciar_backup_thread():
 
 
 _iniciar_backup_thread()
+v97_iniciar_cache_espn_servidor()
 
 if __name__ == "__main__":
     app.run(debug=True)
