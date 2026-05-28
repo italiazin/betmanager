@@ -8,6 +8,9 @@ import unicodedata
 import calendar
 import difflib
 from datetime import datetime, timedelta
+import time
+import threading
+from zoneinfo import ZoneInfo
 import requests
 from functools import wraps
 from werkzeug.security import generate_password_hash, check_password_hash
@@ -8625,6 +8628,1821 @@ def _backup_diario_loop():
         except Exception as e:
             print(f"[backup] ERRO no loop agendado: {e}")
             time.sleep(3600)  # espera 1h antes de tentar de novo
+
+
+
+
+# ============================================================
+# ESPN - Importado da v155
+# ============================================================
+
+def v154_parse_data_jogo_aposta(b):
+    """
+    Retorna a data/hora do jogo da aposta.
+    Prioridade:
+    1) horario_jogo_iso
+    2) horario_jogo / status_jogo com dd/mm hh:mm
+    3) campos data_jogo/jogo_data
+    4) fallback: data de criação da aposta
+    """
+    if not isinstance(b, dict):
+        return None
+
+    candidatos = [
+        b.get("horario_jogo_iso"),
+        b.get("data_jogo"),
+        b.get("jogo_data"),
+        b.get("horario_jogo"),
+        b.get("status_jogo"),
+        b.get("data"),
+    ]
+
+    formatos = [
+        "%Y-%m-%dT%H:%M:%S",
+        "%Y-%m-%dT%H:%M",
+        "%Y-%m-%d %H:%M:%S",
+        "%Y-%m-%d %H:%M",
+        "%d/%m/%Y %H:%M",
+        "%d/%m/%y %H:%M",
+        "%d/%m %H:%M",
+        "%d/%m/%Y",
+        "%d/%m/%y",
+        "%d/%m",
+    ]
+
+    for valor in candidatos:
+        if not valor:
+            continue
+
+        s = str(valor).strip()
+
+        # ISO com timezone/Z
+        try:
+            iso = s.replace("Z", "+00:00")
+            dt = datetime.fromisoformat(iso)
+            if dt.tzinfo is not None:
+                try:
+                    dt = dt.astimezone(ZoneInfo("America/Bahia")).replace(tzinfo=None)
+                except Exception:
+                    dt = dt.replace(tzinfo=None)
+            return dt
+        except Exception:
+            pass
+
+        # extrai algo tipo 09/05 13:30 dentro de texto "Hoje 13:30" ou "09/05 13:30"
+        m = re.search(r"(\d{2}/\d{2}(?:/\d{2,4})?)\s+(\d{1,2}:\d{2})", s)
+        if m:
+            s2 = f"{m.group(1)} {m.group(2)}"
+        else:
+            s2 = s
+
+        for fmt in formatos:
+            try:
+                dt = datetime.strptime(s2, fmt)
+                if "%Y" not in fmt and "%y" not in fmt:
+                    dt = dt.replace(year=datetime.now().year)
+                return dt
+            except Exception:
+                pass
+
+    return None
+
+
+
+# ============================================================
+# V77 - timezone Brasil, cópias privadas e vínculo entre apostas
+# ============================================================
+
+TIMEZONE_APP = os.environ.get("APP_TIMEZONE", "America/Sao_Paulo")
+
+def agora_local():
+    try:
+        return datetime.now(ZoneInfo(TIMEZONE_APP))
+    except Exception:
+        return datetime.now()
+
+
+def data_hora_local():
+    return agora_local().strftime("%d/%m/%Y %H:%M")
+
+
+def data_aposta_com_regra_horario(horario_jogo):
+    """Se a aposta não tem horário e foi criada a partir das 19h, pertence ao dia seguinte."""
+    agora = agora_local()
+    if not horario_jogo and agora.hour >= 19:
+        amanha = agora + timedelta(days=1)
+        return amanha.strftime("%d/%m/%Y")
+    return agora.strftime("%d/%m/%Y")
+
+
+def extrair_horario_jogo(texto):
+    texto = str(texto or "")
+    # Data + hora, ex: 05/05/2026 20:30 ou 05/05 20:30
+    m = re.search(r'\b(\d{1,2}/\d{1,2}(?:/\d{2,4})?\s+\d{1,2}:\d{2})\b', texto)
+    if m:
+        return m.group(1)
+    # Só horário, ex: 20:30
+    m = re.search(r'\b([01]?\d|2[0-3]):[0-5]\d\b', texto)
+    if m:
+        return m.group(0)
+    return ""
+
+
+def id_raiz_aposta(b):
+    return str(b.get("source_original_id") or b.get("id") or "")
+
+
+def propagar_resultado_para_copias(aposta_base, estado):
+    """Atualiza status/lucro das cópias da mesma aposta sem mexer no saldo de outros usuários."""
+    try:
+        raiz = id_raiz_aposta(aposta_base)
+        if not raiz:
+            return 0
+        atualizadas = 0
+        for outra in dados.get("bets", []):
+            if outra is aposta_base:
+                continue
+            if str(outra.get("id")) == raiz or str(outra.get("source_original_id", "")) == raiz:
+                outra["estado"] = estado
+                try:
+                    outra["lucro"] = calcular_lucro(outra)
+                except Exception:
+                    pass
+                outra["api_status"] = "Atualizada por aposta vinculada"
+                atualizadas += 1
+        return atualizadas
+    except Exception as e:
+        print("ERRO propagar_resultado_para_copias:", repr(e))
+        return 0
+
+
+
+# ============================================================
+# V85 - ESPN SAFE: horário do jogo + status ao vivo
+# ============================================================
+ESPN_CACHE = {}
+ESPN_CACHE_TTL = int(os.environ.get("ESPN_CACHE_TTL", "300"))
+
+def espn_normalizar_nome(s):
+    s = str(s or "").lower().strip()
+    s = unicodedata.normalize("NFD", s)
+    s = "".join(c for c in s if unicodedata.category(c) != "Mn")
+    s = re.sub(r"[^a-z0-9 ]+", " ", s)
+    s = re.sub(r"\s+", " ", s).strip()
+    aliases = {
+        "psg": "paris saint germain",
+        "paris": "paris saint germain",
+        "paris sg": "paris saint germain",
+        "paris st germain": "paris saint germain",
+        "bayern": "bayern munich",
+        "bayern de munique": "bayern munich",
+        "bayern munique": "bayern munich",
+        "rayo": "rayo vallecano",
+        "shaktar": "shakhtar donetsk",
+        "shaktar donetsk": "shakhtar donetsk",
+        "shakhtar": "shakhtar donetsk",
+        "vasco": "vasco da gama",
+        "vasco da gama rj": "vasco da gama",
+        "inter": "internacional",
+        "spfc": "sao paulo",
+        "atletico mg": "atletico mineiro",
+        "atletico pr": "athletico paranaense",
+        "athletico pr": "athletico paranaense"
+    }
+    return aliases.get(s, s)
+
+
+def espn_extrair_time_unico(jogo, aposta=""):
+    texto = espn_normalizar_nome(f"{jogo} {aposta}")
+    candidatos = [
+        "vasco da gama", "flamengo", "fluminense", "botafogo", "palmeiras",
+        "corinthians", "sao paulo", "santos", "gremio", "internacional",
+        "bayern munich", "paris saint germain", "rayo vallecano",
+        "crystal palace", "shakhtar donetsk", "strasbourg"
+    ]
+    for c in candidatos:
+        cn = espn_normalizar_nome(c)
+        if cn in texto:
+            return cn
+    return ""
+
+def espn_dividir_times(jogo):
+    jogo = str(jogo or "").strip()
+    if not jogo:
+        return "", ""
+
+    texto = re.sub(r"\s+[–—-]\s+", " x ", jogo)
+    texto = re.sub(r"\s+(?:vs\\.?|versus|v\\.?|x)\\s+", " x ", texto, flags=re.I)
+
+    partes = re.split(r"\s+x\s+", texto, flags=re.I)
+    if len(partes) >= 2:
+        a = partes[0].strip()
+        b = partes[1].strip()
+        if "/" in a or "/" in b or "," in a or "," in b:
+            return "", ""
+        return a, b
+    return "", ""
+
+def espn_similaridade(a, b):
+    a, b = espn_normalizar_nome(a), espn_normalizar_nome(b)
+    if not a or not b: return 0
+    if a == b: return 100
+    if a in b or b in a: return 88
+    return int(difflib.SequenceMatcher(None, a, b).ratio() * 100)
+
+def espn_ligas_por_esporte(esporte):
+    e = espn_normalizar_nome(esporte)
+
+    if "basquete" in e or "basket" in e or "nba" in e:
+        return [
+            ("basketball", "nba"),
+            ("basketball", "mens-college-basketball"),
+            ("basketball", "wnba"),
+        ]
+
+    return [
+        # Brasil
+        ("soccer", "bra.1"),
+        ("soccer", "bra.2"),
+        ("soccer", "bra.3"),
+        ("soccer", "bra.copa_do_brazil"),
+
+        # América do Sul
+        ("soccer", "conmebol.libertadores"),
+        ("soccer", "conmebol.sudamericana"),
+        ("soccer", "arg.1"),
+        ("soccer", "arg.2"),
+        ("soccer", "col.1"),
+        ("soccer", "uru.1"),
+        ("soccer", "chi.1"),
+        ("soccer", "per.1"),
+        ("soccer", "ecu.1"),
+        ("soccer", "ven.1"),
+        ("soccer", "bol.1"),
+        ("soccer", "par.1"),
+
+        # Inglaterra
+        ("soccer", "eng.1"),
+        ("soccer", "eng.2"),
+        ("soccer", "eng.3"),
+        ("soccer", "eng.4"),
+        ("soccer", "eng.fa.cup"),
+        ("soccer", "eng.league_cup"),
+
+        # Espanha
+        ("soccer", "esp.1"),
+        ("soccer", "esp.2"),
+        ("soccer", "esp.copa_del_rey"),
+
+        # Itália
+        ("soccer", "ita.1"),
+        ("soccer", "ita.2"),
+        ("soccer", "ita.coppa_italia"),
+
+        # Alemanha
+        ("soccer", "ger.1"),
+        ("soccer", "ger.2"),
+        ("soccer", "ger.3"),
+        ("soccer", "ger.dfb_pokal"),
+
+        # França
+        ("soccer", "fra.1"),
+        ("soccer", "fra.2"),
+        ("soccer", "fra.coupe_de_france"),
+
+        # Portugal
+        ("soccer", "por.1"),
+        ("soccer", "por.2"),
+        ("soccer", "por.cup"),
+
+        # Holanda / Bélgica
+        ("soccer", "ned.1"),
+        ("soccer", "ned.2"),
+        ("soccer", "bel.1"),
+
+        # Escócia / Suíça / Áustria / Grécia
+        ("soccer", "sco.1"),
+        ("soccer", "sui.1"),
+        ("soccer", "aut.1"),
+        ("soccer", "gre.1"),
+
+        # Turquia / Rússia / Ucrânia
+        ("soccer", "tur.1"),
+        ("soccer", "rus.1"),
+        ("soccer", "ukr.1"),
+
+        # Competições UEFA
+        ("soccer", "uefa.champions"),
+        ("soccer", "uefa.europa"),
+        ("soccer", "uefa.europa.conf"),
+        ("soccer", "uefa.nations"),
+
+        # Outros comuns em apostas
+        ("soccer", "mex.1"),
+        ("soccer", "usa.1"),
+        ("soccer", "ksa.1"),
+        ("soccer", "uae.1"),
+        ("soccer", "jpn.1"),
+        ("soccer", "kor.1"),
+        ("soccer", "chn.1"),
+        ("soccer", "aus.1"),
+    ]
+
+def espn_scoreboard_url(sport, league):
+    hoje = agora_local().date() if "agora_local" in globals() else datetime.now(ZoneInfo("America/Sao_Paulo")).date()
+    ini, fim = hoje - timedelta(days=4), hoje + timedelta(days=7)
+    dates = f"{ini.strftime('%Y%m%d')}-{fim.strftime('%Y%m%d')}"
+    return f"https://site.api.espn.com/apis/site/v2/sports/{sport}/{league}/scoreboard?dates={dates}&limit=300"
+
+def espn_formatar_status(comp):
+    status = comp.get("status", {}) or {}
+    typ = status.get("type", {}) or {}
+    state = typ.get("state", "")
+    dt_br = None
+    try:
+        dt_iso = comp.get("date")
+        if dt_iso:
+            dt_utc = datetime.fromisoformat(dt_iso.replace("Z", "+00:00"))
+            dt_br = dt_utc.astimezone(ZoneInfo(TIMEZONE_APP if "TIMEZONE_APP" in globals() else "America/Sao_Paulo"))
+    except Exception:
+        dt_br = None
+    if state == "in": return "Ao vivo", dt_br, True
+    if state == "post": return "Finalizado", dt_br, False
+    if dt_br:
+        agora = agora_local() if "agora_local" in globals() else datetime.now(ZoneInfo("America/Sao_Paulo"))
+        mins = int((dt_br - agora).total_seconds() // 60)
+        if -10 <= mins <= 0: return "Começando", dt_br, False
+        if 0 < mins <= 30: return f"Começa em {mins}min", dt_br, False
+        if dt_br.date() == agora.date(): return "Hoje " + dt_br.strftime("%H:%M"), dt_br, False
+        return dt_br.strftime("%d/%m %H:%M"), dt_br, False
+    return "", None, False
+
+def _espn_buscar_em_liga(sport, league, time_a, time_b, time_unico, dois_times):
+    """Busca um jogo em uma liga específica. Retorna (score, melhor_dict) ou (0, None)."""
+    try:
+        r = requests.get(espn_scoreboard_url(sport, league), timeout=6)
+        if r.status_code != 200:
+            return 0, None
+        melhor_score = 0
+        melhor = None
+        for ev in r.json().get("events", []):
+            comp = (ev.get("competitions") or [{}])[0]
+            nomes = []
+            for c in comp.get("competitors", []):
+                team = c.get("team", {}) or {}
+                nomes.append(team.get("displayName") or team.get("shortDisplayName") or team.get("name") or "")
+            if len(nomes) < 2:
+                continue
+            if dois_times:
+                a1 = espn_similaridade(time_a, nomes[0])
+                b1 = espn_similaridade(time_b, nomes[1])
+                a2 = espn_similaridade(time_a, nomes[1])
+                b2 = espn_similaridade(time_b, nomes[0])
+                if a1 + b1 >= a2 + b2:
+                    score = a1 + b1
+                    min_side = min(a1, b1)
+                else:
+                    score = a2 + b2
+                    min_side = min(a2, b2)
+                if min_side < 58 or score < 142:
+                    continue
+            else:
+                score = max(espn_similaridade(time_unico, nomes[0]), espn_similaridade(time_unico, nomes[1]))
+                if score < 82:
+                    continue
+            label, dt_br, ao_vivo, ordem = v98_status_espn_seguro(comp)
+            finalizado = str(label).lower().startswith("final")
+            # Prefere jogo não-finalizado em empate de score (ex: 2ª mão vs 1ª mão já encerrada)
+            melhor_finalizado = str((melhor or {}).get("status_jogo", "")).lower().startswith("final")
+            supera = score > melhor_score or (score == melhor_score and melhor_finalizado and not finalizado)
+            if supera:
+                melhor_score = score
+                competidores = comp.get("competitors", [])
+                home = next((c for c in competidores if c.get("homeAway") == "home"), competidores[0] if competidores else {})
+                away = next((c for c in competidores if c.get("homeAway") == "away"), competidores[1] if len(competidores) > 1 else {})
+                placar_home = str(home.get("score", "")).strip()
+                placar_away = str(away.get("score", "")).strip()
+                # Só mostra placar se jogo estiver ao vivo ou finalizado (não para pré-jogo)
+                placar = f"{placar_home}-{placar_away}" if (placar_home != "" and placar_away != "" and (ao_vivo or finalizado)) else ""
+                liga_display = ""
+                for lg in ev.get("leagues", []) or r.json().get("leagues", []):
+                    liga_display = lg.get("name") or lg.get("abbreviation") or ""
+                    if liga_display:
+                        break
+                melhor = {
+                    "espn_event_id": ev.get("id", ""),
+                    "espn_sport": sport,
+                    "espn_league": league,
+                    "espn_liga_nome": liga_display,
+                    "espn_match_score": score,
+                    "espn_match_name": " x ".join(nomes),
+                    "horario_jogo": dt_br.strftime("%d/%m/%Y %H:%M") if dt_br else "",
+                    "horario_jogo_iso": dt_br.isoformat() if dt_br else "",
+                    "status_jogo": label,
+                    "ao_vivo": bool(ao_vivo),
+                    "ordem_jogo": ordem,
+                    "placar_espn": placar,
+                    "placar_finalizado": placar if label == "Finalizado" else "",
+                }
+        return melhor_score, melhor
+    except Exception as e:
+        print("ESPN SAFE erro:", league, repr(e))
+        return 0, None
+
+
+def espn_buscar_jogo(jogo, esporte="Futebol", aposta=""):
+    time_a, time_b = espn_dividir_times(jogo)
+    dois_times = bool(time_a and time_b)
+
+    time_unico = ""
+    if not dois_times:
+        time_unico = espn_extrair_time_unico(jogo, aposta)
+        if not time_unico:
+            return None
+
+    chave = f"{espn_normalizar_nome(esporte)}|{espn_normalizar_nome(jogo)}|{espn_normalizar_nome(aposta)}"
+    agora_ts = time.time()
+    cache = ESPN_CACHE.get(chave)
+    if cache:
+        cached_val = cache.get("valor")
+        cached_status = str((cached_val or {}).get("status_jogo", "")).lower()
+        cached_finalizado = cached_status.startswith("final")
+        # Também invalida se o horário do jogo em cache já passou há >3h (pode ter acabado e há novo jogo)
+        if not cached_finalizado:
+            try:
+                ciso = (cached_val or {}).get("horario_jogo_iso", "")
+                if ciso:
+                    cdt = datetime.fromisoformat(str(ciso).replace("Z", "+00:00"))
+                    if cdt < datetime.now(cdt.tzinfo) - timedelta(hours=3):
+                        cached_finalizado = True
+            except Exception:
+                pass
+        ttl = 60 if (cached_val or {}).get("ao_vivo") else (0 if cached_finalizado else ESPN_CACHE_TTL)
+        if (agora_ts - cache.get("ts", 0)) <= ttl:
+            return cached_val
+
+    ligas = espn_ligas_por_esporte(esporte)
+    melhor = None
+    melhor_score = 0
+
+    with ThreadPoolExecutor(max_workers=4) as ex:
+        futures = {
+            ex.submit(_espn_buscar_em_liga, sport, league, time_a, time_b, time_unico, dois_times): (sport, league)
+            for sport, league in ligas
+        }
+        for fut in as_completed(futures):
+            try:
+                score, resultado = fut.result()
+                if score > melhor_score:
+                    melhor_score = score
+                    melhor = resultado
+            except Exception:
+                pass
+
+    ESPN_CACHE[chave] = {"ts": agora_ts, "valor": melhor}
+    return melhor
+
+def espn_aplicar_info_na_aposta(bet, forcar=False):
+    try:
+        if not isinstance(bet, dict): return bet
+        bet.setdefault("horario_jogo", "")
+        bet.setdefault("horario_jogo_iso", "")
+        bet.setdefault("status_jogo", "")
+        bet.setdefault("ao_vivo", False)
+        ao_vivo = bet.get("ao_vivo", False)
+        ja_tem_info = bet.get("horario_jogo") and bet.get("status_jogo")
+        if not forcar and ja_tem_info and not ao_vivo:
+            return bet
+        info = espn_buscar_jogo(bet.get("jogo", ""), bet.get("esporte", "Futebol"), bet.get("aposta", ""))
+        if info: bet.update(info)
+    except Exception as e:
+        print("ESPN SAFE aplicar erro:", repr(e))
+    return bet
+
+
+
+
+# ============================================================
+# V90 - preencher horários ESPN no carregamento do dashboard
+# ============================================================
+
+def espn_lazy_preencher_horarios_dashboard(limit=25, user_id=None):
+    """
+    Preenche horários de apostas já salvas que ainda não têm horário.
+    Seguro: se ESPN não achar, não quebra e não apaga nada.
+    """
+    atualizadas = 0
+    tentativas = 0
+
+    try:
+        uid = user_id or ""
+        lista = [b for b in dados.get("bets", []) if b.get("user_id") == uid] if uid else []
+    except Exception as e:
+        print("ESPN lazy listar erro:", repr(e))
+        return 0
+
+    for b in lista:
+        try:
+            if tentativas >= limit:
+                break
+
+            if not isinstance(b, dict):
+                continue
+
+            # Pula se finalizado recentemente (placar não muda)
+            # Se o jogo foi há >24h, pode ser 1ª mão — tenta encontrar novo jogo
+            status = str(b.get("status_jogo", "") or "").lower()
+            if "final" in status or "encerr" in status:
+                jogo_iso = b.get("horario_jogo_iso", "") or ""
+                if not jogo_iso:
+                    continue
+                try:
+                    jdt = datetime.fromisoformat(str(jogo_iso).replace("Z", "+00:00"))
+                    if (datetime.now(jdt.tzinfo) - jdt).total_seconds() < 86400:
+                        continue  # finalizado há <24h: pula
+                except Exception:
+                    continue
+
+            jogo = str(b.get("jogo", "") or "")
+            aposta = str(b.get("aposta", "") or "")
+
+            # Ignora lixo claro.
+            if len(jogo.strip()) < 4:
+                continue
+
+            tentativas += 1
+
+            info = espn_buscar_jogo(
+                b.get("jogo", ""),
+                b.get("esporte", "Futebol"),
+                b.get("aposta", "")
+            )
+
+            if info:
+                b.update(info)
+                atualizadas += 1
+
+        except Exception as e:
+            print("ESPN lazy aposta erro:", repr(e))
+
+    if atualizadas:
+        try:
+            salvar()
+        except Exception as e:
+            print("ESPN lazy salvar erro:", repr(e))
+
+    return atualizadas
+
+
+
+
+
+# ============================================================
+# V96 - labels e busca flexível para dropdown no campo Jogo
+# ============================================================
+
+def v96_liga_label(league):
+    labels = {
+        "bra.1": "BRASILEIRÃO",
+        "bra.2": "SÉRIE B",
+        "conmebol.libertadores": "LIBERTADORES",
+        "conmebol.sudamericana": "SUL-AMERICANA",
+        "arg.1": "ARGENTINA",
+        "col.1": "COLÔMBIA",
+        "uru.1": "URUGUAI",
+        "chi.1": "CHILE",
+        "per.1": "PERU",
+        "ecu.1": "EQUADOR",
+
+        "eng.1": "PREMIER LEAGUE",
+        "eng.2": "CHAMPIONSHIP",
+        "esp.1": "LA LIGA",
+        "esp.2": "LA LIGA 2",
+        "ita.1": "SERIE A",
+        "ita.2": "SERIE B",
+        "ger.1": "BUNDESLIGA",
+        "fra.1": "LIGUE 1",
+        "por.1": "PORTUGAL",
+        "ned.1": "HOLANDA",
+        "tur.1": "TURQUIA",
+
+        "uefa.champions": "CHAMPIONS LEAGUE",
+        "uefa.europa": "EUROPA LEAGUE",
+        "uefa.europa.conf": "CONFERENCE LEAGUE",
+
+        "mex.1": "MÉXICO",
+        "usa.1": "MLS",
+        "ksa.1": "LIGA SAUDITA",
+
+        "nba": "NBA",
+        "mens-college-basketball": "NCAAB",
+        "wnba": "WNBA",
+    }
+    return labels.get(str(league or ""), str(league or "").upper())
+
+
+# ============================================================
+# V98 - status ESPN compatível com retorno 3 ou 4 valores
+# ============================================================
+
+def v98_status_espn_seguro(comp):
+    try:
+        res = espn_formatar_status(comp)
+
+        if isinstance(res, tuple):
+            if len(res) == 4:
+                return res
+            if len(res) == 3:
+                label, dt_br, ao_vivo = res
+                ordem = 0 if ao_vivo else 1
+                if str(label).lower().startswith("final"):
+                    ordem = 2
+                return label, dt_br, ao_vivo, ordem
+    except Exception as e:
+        print("V98 status ESPN erro:", repr(e))
+
+    return "", None, False, 9
+
+
+# ============================================================
+# V106 - filtro restrito da busca de partidas
+# ============================================================
+
+def v106_time_tokens_busca(q):
+    qn = espn_normalizar_nome(q or "")
+    if not qn:
+        return []
+
+    aliases = {
+        "flumi": ["fluminense"],
+        "flu": ["fluminense"],
+        "fluminense": ["fluminense"],
+        "psg": ["paris", "saint", "germain"],
+        "paris": ["paris"],
+        "bayern": ["bayern"],
+        "bayern de munique": ["bayern"],
+        "bayern munique": ["bayern"],
+        "vasco": ["vasco"],
+        "rayo": ["rayo", "vallecano"],
+        "shaktar": ["shakhtar"],
+        "shakhtar": ["shakhtar"],
+        "atletico madrid": ["atletico", "madrid"],
+        "atletico de madrid": ["atletico", "madrid"],
+        "palmeiras sp": ["palmeiras"],
+    }
+
+    if qn in aliases:
+        return aliases[qn]
+
+    qn = re.sub(r"\s+[–—-]\s+", " x ", qn)
+    qn = re.sub(r"\s+(?:vs\\.?|versus|v\\.?|x)\\s+", " x ", qn, flags=re.I)
+
+    stop = {"jogo", "time", "times", "casa", "odd", "valor", "aposta", "futebol", "basquete", "x", "vs", "v", "de", "da", "do", "dos", "das", "fc", "sc", "sp", "cf", "club"}
+    return [t for t in qn.split() if len(t) >= 3 and t not in stop]
+
+
+def v106_jogo_tem_time_buscado(q, jogo):
+    tokens = v106_time_tokens_busca(q)
+    if not tokens:
+        return True
+    jn = espn_normalizar_nome(jogo or "")
+    return any(t in jn for t in tokens)
+
+# ============================================================
+# V94 - Busca manual de jogos ESPN com cache
+# ============================================================
+
+JOGOS_ESPN_CACHE = {"ts": 0, "items": []}
+
+def v94_cache_jogos_espn(forcar=False):
+    agora_ts = time.time()
+    ttl = int(os.environ.get("ESPN_GAMES_CACHE_TTL", "900"))
+
+    if not forcar and JOGOS_ESPN_CACHE.get("items") and (agora_ts - JOGOS_ESPN_CACHE.get("ts", 0) < ttl):
+        return JOGOS_ESPN_CACHE["items"]
+
+    tarefas = []
+    for esporte in ["Futebol", "Basquete"]:
+        try:
+            ligas = espn_ligas_por_esporte(esporte)
+        except Exception:
+            ligas = []
+        for sport, league in ligas:
+            tarefas.append((esporte, sport, league))
+
+    def buscar_liga(esporte, sport, league):
+        try:
+            r = requests.get(espn_scoreboard_url(sport, league), timeout=7)
+            if r.status_code != 200:
+                return []
+            resultado = []
+            for ev in r.json().get("events", []):
+                comp = (ev.get("competitions") or [{}])[0]
+                nomes = []
+                for c in comp.get("competitors", []):
+                    team = c.get("team", {}) or {}
+                    nome = team.get("displayName") or team.get("shortDisplayName") or team.get("name") or ""
+                    if nome:
+                        nomes.append(nome)
+                if len(nomes) < 2:
+                    continue
+                label, dt_br, ao_vivo, ordem = v98_status_espn_seguro(comp)
+                jogo_nome = f"{nomes[0]} x {nomes[1]}"
+                resultado.append({
+                    "id": ev.get("id", ""),
+                    "jogo": jogo_nome,
+                    "jogo_norm": espn_normalizar_nome(jogo_nome),
+                    "esporte": esporte,
+                    "sport": sport,
+                    "league": league,
+                    "liga_nome": v96_liga_label(league) if "v96_liga_label" in globals() else league,
+                    "horario_jogo": dt_br.strftime("%d/%m/%Y %H:%M") if dt_br else "",
+                    "horario_jogo_iso": dt_br.isoformat() if dt_br else "",
+                    "status_jogo": label,
+                    "ao_vivo": bool(ao_vivo),
+                    "ordem_jogo": ordem,
+                })
+            return resultado
+        except Exception as e:
+            print("V98 cache ESPN liga ignorada:", sport, league, repr(e))
+            return []
+
+    jogos = []
+    with ThreadPoolExecutor(max_workers=min(len(tarefas), 4)) as executor:
+        futuros = {executor.submit(buscar_liga, e, s, l): (e, s, l) for e, s, l in tarefas}
+        for futuro in as_completed(futuros):
+            try:
+                jogos.extend(futuro.result())
+            except Exception:
+                pass
+
+    seen = set()
+    limpos = []
+    for j in jogos:
+        chave = (j.get("id"), j.get("jogo"), j.get("horario_jogo_iso"))
+        if chave in seen:
+            continue
+        seen.add(chave)
+        limpos.append(j)
+
+    JOGOS_ESPN_CACHE["ts"] = agora_ts
+    JOGOS_ESPN_CACHE["items"] = limpos
+    return limpos
+
+
+def v94_score_busca_jogo(query, jogo):
+    q = espn_normalizar_nome(query)
+    j = espn_normalizar_nome(jogo)
+
+    if not q or not j:
+        return 1
+
+    # aliases comuns na busca
+    aliases = {
+        "psg": "paris saint germain",
+        "paris": "paris saint germain",
+        "bayern": "bayern munich",
+        "bayern de munique": "bayern munich",
+        "vasco": "vasco da gama",
+        "shaktar": "shakhtar donetsk",
+        "shakhtar": "shakhtar donetsk",
+        "atletico de madrid": "atletico madrid",
+        "palmeiras sp": "palmeiras",
+        "barca": "barcelona",
+    }
+
+    q_alias = aliases.get(q, q)
+
+    if q_alias == j:
+        return 1000
+
+    if q_alias in j:
+        return 800
+
+    score = 0
+
+    palavras = [p for p in q_alias.split() if len(p) >= 2]
+    for p in palavras:
+        if p in j:
+            score += 80
+
+    try:
+        qa, qb = espn_dividir_times(query)
+        ja, jb = espn_dividir_times(jogo)
+
+        if qa and qb and ja and jb:
+            s1 = espn_similaridade(qa, ja) + espn_similaridade(qb, jb)
+            s2 = espn_similaridade(qa, jb) + espn_similaridade(qb, ja)
+            score += max(s1, s2)
+        else:
+            score += espn_similaridade(q_alias, j)
+    except Exception:
+        score += espn_similaridade(q_alias, j)
+
+    return score
+
+
+# ============================================================
+# V97 - cache ESPN carregado pelo servidor
+# ============================================================
+
+V97_ESPN_CACHE_STARTED = False
+
+def v97_aquecer_cache_espn_loop():
+    """
+    Roda em background: carrega jogos assim que o servidor sobe e renova periodicamente.
+    Não depende do usuário abrir dropdown.
+    """
+    try:
+        print("V97 ESPN cache: carregando lista inicial...")
+        jogos = v94_cache_jogos_espn(forcar=True)
+        print("V97 ESPN cache carregado:", len(jogos), "jogos")
+    except Exception as e:
+        print("V97 ESPN cache erro inicial:", repr(e))
+
+    intervalo = int(os.environ.get("ESPN_GAMES_REFRESH_SECONDS", "900"))
+
+    while True:
+        try:
+            time.sleep(intervalo)
+            jogos = v94_cache_jogos_espn(forcar=True)
+            print("V97 ESPN cache renovado:", len(jogos), "jogos")
+        except Exception as e:
+            print("V97 ESPN cache erro renovacao:", repr(e))
+            time.sleep(60)
+
+
+def v97_iniciar_cache_espn_servidor():
+    global V97_ESPN_CACHE_STARTED
+
+    if V97_ESPN_CACHE_STARTED:
+        return
+
+    V97_ESPN_CACHE_STARTED = True
+
+    try:
+        t = threading.Thread(target=v97_aquecer_cache_espn_loop, daemon=True)
+        t.start()
+        print("V97 ESPN cache background iniciado")
+    except Exception as e:
+        print("V97 ESPN cache thread erro:", repr(e))
+
+
+def v97_garantir_cache_espn_minimo():
+    """
+    Segurança extra: se o cache ainda estiver vazio em alguma busca, carrega na hora.
+    """
+    try:
+        if not JOGOS_ESPN_CACHE.get("items"):
+            return v94_cache_jogos_espn(forcar=True)
+        return JOGOS_ESPN_CACHE.get("items", [])
+    except Exception as e:
+        print("V97 garantir cache erro:", repr(e))
+        return []
+
+
+
+
+# ============================================================
+# V107 - busca inteligente e múltiplas
+# ============================================================
+
+def v107_normalizar_busca_time(q):
+    qn = espn_normalizar_nome(q or "")
+    mapa = {
+        "real": "real madrid", "real madrid": "real madrid",
+        "psg": "paris saint germain", "paris": "paris saint germain",
+        "bayern": "bayern munich", "bayern de munique": "bayern munich", "bayern munique": "bayern munich",
+        "flu": "fluminense", "flumi": "fluminense",
+        "cortinas": "corinthians", "curintia": "corinthians",
+        "shaktar": "shakhtar donetsk", "atletico de madrid": "atletico madrid",
+        "palmeiras sp": "palmeiras", "vasco": "vasco da gama",
+    }
+    return mapa.get(qn, qn)
+
+def v107_tokens_fortes(q):
+    qn = v107_normalizar_busca_time(q)
+    stop = {"x","vs","v","de","da","do","dos","das","fc","sc","sp","cf","club","jogo","time","times","futebol","basquete"}
+    return [t for t in qn.split() if len(t) >= 3 and t not in stop]
+
+def v107_liga_peso(league):
+    pesos = {"uefa.champions":100, "conmebol.libertadores":95, "eng.1":90, "esp.1":90, "ita.1":88, "ger.1":86, "fra.1":84, "bra.1":82, "conmebol.sudamericana":80, "nba":88}
+    return pesos.get(str(league or ""), 30)
+
+def v107_score_jogo_busca(q, item):
+    jogo = item.get("jogo", "") if isinstance(item, dict) else str(item or "")
+    jn = espn_normalizar_nome(jogo)
+    qn = v107_normalizar_busca_time(q)
+    tokens = v107_tokens_fortes(q)
+    if not qn:
+        return 1
+    score = 0
+    if qn in jn:
+        score += 1000
+    if tokens and all(t in jn for t in tokens):
+        score += 650
+    for t in tokens:
+        if t in jn:
+            score += 80
+    if len(tokens) >= 2 and not all(t in jn for t in tokens):
+        score -= 500
+    if isinstance(item, dict):
+        score += v107_liga_peso(item.get("league")) // 3
+    return score
+
+def v107_jogo_match_obrigatorio(q, item):
+    qn = v107_normalizar_busca_time(q)
+    if not qn:
+        return True
+    jogo = item.get("jogo", "") if isinstance(item, dict) else str(item or "")
+    jn = espn_normalizar_nome(jogo)
+    tokens = v107_tokens_fortes(q)
+    if qn in jn:
+        return True
+    if len(tokens) >= 2:
+        return all(t in jn for t in tokens)
+    if len(tokens) == 1:
+        return tokens[0] in jn
+    return True
+
+def v107_split_multiplas_texto(texto):
+    txt = str(texto or "").strip()
+    if not txt:
+        return []
+    partes = re.split(r"\s*(?:/|\||,|\n|\+)\s*", txt)
+    limpas = []
+    for p in partes:
+        p = p.strip(" -–—")
+        if len(p) < 5:
+            continue
+        if re.search(r"\s+(x|vs\\.?|v\\.?)\s+", p, re.I) or re.search(r"\s+[–—-]\s+", p):
+            limpas.append(p)
+    return limpas
+
+def v107_criar_jogos_relacionados(jogo, aposta=""):
+    candidatos = []
+    candidatos.extend(v107_split_multiplas_texto(jogo))
+    candidatos.extend(v107_split_multiplas_texto(aposta))
+    vistos = set()
+    relacionados = []
+    for c in candidatos:
+        key = espn_normalizar_nome(c)
+        if key in vistos:
+            continue
+        vistos.add(key)
+        item = {"jogo": c, "horario_jogo": "", "horario_jogo_iso": "", "status_jogo": "", "ao_vivo": False, "league": ""}
+        try:
+            info = espn_buscar_jogo(c, "Futebol", "")
+            if info:
+                item.update({
+                    "jogo": info.get("jogo_oficial") or info.get("jogo") or c,
+                    "horario_jogo": info.get("horario_jogo", ""),
+                    "horario_jogo_iso": info.get("horario_jogo_iso", ""),
+                    "status_jogo": info.get("status_jogo", ""),
+                    "ao_vivo": bool(info.get("ao_vivo", False)),
+                    "league": info.get("league", ""),
+                })
+        except Exception as e:
+            print("v107_criar_jogos_relacionados erro:", repr(e))
+        relacionados.append(item)
+    return relacionados
+
+def v107_aplicar_multiplas_na_bet(b):
+    try:
+        relacionados = v107_criar_jogos_relacionados(b.get("jogo", ""), b.get("aposta", ""))
+        if relacionados and len(relacionados) >= 2:
+            b["jogos_relacionados"] = relacionados
+            b["qtd_jogos_relacionados"] = len(relacionados)
+            horarios = [j.get("horario_jogo_iso") for j in relacionados if j.get("horario_jogo_iso")]
+            if horarios:
+                horarios.sort()
+                b["horario_jogo_iso"] = horarios[0]
+                try:
+                    dt = datetime.fromisoformat(horarios[0])
+                    b["horario_jogo"] = dt.strftime("%d/%m %H:%M")
+                    b["status_jogo"] = f"{len(relacionados)} jogos • próximo {dt.strftime('%d/%m %H:%M')}"
+                except Exception:
+                    b["status_jogo"] = f"{len(relacionados)} jogos"
+            else:
+                b["status_jogo"] = f"{len(relacionados)} jogos"
+        return b
+    except Exception as e:
+        print("v107_aplicar_multiplas erro:", repr(e))
+        return b
+
+
+
+# ============================================================
+# V131 - banca inicial e valor em aberto
+# ============================================================
+
+def v131_float_seguro(v, padrao=0.0):
+    try:
+        if v is None:
+            return padrao
+        if isinstance(v, str):
+            v = v.replace("R$", "").replace(".", "").replace(",", ".").strip()
+        return float(v)
+    except Exception:
+        return padrao
+
+def v131_valor_em_aberto(lista=None):
+    try:
+        if lista is None:
+            lista = bets_do_usuario()
+    except Exception:
+        lista = []
+
+    fechados = {"ganha", "green", "perdida", "red", "anulada", "void", "cancelada", "cancelado"}
+    total = 0.0
+
+    for b in lista or []:
+        try:
+            estado = str(b.get("estado", "") or "").lower().strip()
+            status = str(b.get("status", "") or "").lower().strip()
+            if estado not in fechados and status not in fechados:
+                total += v131_float_seguro(b.get("valor", 0))
+        except Exception:
+            pass
+
+    return round(total, 2)
+
+def v131_banca_inicial_usuario():
+    try:
+        email = session.get("user")
+        u = dados.get("usuarios", {}).get(email, {})
+        return v131_float_seguro(u.get("banca_inicial", 0))
+    except Exception:
+        return 0.0
+
+def v131_aplicar_metricas_extras(m, lista=None):
+    try:
+        if isinstance(m, dict):
+            m["banca_inicial"] = v131_banca_inicial_usuario()
+            m["valor_em_aberto"] = v131_valor_em_aberto(lista)
+    except Exception as e:
+        print("v131_aplicar_metricas_extras erro:", repr(e))
+    return m
+
+
+# ============================================================
+# V140 - identificação robusta do usuário para banca inicial
+# ============================================================
+
+def v140_usuario_key_atual():
+    try:
+        # formatos mais comuns usados ao longo do app
+        candidatos = [
+            session.get("user"),
+            session.get("email"),
+            session.get("usuario_email"),
+            session.get("logged_user"),
+            session.get("login"),
+            session.get("uid"),
+            session.get("user_id"),
+        ]
+
+        usuario_session = session.get("usuario")
+        if isinstance(usuario_session, dict):
+            candidatos.extend([
+                usuario_session.get("email"),
+                usuario_session.get("user"),
+                usuario_session.get("id"),
+                usuario_session.get("uid"),
+                usuario_session.get("login"),
+            ])
+        elif isinstance(usuario_session, str):
+            candidatos.append(usuario_session)
+
+        for c in candidatos:
+            if c is not None and str(c).strip():
+                return str(c).strip()
+
+        # fallback seguro: tenta achar pelo helper do app se existir
+        try:
+            u = usuario_atual()
+            if isinstance(u, dict):
+                for k in ("email", "user", "id", "uid", "login"):
+                    if u.get(k):
+                        return str(u.get(k)).strip()
+            elif u:
+                return str(u).strip()
+        except Exception:
+            pass
+
+        return ""
+    except Exception:
+        return ""
+
+def v140_parse_valor(v):
+    try:
+        v = str(v or "0").replace("R$", "").strip()
+        # BR 19.747,00
+        if "," in v and "." in v:
+            v = v.replace(".", "").replace(",", ".")
+        elif "," in v:
+            v = v.replace(",", ".")
+        return float(v or 0)
+    except Exception:
+        return 0.0
+
+
+
+
+# ============================================================
+# V153 - status via AJAX sem recarregar página
+# ============================================================
+
+def v153_float(v, padrao=0.0):
+    try:
+        if v is None:
+            return padrao
+        if isinstance(v, str):
+            v = v.replace("R$", "").replace(".", "").replace(",", ".").strip()
+        return float(v)
+    except Exception:
+        return padrao
+
+def v153_find_bet_by_id(bet_id):
+    bet_id = str(bet_id)
+    containers = []
+
+    try:
+        containers.append(bets_do_usuario())
+    except Exception:
+        pass
+
+    try:
+        if isinstance(dados.get("bets"), list):
+            containers.append(dados.get("bets"))
+    except Exception:
+        pass
+
+    try:
+        if isinstance(dados.get("apostas"), list):
+            containers.append(dados.get("apostas"))
+    except Exception:
+        pass
+
+    seen = set()
+    for lista in containers:
+        if not isinstance(lista, list):
+            continue
+        for b in lista:
+            if not isinstance(b, dict):
+                continue
+            if id(b) in seen:
+                continue
+            seen.add(id(b))
+            if str(b.get("id", "")) == bet_id or str(b.get("_id", "")) == bet_id:
+                return b
+
+    return None
+
+def v153_calc_lucro(b, estado):
+    estado = str(estado or "").lower().strip()
+    valor = v153_float(b.get("valor", 0))
+    odd = v153_float(b.get("odd", 0))
+
+    if estado in ("ganha", "green", "win", "vencida"):
+        return round((odd * valor) - valor, 2)
+    if estado in ("perdida", "red", "loss"):
+        return round(-valor, 2)
+    if estado in ("anulada", "void", "cancelada", "cancelado"):
+        return 0.0
+    return 0.0
+
+def v153_normalizar_estado(estado):
+    e = str(estado or "").lower().strip()
+    mapa = {
+        "green": "ganha",
+        "win": "ganha",
+        "vencida": "ganha",
+        "red": "perdida",
+        "loss": "perdida",
+        "void": "anulada",
+        "cancelada": "anulada",
+        "cancelado": "anulada",
+        "pendente": "pendente",
+        "ganha": "ganha",
+        "perdida": "perdida",
+        "anulada": "anulada",
+    }
+    return mapa.get(e, e or "pendente")
+
+@app.route("/api/aposta_status/<bet_id>", methods=["POST"])
+@login_required
+def api_v153_aposta_status(bet_id):
+    try:
+        payload = request.get_json(silent=True) or request.form or {}
+        estado = v153_normalizar_estado(payload.get("estado") or payload.get("status") or payload.get("acao"))
+
+        if estado not in ("ganha", "perdida", "anulada", "pendente"):
+            return jsonify({"ok": False, "erro": "estado_invalido"}), 400
+
+        b = v153_find_bet_by_id(bet_id)
+        if not b:
+            return jsonify({"ok": False, "erro": "aposta_nao_encontrada"}), 404
+
+        lucro = v153_calc_lucro(b, estado)
+
+        b["estado"] = estado
+        b["status"] = estado
+        b["lucro"] = lucro
+
+        try:
+            salvar()
+        except Exception as e:
+            print("v153 salvar status erro:", repr(e))
+            return jsonify({"ok": False, "erro": "erro_ao_salvar"}), 500
+
+        return jsonify({
+            "ok": True,
+            "id": bet_id,
+            "estado": estado,
+            "status": estado,
+            "lucro": lucro,
+            "valor": v153_float(b.get("valor", 0)),
+            "odd": v153_float(b.get("odd", 0))
+        })
+    except Exception as e:
+        print("api_v153_aposta_status erro:", repr(e))
+        return jsonify({"ok": False, "erro": str(e)}), 500
+
+
+
+@app.route("/api/apostas_versao")
+@login_required
+def api_apostas_versao():
+    try:
+        try:
+            lista = bets_do_usuario()
+        except Exception:
+            lista = dados.get("bets", []) if isinstance(dados.get("bets", []), list) else []
+
+        total = len(lista or [])
+        last_id = ""
+        last_data = ""
+        last_estado = ""
+
+        if lista:
+            b = lista[-1]
+            last_id = str(b.get("id", ""))
+            last_data = str(b.get("data", ""))
+            last_estado = str(b.get("estado", b.get("status", "")))
+
+        return jsonify({
+            "ok": True,
+            "versao": f"{total}:{last_id}:{last_data}:{last_estado}",
+            "total": total
+        })
+    except Exception as e:
+        print("api_apostas_versao erro:", repr(e))
+        return jsonify({"ok": False, "erro": str(e)}), 500
+
+
+@app.route("/api/v132_cards")
+@login_required
+def api_v132_cards():
+    try:
+        user_key = v140_usuario_key_atual()
+        banca_inicial = 0.0
+
+        if user_key:
+            banca_inicial = dados.get("usuarios", {}).get(user_key, {}).get("banca_inicial", 0)
+
+        # compatibilidade: tenta user/email caso user_key principal não tenha valor
+        if not banca_inicial:
+            for k in ("user", "email", "usuario_email", "logged_user"):
+                sk = session.get(k)
+                if sk:
+                    banca_inicial = dados.get("usuarios", {}).get(str(sk).strip(), {}).get("banca_inicial", 0)
+                    if banca_inicial:
+                        break
+
+        banca_inicial = v140_parse_valor(banca_inicial)
+    except Exception as e:
+        print("api_v132_cards erro:", repr(e))
+        banca_inicial = 0.0
+
+    return jsonify({"ok": True, "banca_inicial": banca_inicial})
+
+
+@app.route("/configurar_banca_inicial", methods=["POST"])
+@login_required
+def configurar_banca_inicial():
+    try:
+        user_key = v140_usuario_key_atual()
+
+        # Último fallback individual: usa id da sessão Flask, não valor global compartilhado.
+        if not user_key:
+            user_key = "session_" + str(session.get("_id", ""))
+
+        if not user_key or user_key == "session_":
+            print("configurar_banca_inicial erro: usuario_sem_chave")
+            if request.is_json:
+                return jsonify({"ok": False, "erro": "usuario_sem_chave"}), 400
+            return redirect(url_for("index"))
+
+        valor = request.form.get("banca_inicial", None)
+        if valor is None and request.is_json:
+            valor = request.json.get("banca_inicial", 0)
+
+        valor = round(v140_parse_valor(valor), 2)
+
+        dados.setdefault("usuarios", {})
+        dados["usuarios"].setdefault(user_key, {})
+        dados["usuarios"][user_key]["banca_inicial"] = valor
+
+        # compatibilidade: se session user/email existir diferente, salva espelhado nele também,
+        # mas sempre em chaves de usuário, nunca global.
+        for k in ("user", "email", "usuario_email", "logged_user"):
+            sk = session.get(k)
+            if sk and str(sk).strip() and str(sk).strip() != user_key:
+                dados["usuarios"].setdefault(str(sk).strip(), {})
+                dados["usuarios"][str(sk).strip()]["banca_inicial"] = valor
+
+        dados.pop("banca_inicial_global", None)
+        salvar()
+
+        if request.is_json:
+            return jsonify({"ok": True, "banca_inicial": valor, "user_key": user_key})
+
+        return redirect(url_for("index"))
+    except Exception as e:
+        print("configurar_banca_inicial erro:", repr(e))
+        if request.is_json:
+            return jsonify({"ok": False, "erro": str(e)}), 500
+        return redirect(url_for("index"))
+
+
+@app.route("/api/status_jogos_cache")
+@login_required
+@assinatura_required
+def api_status_jogos_cache():
+    try:
+        total = len(JOGOS_ESPN_CACHE.get("items", [])) if "JOGOS_ESPN_CACHE" in globals() else 0
+        if total == 0 and "v94_cache_jogos_espn" in globals():
+            jogos = v94_cache_jogos_espn(forcar=True)
+            total = len(jogos)
+        return jsonify({"ok": True, "total": total})
+    except Exception as e:
+        print("api_status_jogos_cache erro:", repr(e))
+        return jsonify({"ok": False, "erro": str(e), "total": 0})
+
+
+@app.route("/api/buscar_jogos")
+@login_required
+@assinatura_required
+def api_buscar_jogos():
+    q = request.args.get("q", "").strip()
+    esporte = request.args.get("esporte", "").strip()
+    forcar = request.args.get("refresh") == "1"
+
+    jogos = v94_cache_jogos_espn(forcar=forcar) if forcar else v97_garantir_cache_espn_minimo()
+
+    if esporte:
+        e_norm = espn_normalizar_nome(esporte)
+        if "basquete" in e_norm or "basket" in e_norm:
+            jogos = [j for j in jogos if j.get("esporte") == "Basquete"]
+        elif "futebol" in e_norm or "soccer" in e_norm:
+            jogos = [j for j in jogos if j.get("esporte") == "Futebol"]
+
+    if q:
+        scored = []
+        for j in jogos:
+            if not v107_jogo_match_obrigatorio(q, j):
+                continue
+            s = v107_score_jogo_busca(q, j)
+            if s >= 35:
+                item = dict(j)
+                item["score"] = s
+                scored.append(item)
+
+        scored.sort(key=lambda x: (-x.get("score", 0), x.get("horario_jogo_iso", "")))
+        jogos = scored[:12]
+    else:
+        jogos = sorted(jogos, key=lambda x: x.get("horario_jogo_iso", ""))[:60]
+
+    return jsonify({"ok": True, "total_cache": len(JOGOS_ESPN_CACHE.get("items", [])), "jogos": jogos})
+
+
+@app.route("/api/precarregar_jogos")
+@login_required
+@assinatura_required
+def api_precarregar_jogos():
+    jogos = v94_cache_jogos_espn(forcar=True)
+    return jsonify({"ok": True, "total": len(jogos)})
+
+
+@app.route("/api/horarios_bets", methods=["POST"])
+@login_required
+@assinatura_required
+def api_horarios_bets():
+    atualizadas = 0
+    rows = []
+
+    try:
+        lista = bets_do_usuario()
+    except Exception as e:
+        print("api_horarios_bets listar erro:", repr(e))
+        lista = []
+
+    for b in lista:
+        try:
+            if not isinstance(b, dict):
+                continue
+
+            antes = (b.get("horario_jogo_iso", ""), b.get("status_jogo", ""))
+
+            if not (b.get("horario_jogo") or b.get("status_jogo")):
+                jogo_txt = str(b.get("jogo", "") or "").strip()
+                if len(jogo_txt) >= 4:
+                    info = espn_buscar_jogo(
+                        b.get("jogo", ""),
+                        b.get("esporte", "Futebol"),
+                        b.get("aposta", "")
+                    )
+                    if info:
+                        b.update(info)
+
+            depois = (b.get("horario_jogo_iso", ""), b.get("status_jogo", ""))
+            if depois != antes and (depois[0] or depois[1]):
+                atualizadas += 1
+
+            rows.append({
+                "id": b.get("id", ""),
+                "jogo": b.get("jogo", ""),
+                "horario_jogo": b.get("horario_jogo", ""),
+                "horario_jogo_iso": b.get("horario_jogo_iso", ""),
+                "status_jogo": b.get("status_jogo", ""),
+                "ao_vivo": bool(b.get("ao_vivo", False)),
+                "status_class": espn_status_class_bet(b) if "espn_status_class_bet" in globals() else ("live" if b.get("ao_vivo") else ""),
+                "status_label": espn_status_label_bet(b) if "espn_status_label_bet" in globals() else (b.get("status_jogo") or b.get("horario_jogo") or "")
+            })
+
+        except Exception as e:
+            print("api_horarios_bets item erro:", repr(e))
+
+    if atualizadas:
+        try:
+            salvar()
+        except Exception as e:
+            print("api_horarios_bets salvar erro:", repr(e))
+
+    return jsonify({"ok": True, "atualizadas": atualizadas, "rows": rows})
+
+
+@app.route("/atualizar_horarios_espn", methods=["POST"])
+@login_required
+@assinatura_required
+def atualizar_horarios_espn():
+    atualizadas = 0
+    erros = 0
+
+    try:
+        lista = bets_do_usuario()
+    except Exception as e:
+        print("ESPN listar erro:", repr(e))
+        lista = []
+
+    for b in lista:
+        try:
+            antes = (b.get("horario_jogo_iso", ""), b.get("status_jogo", ""))
+            info = espn_buscar_jogo(b.get("jogo", ""), b.get("esporte", "Futebol"), b.get("aposta", ""))
+            if info:
+                b.update(info)
+            depois = (b.get("horario_jogo_iso", ""), b.get("status_jogo", ""))
+            if depois != antes and (depois[0] or depois[1]):
+                atualizadas += 1
+        except Exception as e:
+            erros += 1
+            print("ESPN atualizar aposta erro:", repr(e))
+
+    try:
+        salvar()
+    except Exception as e:
+        print("ESPN salvar erro:", repr(e))
+
+    return jsonify({"ok": True, "atualizadas": atualizadas, "erros": erros})
+
+
+@app.route("/admin/apagar_apostas/<uid>", methods=["POST"])
+@admin_required
+def admin_apagar_apostas(uid):
+    # Nunca apaga as apostas do próprio admin logado
+    if not uid or uid == session.get("user_id"):
+        return redirect("/admin")
+
+    antes = len(dados.get("bets", []))
+    dados["bets"] = [b for b in dados.get("bets", []) if b.get("user_id") != uid]
+    removidas = antes - len(dados["bets"])
+    print(f"ADMIN apagar_apostas: uid={uid} removidas={removidas}")
+    threading.Thread(target=salvar, daemon=True).start()
+    return redirect("/admin")
+
+
+def resumo_periodo(bets_lista):
+    lucro = round(sum(float(b.get("lucro", 0) or 0) for b in bets_lista), 2)
+    total = len(bets_lista)
+    ganhas = sum(1 for b in bets_lista if b.get("estado") == "ganha")
+    perdidas = sum(1 for b in bets_lista if b.get("estado") == "perdida")
+    anuladas = sum(1 for b in bets_lista if b.get("estado") == "anulada")
+    resolvidas = ganhas + perdidas
+    taxa = round(ganhas / resolvidas * 100, 1) if resolvidas else 0.0
+    valor_apostado = round(sum(float(b.get("valor", 0) or 0) for b in bets_lista), 2)
+    roi = round(lucro / valor_apostado * 100, 2) if valor_apostado else 0.0
+    return {"lucro": lucro, "total": total, "ganhas": ganhas, "perdidas": perdidas,
+            "anuladas": anuladas, "taxa": taxa, "roi": roi, "valor_apostado": valor_apostado}
+
+
+@app.route("/api/card_resumo")
+@login_required
+def api_card_resumo():
+    tipo = request.args.get("tipo", "mensal")
+    mes = int(request.args.get("mes", datetime.now().month))
+    ano = int(request.args.get("ano", datetime.now().year))
+    dia = int(request.args.get("dia", 0))
+    recalcular()
+    bets = bets_do_usuario()
+    if tipo == "diario":
+        alvo = agora_local().date() if not dia else datetime(ano, mes, dia).date()
+        filtrados = [b for b in bets if v154_parse_data_jogo_aposta(b) and v154_parse_data_jogo_aposta(b).date() == alvo]
+        titulo = alvo.strftime("%d/%m")
+        subtitulo = "RESUMO DIÁRIO"
+    else:
+        filtrados = [b for b in bets if (lambda dt: dt and dt.year == ano and dt.month == mes)(v154_parse_data_jogo_aposta(b))]
+        from calendar import month_name
+        titulo = f"{datetime(ano, mes, 1).strftime('%B').upper()} {ano}"
+        subtitulo = "RESUMO MENSAL"
+    dados_card = resumo_periodo(filtrados)
+    dados_card["titulo"] = titulo
+    dados_card["subtitulo"] = subtitulo
+    return jsonify(dados_card)
+
+
+
+@app.route("/saldos/renomear", methods=["POST"])
+@login_required
+@assinatura_required
+def renomear_saldo_casa():
+    casa_antiga = limpar_casa(request.form.get("casa_original", ""))
+    casa_nova = limpar_casa(request.form.get("casa", ""))
+    saldo = float(request.form.get("saldo", 0) or 0)
+
+    if casa_antiga and casa_nova:
+        sc = saldo_casas_usuario()
+        chave_antiga = encontrar_chave_saldo_casa(casa_antiga)
+        # Remove antiga, cria nova com saldo informado
+        if chave_antiga in sc:
+            del sc[chave_antiga]
+        sc[casa_nova] = saldo
+        # Atualiza apostas que referenciam a casa antiga
+        if casa_antiga != casa_nova:
+            uid = session.get("user_id", "")
+            for b in dados.get("bets", []):
+                if b.get("user_id") == uid and limpar_casa(b.get("casa", "")) == casa_antiga:
+                    b["casa"] = casa_nova
+        salvar()
+
+    return redirect("/saldos")
+
+
+
+@app.route("/definir_data_jogo", methods=["POST"])
+@login_required
+@assinatura_required
+def definir_data_jogo():
+    data = request.get_json(silent=True) or {}
+    bet_id = str(data.get("id", "")).strip()
+    horario = str(data.get("horario", "")).strip()
+
+    if not bet_id or not horario:
+        return jsonify({"ok": False}), 400
+
+    lista = bets_do_usuario()
+
+    for b in lista:
+        if str(b.get("id")) == bet_id:
+            try:
+                dt = datetime.fromisoformat(horario)
+                b["horario_jogo_iso"] = dt.isoformat()
+                b["horario_jogo"] = dt.strftime("%d/%m %H:%M")
+                b["status_jogo"] = dt.strftime("%d/%m %H:%M")
+                salvar()
+                return jsonify({"ok": True})
+            except Exception as e:
+                print("erro definir_data_jogo", repr(e))
+                return jsonify({"ok": False}), 500
+
+    return jsonify({"ok": False}), 404
+
+
+@app.route("/api/meus_jogos")
+@login_required
+def api_meus_jogos():
+    uid = session.get("user_id", "")
+    # Dispara lazy preencher a cada 60s (mantém ao_vivo e placar atualizados)
+    agora_ts = time.time()
+    if not hasattr(app, "_meus_jogos_last") or (agora_ts - app._meus_jogos_last) > 60:
+        app._meus_jogos_last = agora_ts
+        threading.Thread(target=espn_lazy_preencher_horarios_dashboard, kwargs={"limit": 25, "user_id": uid}, daemon=True).start()
+    agora = datetime.now(ZoneInfo("America/Sao_Paulo"))
+    hoje_ini = agora.replace(hour=0, minute=0, second=0, microsecond=0)
+    hoje_fim = agora.replace(hour=23, minute=59, second=59, microsecond=999999)
+
+    def _bet_relevante(b):
+        if b.get("user_id") != uid:
+            return False
+        estado = b.get("estado", "")
+        if estado not in ("ganha", "perdida", "anulada"):
+            # Pendente: só mostra se o jogo é hoje (não amanhã+, não ontem)
+            iso = b.get("horario_jogo_iso", "")
+            if iso:
+                try:
+                    jdt = datetime.fromisoformat(str(iso).replace("Z", "+00:00"))
+                    if jdt.tzinfo is None:
+                        jdt = jdt.replace(tzinfo=ZoneInfo("America/Sao_Paulo"))
+                    if jdt > hoje_fim:
+                        return False
+                    if jdt < hoje_ini and not b.get("ao_vivo"):
+                        return False
+                except Exception:
+                    pass
+            else:
+                st = str(b.get("status_jogo", "") or "")
+                m = re.match(r"^(\d{2})/(\d{2})", st)
+                if m:
+                    try:
+                        dia, mes = int(m.group(1)), int(m.group(2))
+                        dt_jogo = agora.replace(month=mes, day=dia, hour=0, minute=0, second=0, microsecond=0)
+                        if dt_jogo > hoje_fim or dt_jogo < hoje_ini:
+                            return False
+                    except Exception:
+                        pass
+            return True
+        # resolvida: mostra só jogos de hoje ou recentes (até 6h atrás, para jogos de madrugada)
+        iso = b.get("horario_jogo_iso", "")
+        if iso:
+            try:
+                jdt = datetime.fromisoformat(str(iso).replace("Z", "+00:00"))
+                if jdt.tzinfo is None:
+                    jdt = jdt.replace(tzinfo=ZoneInfo("America/Sao_Paulo"))
+                jogo_hoje = jdt.date() == agora.date()
+                jogo_recente = jdt >= agora - timedelta(hours=6)
+                return jogo_hoje or jogo_recente
+            except Exception:
+                pass
+        # fallback: data de registro da aposta
+        data_str = str(b.get("data", "") or "")[:10]
+        if data_str:
+            try:
+                dbet = datetime.strptime(data_str, "%d/%m/%Y").replace(tzinfo=ZoneInfo("America/Sao_Paulo"))
+                return dbet.date() == agora.date()
+            except Exception:
+                pass
+        return False
+
+    vistos = {}
+    for b in dados.get("bets", []):
+        if not _bet_relevante(b):
+            continue
+        jogo = str(b.get("jogo", "") or "").strip()
+        if not jogo or len(jogo) < 4:
+            continue
+        if jogo not in vistos:
+            _ao_vivo = bool(b.get("ao_vivo"))
+            _status = b.get("status_jogo", "") or ""
+            _finalizado = "final" in _status.lower()
+            # Também mostra placar se horario_jogo_iso já passou (jogo pode ter terminado sem status atualizado)
+            _jogo_passou = False
+            _iso = b.get("horario_jogo_iso", "") or ""
+            if _iso and not _ao_vivo and not _finalizado:
+                try:
+                    _jdt = datetime.fromisoformat(str(_iso).replace("Z", "+00:00"))
+                    _jogo_passou = datetime.now(_jdt.tzinfo) > _jdt + timedelta(hours=2)
+                except Exception:
+                    pass
+            _placar = b.get("placar_espn", "") if (_ao_vivo or _finalizado or _jogo_passou) else ""
+            # Ignora "0-0" salvo durante pré-jogo se não confirmado ao vivo/finalizado
+            if _placar in ("0-0", "0 - 0") and not _ao_vivo and not _finalizado:
+                _placar = ""
+            vistos[jogo] = {
+                "jogo": jogo,
+                "esporte": b.get("esporte", ""),
+                "espn_event_id": b.get("espn_event_id", ""),
+                "espn_sport": b.get("espn_sport", "soccer"),
+                "espn_league": b.get("espn_league", ""),
+                "status_jogo": _status,
+                "horario_jogo": b.get("horario_jogo", ""),
+                "horario_jogo_iso": b.get("horario_jogo_iso", ""),
+                "ao_vivo": _ao_vivo,
+                "placar": _placar,
+            }
+    jogos = sorted(vistos.values(), key=lambda x: (not x["ao_vivo"], x.get("horario_jogo") or ""))
+    return jsonify(jogos)
+
+
+@app.route("/api/stats_jogo")
+@login_required
+def api_stats_jogo():
+    sport = request.args.get("sport", "soccer")
+    league = request.args.get("league", "")
+    event_id = request.args.get("event_id", "")
+    if not event_id:
+        return jsonify({"ok": False, "erro": "event_id obrigatório"}), 400
+    try:
+        url = f"https://site.api.espn.com/apis/site/v2/sports/{sport}/{league}/summary?event={event_id}"
+        r = requests.get(url, timeout=8)
+        if r.status_code != 200:
+            return jsonify({"ok": False, "erro": "ESPN não respondeu"}), 502
+        data = r.json()
+        comp = (data.get("header", {}).get("competitions") or [{}])[0]
+        competitors = comp.get("competitors", [])
+        home = next((c for c in competitors if c.get("homeAway") == "home"), competitors[0] if competitors else {})
+        away = next((c for c in competitors if c.get("homeAway") == "away"), competitors[1] if len(competitors) > 1 else {})
+        # HT score from linescores (index 0 = 1st half)
+        home_ls = home.get("linescores", [])
+        away_ls = away.get("linescores", [])
+        def _ls_val(ls, idx):
+            try: return str(int(float(ls[idx].get("value", ""))))
+            except: return ""
+        ht_home = _ls_val(home_ls, 0)
+        ht_away = _ls_val(away_ls, 0)
+
+        stats_raw = data.get("boxscore", {}).get("teams", [])
+        stats = []
+        for t in stats_raw:
+            team = t.get("team", {})
+            stats.append({
+                "nome": team.get("displayName", ""),
+                "logo": team.get("logo", ""),
+                "stats": [{"label": s.get("label", ""), "valor": s.get("displayValue", "")} for s in t.get("statistics", [])],
+            })
+        # Gols dos details
+        gols = []
+        for d in comp.get("details", []):
+            if not d.get("scoringPlay"):
+                continue
+            minuto = (d.get("clock") or {}).get("displayValue", "")
+            time_nome = (d.get("team") or {}).get("displayName", "")
+            jogador = ""
+            for p in d.get("participants", []):
+                jogador = (p.get("athlete") or {}).get("shortName", "") or (p.get("athlete") or {}).get("displayName", "")
+                break
+            gols.append({"minuto": minuto, "time": time_nome, "jogador": jogador})
+
+        status_type = (comp.get("status") or {}).get("type", {}) or {}
+        espn_state = status_type.get("state", "")
+        espn_ao_vivo = espn_state == "in"
+        espn_finalizado = espn_state == "post"
+        placar_str = f"{home.get('score','')} - {away.get('score','')}"
+        ht_str = f"{ht_home} - {ht_away}" if ht_home != "" and ht_away != "" else ""
+        return jsonify({
+            "ok": True,
+            "ao_vivo": espn_ao_vivo,
+            "finalizado": espn_finalizado,
+            "home": {"nome": home.get("team", {}).get("displayName", ""), "placar": home.get("score", ""), "logo": home.get("team", {}).get("logo", ""), "ht": ht_home},
+            "away": {"nome": away.get("team", {}).get("displayName", ""), "placar": away.get("score", ""), "logo": away.get("team", {}).get("logo", ""), "ht": ht_away},
+            "status": status_type.get("shortDetail", ""),
+            "stats": stats,
+            "gols": gols,
+            "placar_str": placar_str,
+            "ht_str": ht_str,
+        })
+    except Exception as e:
+        return jsonify({"ok": False, "erro": str(e)}), 500
+
+
+@app.route("/api/salvar_placar_jogo", methods=["POST"])
+@login_required
+def api_salvar_placar_jogo():
+    data = request.get_json(silent=True) or {}
+    uid = session.get("user_id", "")
+    jogo = str(data.get("jogo", "")).strip()
+    placar = str(data.get("placar", "")).strip()
+    ht = str(data.get("ht", "")).strip()
+    event_id = str(data.get("espn_event_id", "")).strip()
+    if not jogo and not event_id:
+        return jsonify({"ok": False}), 400
+    atualizadas = 0
+    for b in dados.get("bets", []):
+        if b.get("user_id") != uid:
+            continue
+        match = (event_id and b.get("espn_event_id") == event_id) or (jogo and str(b.get("jogo", "")).strip() == jogo)
+        if match:
+            if placar:
+                b["placar_espn"] = placar
+            if ht:
+                b["placar_ht"] = ht
+            atualizadas += 1
+    if atualizadas:
+        try:
+            salvar()
+        except Exception:
+            pass
+    return jsonify({"ok": True, "atualizadas": atualizadas})
+
 
 
 def _iniciar_backup_thread():
