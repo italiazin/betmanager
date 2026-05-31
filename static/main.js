@@ -377,28 +377,13 @@ function converterDataBR(dataTexto){
     return new Date(parseInt(partes[2]), parseInt(partes[1])-1, parseInt(partes[0]))
 }
 function _limparSeparadores(){
-    const activePill = document.querySelector('#betStatusPills .bet-pill.active')
-    const pillStatus = activePill ? activePill.dataset.status : 'todos'
-    const buscaAtiva = !!(document.getElementById("searchInput")?.value || "")
-    const dataAtiva = !!(document.getElementById("datePicker")?.value || "")
-    const deveVerHistorico = _eyeAberto || buscaAtiva || dataAtiva || ["finalizadas","ganha","perdida","anulada"].includes(pillStatus)
-    const hoje = new Date(); hoje.setHours(0,0,0,0)
-    const p = n => String(n).padStart(2,"0")
-    const fmtKey = d => `${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())}`
-    const ontemKey = fmtKey(new Date(hoje.getFullYear(), hoje.getMonth(), hoje.getDate()-1))
-    const amanhaKey = fmtKey(new Date(hoje.getFullYear(), hoje.getMonth(), hoje.getDate()+1))
-
+    // Um separador de dia só aparece se houver aposta visível abaixo dele.
+    // (Regra única e sempre correta — segue o que filtrarApostas deixou visível.)
     const rows = Array.from(document.querySelectorAll("#betsMainTable tbody tr"))
     let i = 0
     while(i < rows.length){
         const r = rows[i]
         if(r.classList.contains("day-separator-row-v136")){
-            const dk = r.dataset.dayKey || ""
-            // Para "Todas/Pendentes": esconde separadores fora da janela ±1 dia por data
-            if(!deveVerHistorico && dk && dk !== "sem-data"){
-                if(dk < ontemKey || dk > amanhaKey){ r.style.display="none"; i++; continue }
-            }
-            // Para pills históricas: esconde separadores sem bets visíveis abaixo
             let hasVisible = false
             let j = i + 1
             while(j < rows.length && !rows[j].classList.contains("day-separator-row-v136")){
@@ -470,10 +455,12 @@ document.querySelectorAll("tbody tr.bet-row").forEach(linha=>{
         if(busca && !texto.includes(busca)) mostrar = false
         if(casasChecked.length > 0 && !casasChecked.includes(casaTexto)) mostrar = false
         if(esporteFiltro && esporteFiltro !== "todos" && esporteTexto !== esporteFiltro) mostrar = false
-        // Filtro de data
+        // Filtro de data. Apostas PENDENTES (em aberto) NUNCA são escondidas por data —
+        // o usuário precisa ver todas, mesmo de jogos futuros. A janela ±1 dia só vale
+        // pras resolvidas (histórico). Date picker específico continua valendo pra todas.
         if(datePicker){
             if(dataAposta){ const p=n=>String(n).padStart(2,"0");const ds=`${dataAposta.getFullYear()}-${p(dataAposta.getMonth()+1)}-${p(dataAposta.getDate())}`;if(ds!==datePicker) mostrar=false }
-        } else if(!deveVerHistorico){
+        } else if(!deveVerHistorico && isFinished){
             if(dataAposta && (dataAposta.getTime()<ontem.getTime()||dataAposta.getTime()>amanha.getTime())) mostrar=false
         }
         if(mostrarFinalizadas){ if(!isFinished) mostrar = false }
