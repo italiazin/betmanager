@@ -2,10 +2,104 @@
 <html lang="pt-BR">
 <head>
     <meta charset="UTF-8">
-    <title>Saldos por Casa</title>
+    <title>Saldos — Bet Manager</title>
     <link rel="stylesheet" href="/static/style.css">
-</head>
+    <style>
+        /* ── Cards de totais ───────────────────────────────── */
+        .sld-cards { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; margin-bottom: 24px; }
+        .sld-card {
+            background: rgba(15,23,42,.92);
+            border: 1px solid #1e293b;
+            border-radius: 16px;
+            padding: 20px 22px;
+            position: relative;
+        }
+        .sld-card-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
+        .sld-card-label { color: #64748b; font-size: 12px; font-weight: 600; }
+        .sld-card-icon { opacity: .5; }
+        .sld-card-value { font-size: 28px; font-weight: 700; line-height: 1.1; }
+        .sld-card-sub { color: #475569; font-size: 12px; margin-top: 6px; }
+        .v-green { color: #4ade80; }
+        .v-red   { color: #f87171; }
+        .v-blue  { color: #60a5fa; }
+        .v-white { color: #e2e8f0; }
 
+        /* ── Painéis de tabela ─────────────────────────────── */
+        .sld-panel { background: rgba(15,23,42,.92); border: 1px solid #1e293b; border-radius: 16px; overflow: hidden; margin-bottom: 24px; }
+        .sld-panel-head { padding: 20px 24px 16px; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; }
+        .sld-panel-title { font-size: 16px; font-weight: 700; color: #e2e8f0; }
+        .sld-panel-sub { font-size: 13px; color: #64748b; margin-top: 2px; }
+        .sld-add-btn {
+            background: #2563eb; color: #fff; border: none; border-radius: 10px;
+            padding: 9px 18px; font-size: 13px; font-weight: 600; cursor: pointer;
+            display: inline-flex; align-items: center; gap: 7px; transition: background .15s;
+        }
+        .sld-add-btn:hover { background: #1d4ed8; }
+
+        .sld-table-wrap { overflow-x: auto; }
+        .sld-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+        .sld-table th {
+            padding: 12px 18px; text-align: left; color: #64748b;
+            font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .04em;
+            border-top: 1px solid #1e293b; border-bottom: 1px solid #1e293b;
+            background: rgba(30,41,59,.3); white-space: nowrap;
+        }
+        .sld-table td { padding: 14px 18px; border-bottom: 1px solid rgba(30,41,59,.5); color: #cbd5e1; white-space: nowrap; }
+        .sld-table tbody tr:last-child td { border-bottom: none; }
+        .sld-table tbody tr:hover td { background: rgba(30,41,59,.35); }
+
+        .sld-badge {
+            display: inline-flex; align-items: center; padding: 4px 12px;
+            border-radius: 8px; font-size: 11px; font-weight: 700;
+        }
+        .sld-badge.deposito  { background: #1e3a5f; color: #93c5fd; }
+        .sld-badge.saque     { background: #7f1d1d; color: #fca5a5; }
+        .sld-badge.bonus     { background: #4c1d95; color: #c4b5fd; }
+        .sld-badge.transferencia { background: #78350f; color: #fcd34d; }
+
+        .sld-act-btn { background: transparent; border: none; cursor: pointer; padding: 4px; color: #64748b; transition: color .15s; }
+        .sld-act-btn.del:hover { color: #f87171; }
+        .sld-act-btn.edit:hover { color: #60a5fa; }
+
+        .sld-empty { padding: 50px 20px; text-align: center; color: #475569; font-size: 14px; }
+        .sld-empty svg { display: block; margin: 0 auto 14px; opacity: .3; }
+
+        /* Saldo ajustado: valores coloridos */
+        .sld-cell-pos { color: #4ade80; }
+        .sld-cell-neg { color: #f87171; }
+        .sld-cell-pend { color: #fbbf24; }
+        .sld-cell-zero { color: #475569; }
+        .sld-casa-name { font-weight: 700; color: #e2e8f0; }
+
+        /* ── Modal ─────────────────────────────────────────── */
+        #movModal { display:none; position:fixed; inset:0; background:rgba(0,0,0,.7); z-index:99999; align-items:center; justify-content:center; }
+        #movModal.show { display:flex; }
+        .mov-modal-box { background:#0f172a; border:1px solid #1e293b; border-radius:18px; width:420px; max-width:92vw; padding:26px; }
+        .mov-modal-head { display:flex; align-items:center; justify-content:space-between; margin-bottom:20px; }
+        .mov-modal-head h3 { font-size:17px; font-weight:700; color:#e2e8f0; }
+        .mov-modal-close { background:transparent; border:none; color:#475569; font-size:24px; cursor:pointer; line-height:1; }
+        .mov-modal-close:hover { color:#94a3b8; }
+        .mov-field { margin-bottom: 14px; }
+        .mov-field label { display:block; font-size:12px; color:#64748b; font-weight:500; margin-bottom:7px; }
+        .mov-input, .mov-select {
+            width:100%; background:rgba(30,41,59,.7); border:1px solid rgba(51,65,85,.7);
+            color:#e2e8f0; border-radius:10px; padding:0 14px; height:42px; font-size:14px; outline:none;
+            transition:border-color .15s;
+        }
+        .mov-input:focus, .mov-select:focus { border-color: rgba(96,165,250,.5); }
+        .mov-select { appearance:none; -webkit-appearance:none; cursor:pointer;
+            background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'%3E%3Cpath d='M0 0l5 6 5-6z' fill='%2364748b'/%3E%3C/svg%3E");
+            background-repeat:no-repeat; background-position:right 12px center; }
+        .mov-select option { background:#1e293b; }
+        .mov-row { display:grid; grid-template-columns:1fr 1fr; gap:12px; }
+        .mov-submit { width:100%; background:#2563eb; color:#fff; border:none; border-radius:10px; height:44px; font-size:14px; font-weight:600; cursor:pointer; margin-top:6px; transition:background .15s; }
+        .mov-submit:hover { background:#1d4ed8; }
+        #movDestinoField { display:none; }
+
+        @media(max-width: 1100px){ .sld-cards { grid-template-columns: repeat(2,1fr); } }
+        @media(max-width: 640px){ .sld-cards { grid-template-columns: 1fr; } }
+    </style>
+</head>
 <body>
 
 <aside class="sidebar">
@@ -16,20 +110,19 @@
         </div>
         <button type="button" class="sidebar-toggle" onclick="toggleSidebar()" title="Recolher menu">‹</button>
     </div>
-
     <nav>
-        <a href="/" data-title="Dashboard"><span class="nav-icon">⌂</span><span class="nav-text">Dashboard</span></a>
-        <a href="/calculadora" data-title="Calculadora"><span class="nav-icon">🧮</span><span class="nav-text">Calculadora</span></a>
-        <a href="/estatisticas" data-title="Estatísticas"><span class="nav-icon">▥</span><span class="nav-text">Estatísticas</span></a>
-        <a href="/historico" data-title="Histórico"><span class="nav-icon">📋</span><span class="nav-text">Histórico</span></a>
-        <a class="active" href="/saldos" data-title="Saldos"><span class="nav-icon">💰</span><span class="nav-text">Saldos</span></a>
-    {% if usuario and usuario.is_admin %}
+        <div class="sidebar-nav-label">Menu</div>
+        <a href="/" data-title="Dashboard"><span class="nav-icon"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg></span><span class="nav-text">Dashboard</span></a>
+        <a href="/estatisticas" data-title="Estatísticas"><span class="nav-icon"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg></span><span class="nav-text">Estatísticas</span></a>
+        <a href="/historico" data-title="Histórico"><span class="nav-icon"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg></span><span class="nav-text">Histórico</span></a>
+        <a class="active" href="/saldos" data-title="Saldos"><span class="nav-icon"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="5" width="20" height="14" rx="2"/><line x1="2" y1="10" x2="22" y2="10"/></svg></span><span class="nav-text">Saldos</span></a>
+        <a href="/calculadora" data-title="Calculadora"><span class="nav-icon"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="2" width="16" height="20" rx="2"/><line x1="8" y1="6" x2="16" y2="6"/></svg></span><span class="nav-text">Calculadora</span></a>
+        {% if usuario and usuario.is_admin %}
         <a href="/admin" data-title="Admin"><span class="nav-icon">⚙</span><span class="nav-text">Admin</span></a>
         {% endif %}
         <a href="/configuracoes" data-title="Configurações"><span class="nav-icon">⚙</span><span class="nav-text">Configurações</span></a>
         <a href="/logout" data-title="Sair"><span class="nav-icon">↪</span><span class="nav-text">Sair</span></a>
-</nav>
-
+    </nav>
     <div class="sidebar-user-wrap">
         <div class="sidebar-user-card" onclick="toggleUserMenu(event)">
             <div class="sidebar-user-avatar">{{ usuario_inicial if usuario_inicial else "U" }}</div>
@@ -39,17 +132,13 @@
             </div>
             <span class="sidebar-user-arrow">⌄</span>
         </div>
-
         <div id="sidebarUserMenu" class="sidebar-user-menu">
             <a href="/configuracoes">👤 Perfil / Configurações</a>
             <a href="/saldos">💰 Saldos</a>
-            {% if usuario and usuario.is_admin %}
-            <a href="/admin">⚙ Admin</a>
-            {% endif %}
+            {% if usuario and usuario.is_admin %}<a href="/admin">⚙ Admin</a>{% endif %}
             <a href="/logout" class="logout-link">🚪 Sair</a>
         </div>
     </div>
-
 </aside>
 
 <main class="app">
@@ -57,195 +146,235 @@
 <header class="topbar">
     <div>
         <h1>Saldos por Casa</h1>
-        <p>Controle quanto dinheiro existe em cada casa de aposta.</p>
+        <p>Controle financeiro e saldo ajustado de cada casa de aposta.</p>
     </div>
-
-    <a href="/" class="api-button">Voltar ao Dashboard</a>
+    <a href="/" class="api-button">← Dashboard</a>
 </header>
 
-<section class="cards">
-    <div class="metric-card banca-card">
-        <span>Total nas Casas</span>
-        <strong>R$ {{ "%.2f"|format(total_saldos) }}</strong>
+<!-- 4 cards de totais -->
+<div class="sld-cards">
+    <div class="sld-card">
+        <div class="sld-card-head">
+            <span class="sld-card-label">Total Depositado</span>
+            <span class="sld-card-icon v-green"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/></svg></span>
+        </div>
+        <div class="sld-card-value v-green">R$ {{ "%.2f"|format(total_depositado) }}</div>
+        <div class="sld-card-sub">{{ n_depositos }} depósito{{ "s" if n_depositos != 1 else "" }}</div>
     </div>
-</section>
+    <div class="sld-card">
+        <div class="sld-card-head">
+            <span class="sld-card-label">Total Sacado</span>
+            <span class="sld-card-icon v-red"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 18 13.5 8.5 8.5 13.5 1 6"/><polyline points="17 18 23 18 23 12"/></svg></span>
+        </div>
+        <div class="sld-card-value v-red">-R$ {{ "%.2f"|format(total_sacado) }}</div>
+        <div class="sld-card-sub">{{ n_saques }} saque{{ "s" if n_saques != 1 else "" }}</div>
+    </div>
+    <div class="sld-card">
+        <div class="sld-card-head">
+            <span class="sld-card-label">Saldo Atual</span>
+            <span class="sld-card-icon v-blue"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="5" width="20" height="14" rx="2"/><line x1="2" y1="10" x2="22" y2="10"/></svg></span>
+        </div>
+        <div class="sld-card-value {{ 'v-green' if total_saldo >= 0 else 'v-red' }}">R$ {{ "%.2f"|format(total_saldo) }}</div>
+        <div class="sld-card-sub">Saldo total ajustado</div>
+    </div>
+</div>
 
-<section class="saldos-grid">
-    <div class="panel">
-        <h2>Adicionar / Atualizar Saldo</h2>
-
-        <form method="POST" action="/saldos/salvar" class="saldo-form">
-            <input name="casa" list="casas-list" placeholder="Casa. Ex: Superbet" required>
-            <datalist id="casas-list">
-                {% for casa in casas %}
-                    <option value="{{ casa }}">
+<!-- Tabela de transações -->
+<div class="sld-panel">
+    <div class="sld-panel-head">
+        <div>
+            <div class="sld-panel-title">Gerenciar Transações Financeiras</div>
+            <div class="sld-panel-sub">Depósitos, saques, bônus e transferências</div>
+        </div>
+        <button class="sld-add-btn" onclick="abrirMovModal()">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+            Nova Transação
+        </button>
+    </div>
+    <div class="sld-table-wrap">
+        {% if movimentacoes %}
+        <table class="sld-table">
+            <thead>
+                <tr><th>Tipo</th><th>Casa</th><th>Valor</th><th>Data</th><th>Observação</th><th style="text-align:right">Ações</th></tr>
+            </thead>
+            <tbody>
+                {% for mov in movimentacoes %}
+                {% set t = mov.tipo|lower %}
+                <tr>
+                    <td>
+                        {% if "depós" in t or "depos" in t %}<span class="sld-badge deposito">Depósito</span>
+                        {% elif "saque" in t %}<span class="sld-badge saque">Saque</span>
+                        {% elif "bônus" in t or "bonus" in t %}<span class="sld-badge bonus">Bônus</span>
+                        {% else %}<span class="sld-badge transferencia">{{ mov.tipo }}</span>{% endif %}
+                    </td>
+                    <td class="sld-casa-name">{{ mov.casa }}</td>
+                    <td class="{{ 'sld-cell-pos' if mov.valor > 0 else 'sld-cell-neg' }}"><strong>{{ '+' if mov.valor > 0 else '' }}R$ {{ "%.2f"|format(mov.valor) }}</strong></td>
+                    <td style="color:#64748b">{{ mov.data[:10] }}</td>
+                    <td style="color:#64748b">{{ mov.descricao or "-" }}</td>
+                    <td style="text-align:right">
+                        <form method="POST" action="/saldos/movimento/remover/{{ mov.id }}" style="display:inline" onsubmit="return confirm('Remover esta transação?')">
+                            <button type="submit" class="sld-act-btn del" title="Remover">
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+                            </button>
+                        </form>
+                    </td>
+                </tr>
                 {% endfor %}
-            </datalist>
-
-            <input name="saldo" type="number" step="0.01" placeholder="Definir saldo exato. Ex: 300" required>
-            <button type="submit">Salvar Saldo Exato</button>
-        </form>
-
-        <h2 style="margin-top:22px;">Movimentar Carteira</h2>
-
-        <form method="POST" action="/saldos/movimento" class="saldo-form">
-            <input name="casa" list="casas-list" placeholder="Casa origem" required>
-
-            <select name="tipo">
-                <option value="deposito">Depósito</option>
-                <option value="saque">Saque</option>
-                <option value="bonus">Bônus</option>
-                <option value="transferencia">Transferência</option>
-            </select>
-
-            <input name="destino" list="casas-list" placeholder="Casa destino (só transferência)">
-            <input name="valor" type="number" step="0.01" placeholder="Valor" required>
-
-            <button type="submit">Registrar Movimento</button>
-        </form>
-    </div>
-
-    <div class="panel">
-        <h2>Casas cadastradas</h2>
-
-        {% if saldos %}
-            {% for item in saldos %}
-                <div class="saldo-row">
-                    <strong>{{ item.casa }}</strong>
-                    <span>R$ {{ "%.2f"|format(item.saldo) }}</span>
-                    <button type="button" class="blue" onclick="editarSaldoCasa('{{ item.casa }}', '{{ "%.2f"|format(item.saldo) }}')">Editar</button>
-                    <a href="/saldos/remover/{{ item.casa }}"><button class="dark">Remover</button></a>
-                </div>
-            {% endfor %}
+            </tbody>
+        </table>
         {% else %}
-            <p class="saldo-help">Nenhuma casa cadastrada ainda.</p>
+        <div class="sld-empty">
+            <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="2" y="5" width="20" height="14" rx="2"/><line x1="2" y1="10" x2="22" y2="10"/></svg>
+            Nenhuma transação registrada. Clique em "Nova Transação" para começar.
+        </div>
         {% endif %}
     </div>
+</div>
 
-<section class="panel" style="margin-top:20px;">
-    <h2>Histórico de Movimentações</h2>
-
-    <table class="mov-table">
-        <thead>
-            <tr>
-                <th>Data</th>
-                <th>Casa</th>
-                <th>Tipo</th>
-                <th>Valor</th>
-                <th>Descrição</th>
-            </tr>
-        </thead>
-        <tbody>
-            {% for mov in movimentacoes %}
-            <tr>
-                <td>{{ mov.data }}</td>
-                <td>{{ mov.casa }}</td>
-                <td>{{ mov.tipo }}</td>
-                <td class="{{ 'green-text' if mov.valor > 0 else 'red-text' }}">R$ {{ "%.2f"|format(mov.valor) }}</td>
-                <td>{{ mov.descricao }}</td>
-            </tr>
-            {% endfor %}
-        </tbody>
-    </table>
-</section>
+<!-- Saldo ajustado por casa -->
+<div class="sld-panel">
+    <div class="sld-panel-head">
+        <div>
+            <div class="sld-panel-title">Saldo Ajustado por Casa</div>
+            <div class="sld-panel-sub">Depósitos, saques e resultado de apostas combinados</div>
+        </div>
+    </div>
+    <div class="sld-table-wrap">
+        {% if linhas %}
+        <table class="sld-table">
+            <thead>
+                <tr><th>Casa</th><th>Depositado</th><th>Sacado</th><th>Bônus</th><th>Resultado de Apostas</th><th>Apostas Pendentes</th><th>Ajuste</th><th>Saldo Atual</th><th style="text-align:right">Ações</th></tr>
+            </thead>
+            <tbody>
+                {% for c in linhas %}
+                <tr>
+                    <td class="sld-casa-name">{{ c.casa }}</td>
+                    <td class="{{ 'sld-cell-pos' if c.depositado else 'sld-cell-zero' }}">R$ {{ "%.2f"|format(c.depositado) }}</td>
+                    <td class="{{ 'sld-cell-neg' if c.sacado else 'sld-cell-zero' }}">{{ '-' if c.sacado else '' }}R$ {{ "%.2f"|format(c.sacado) }}</td>
+                    <td class="{{ 'sld-cell-pos' if c.bonus else 'sld-cell-zero' }}">R$ {{ "%.2f"|format(c.bonus) }}</td>
+                    <td class="{{ 'sld-cell-pos' if c.resultado > 0 else ('sld-cell-neg' if c.resultado < 0 else 'sld-cell-zero') }}">R$ {{ "%.2f"|format(c.resultado) }}</td>
+                    <td class="{{ 'sld-cell-pend' if c.pendente else 'sld-cell-zero' }}">R$ {{ "%.2f"|format(c.pendente) }}</td>
+                    <td class="{{ 'sld-cell-pos' if c.ajuste > 0 else ('sld-cell-neg' if c.ajuste < 0 else 'sld-cell-zero') }}">{{ ('+' if c.ajuste > 0 else '') ~ 'R$ %.2f'|format(c.ajuste) if c.ajuste else '—' }}</td>
+                    <td class="{{ 'sld-cell-pos' if c.saldo > 0 else ('sld-cell-neg' if c.saldo < 0 else 'sld-cell-zero') }}"><strong>R$ {{ "%.2f"|format(c.saldo) }}</strong></td>
+                    <td style="text-align:right">
+                        <button type="button" class="sld-act-btn edit" title="Editar saldo desta casa"
+                            onclick="abrirEditSaldo('{{ c.casa|replace("'", "\\'") }}', '{{ '%.2f'|format(c.saldo) }}')">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+                        </button>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        {% else %}
+        <div class="sld-empty">
+            <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
+            Nenhuma casa com movimentação ou apostas ainda.
+        </div>
+        {% endif %}
+    </div>
+</div>
 
 </main>
 
-<div id="saldoEditModal" class="modal">
-    <div class="modal-content saldo-edit-modal">
-        <div class="modal-head">
-            <h2>Editar saldo da casa</h2>
-            <button type="button" onclick="fecharEditarSaldo()">×</button>
+<!-- Modal Nova Transação -->
+<div id="movModal">
+    <div class="mov-modal-box">
+        <div class="mov-modal-head">
+            <h3>Nova Transação</h3>
+            <button class="mov-modal-close" onclick="fecharMovModal()">×</button>
         </div>
+        <form method="POST" action="/saldos/movimento">
+            <div class="mov-row">
+                <div class="mov-field">
+                    <label>Casa</label>
+                    <input name="casa" list="casas-list" class="mov-input" placeholder="Ex: Bet365" required>
+                </div>
+                <div class="mov-field">
+                    <label>Tipo</label>
+                    <select name="tipo" class="mov-select" id="movTipo" onchange="onTipoChange()">
+                        <option value="deposito">💳 Depósito</option>
+                        <option value="saque">💸 Saque</option>
+                        <option value="bonus">🎁 Bônus</option>
+                        <option value="transferencia">🔄 Transferência</option>
+                    </select>
+                </div>
+            </div>
+            <div class="mov-field" id="movDestinoField">
+                <label>Casa destino</label>
+                <input name="destino" list="casas-list" class="mov-input" placeholder="Para qual casa?">
+            </div>
+            <div class="mov-field">
+                <label>Valor (R$)</label>
+                <input name="valor" type="number" step="0.01" class="mov-input" placeholder="Ex: 200.00" required>
+            </div>
+            <div class="mov-field">
+                <label>Observação (opcional)</label>
+                <input name="obs" class="mov-input" placeholder="Ex: bônus de cadastro">
+            </div>
+            <button type="submit" class="mov-submit">Registrar Transação</button>
+        </form>
+        <datalist id="casas-list">
+            {% for casa in casas %}<option value="{{ casa }}">{% endfor %}
+        </datalist>
+    </div>
+</div>
 
-        <form method="POST" action="/saldos/salvar" class="saldo-form">
-            <label>Casa</label>
-            <input id="editSaldoCasa" name="casa" readonly>
-
-            <label>Novo saldo</label>
-            <input id="editSaldoValor" name="saldo" type="number" step="0.01" required>
-
-            <button type="submit">Salvar novo saldo</button>
+<!-- Modal Editar Saldo da Casa -->
+<div id="editSaldoModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:99999;align-items:center;justify-content:center;">
+    <div class="mov-modal-box">
+        <div class="mov-modal-head">
+            <h3>Editar Saldo da Casa</h3>
+            <button class="mov-modal-close" onclick="fecharEditSaldo()">×</button>
+        </div>
+        <form method="POST" action="/saldos/ajuste">
+            <div class="mov-field">
+                <label>Casa</label>
+                <input id="editSaldoCasa" name="casa" class="mov-input" readonly>
+            </div>
+            <div class="mov-field">
+                <label>Saldo real nesta casa (R$)</label>
+                <input id="editSaldoValor" name="saldo" type="number" step="0.01" class="mov-input" required>
+            </div>
+            <p style="font-size:12px;color:#475569;margin:-4px 0 14px;">Ajusta o saldo calculado para bater com o valor real na casa.</p>
+            <button type="submit" class="mov-submit">Salvar Saldo</button>
         </form>
     </div>
 </div>
 
-
 <script>
+function abrirEditSaldo(casa, saldo){
+    document.getElementById("editSaldoCasa").value = casa
+    document.getElementById("editSaldoValor").value = String(saldo||"0").replace(",",".")
+    document.getElementById("editSaldoModal").style.display = "flex"
+}
+function fecharEditSaldo(){ document.getElementById("editSaldoModal").style.display = "none" }
+document.getElementById("editSaldoModal").addEventListener("click",function(e){ if(e.target===this) fecharEditSaldo() })
+
 function toggleSidebar(){
     document.body.classList.toggle("sidebar-collapsed")
-    const collapsed = document.body.classList.contains("sidebar-collapsed")
-    localStorage.setItem("sidebarCollapsed", collapsed ? "1" : "0")
-    const btn = document.querySelector(".sidebar-toggle")
-    if(btn) btn.innerText = collapsed ? "›" : "‹"
+    const c=document.body.classList.contains("sidebar-collapsed")
+    localStorage.setItem("sidebarCollapsed",c?"1":"0")
+    const btn=document.querySelector(".sidebar-toggle");if(btn) btn.innerText=c?"›":"‹"
 }
-
-document.addEventListener("DOMContentLoaded", ()=>{
-    const collapsed = localStorage.getItem("sidebarCollapsed") === "1"
-    if(collapsed){
+document.addEventListener("DOMContentLoaded",()=>{
+    if(localStorage.getItem("sidebarCollapsed")==="1"){
         document.body.classList.add("sidebar-collapsed")
-        const btn = document.querySelector(".sidebar-toggle")
-        if(btn) btn.innerText = "›"
+        const btn=document.querySelector(".sidebar-toggle");if(btn) btn.innerText="›"
     }
 })
-
-// V45 - preservar posição em qualquer ação que ainda faça reload
-document.addEventListener("click", function(e){
-    const action = e.target.closest('a[href^="/resultado/"], a[href^="/remover/"], a[href^="/admin/"], a[href^="/saldos/remover/"]')
-    if(action){
-        sessionStorage.setItem("restoreScrollY", String(window.scrollY || 0))
-    }
-}, true)
-
-window.addEventListener("beforeunload", function(){
-    sessionStorage.setItem("restoreScrollY", String(window.scrollY || 0))
+function toggleUserMenu(ev){if(ev) ev.stopPropagation();const m=document.getElementById("sidebarUserMenu");if(m) m.classList.toggle("open")}
+document.addEventListener("click",function(e){
+    const m=document.getElementById("sidebarUserMenu"),c=document.querySelector(".sidebar-user-card")
+    if(m&&c&&!m.contains(e.target)&&!c.contains(e.target)) m.classList.remove("open")
 })
-
-document.addEventListener("DOMContentLoaded", function(){
-    const y = sessionStorage.getItem("restoreScrollY")
-    if(y !== null){
-        sessionStorage.removeItem("restoreScrollY")
-        setTimeout(()=>window.scrollTo(0, parseInt(y || "0")), 0)
-    }
-})
-
-</script>
-
-
-<script id="v62-userbox-js">
-function toggleUserMenu(ev){
-    if(ev) ev.stopPropagation()
-    const menu = document.getElementById("sidebarUserMenu")
-    if(menu) menu.classList.toggle("open")
+function abrirMovModal(){ document.getElementById("movModal").classList.add("show") }
+function fecharMovModal(){ document.getElementById("movModal").classList.remove("show") }
+function onTipoChange(){
+    const tipo=document.getElementById("movTipo").value
+    document.getElementById("movDestinoField").style.display = tipo==="transferencia" ? "block" : "none"
 }
-
-document.addEventListener("click", function(e){
-    const menu = document.getElementById("sidebarUserMenu")
-    const card = document.querySelector(".sidebar-user-card")
-    if(menu && card && !menu.contains(e.target) && !card.contains(e.target)){
-        menu.classList.remove("open")
-    }
-})
+document.getElementById("movModal").addEventListener("click",function(e){ if(e.target===this) fecharMovModal() })
 </script>
-
-
-<script>
-function editarSaldoCasa(casa, saldo){
-    const modal = document.getElementById("saldoEditModal")
-    const casaInput = document.getElementById("editSaldoCasa")
-    const valorInput = document.getElementById("editSaldoValor")
-
-    if(casaInput) casaInput.value = casa
-    if(valorInput) valorInput.value = String(saldo || "0").replace(",", ".")
-
-    if(modal) modal.classList.add("show")
-}
-
-function fecharEditarSaldo(){
-    const modal = document.getElementById("saldoEditModal")
-    if(modal) modal.classList.remove("show")
-}
-</script>
-
 </body>
 </html>

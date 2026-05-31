@@ -44,7 +44,7 @@ USUARIOS_PATH = os.path.join(BASE_DIR, "usuarios.json")
 
 DATABASE_URL = os.environ.get(
     "DATABASE_URL",
-    "postgresql://betmanager_user:BKrSw4b2w25LpvLqPdhn8cMINstlIs9R@dpg-d870m93eo5us73fr60gg-a.oregon-postgres.render.com/betmanager_wyke"
+    "postgresql://betmanager_user:BKrSw4b2w25LpvLqPdhn8cMINstlIs9R@dpg-d7snnsreo5us73eks3s0-a.oregon-postgres.render.com/betmanager"
 )
 
 
@@ -56,6 +56,25 @@ def get_pg_conn():
     except Exception as e:
         print("ERRO AO CONECTAR AO POSTGRES:", e)
         return None
+
+def release_pg_conn(conn):
+    if not conn:
+        return
+    try:
+        conn.close()
+    except Exception:
+        pass
+
+def salvar():
+    criar_backup_pg()
+    if _pg_salvar_dados(dados):
+        return
+    # Fallback: arquivo local
+    try:
+        with open(ARQUIVO, "w", encoding="utf-8") as f:
+            json.dump(dados, f, indent=4, ensure_ascii=False)
+    except Exception as e:
+        print("ERRO AO SALVAR dados.json:", e)
 
 
 def init_pg_db():
@@ -121,7 +140,6 @@ def criar_backup_pg(label=None):
             "INSERT INTO backups (label, data) VALUES (%s, %s)",
             (lbl, json.dumps(snapshot, ensure_ascii=False))
         )
-        # Remove snapshots antigos, mantém os últimos BACKUP_MAX_SNAPSHOTS
         cur.execute("""
             DELETE FROM backups WHERE id NOT IN (
                 SELECT id FROM backups ORDER BY created_at DESC LIMIT %s
@@ -129,15 +147,12 @@ def criar_backup_pg(label=None):
         """, (BACKUP_MAX_SNAPSHOTS,))
         conn.commit()
         cur.close()
-        conn.close()
         _ultimo_backup_ts = agora
         print(f"Backup criado: {lbl}")
     except Exception as e:
         print("ERRO AO CRIAR BACKUP:", e)
-        try:
-            conn.close()
-        except Exception:
-            pass
+    finally:
+        release_pg_conn(conn)
 
 CACHE_RESULTADOS = {}
 CACHE_EVENTOS = {}
@@ -231,6 +246,11 @@ def _aplicar_defaults_bets(dados):
         b.setdefault("saldo_creditado_estado", "")
         b.setdefault("saldo_creditado_valor", 0.0)
         b.setdefault("publica", False)
+        b.setdefault("horario_jogo", "")
+        b.setdefault("horario_jogo_iso", "")
+        b.setdefault("status_jogo", "")
+        b.setdefault("ao_vivo", False)
+        b.setdefault("user_id", "")
 
     return dados
 
@@ -289,60 +309,59 @@ def carregar():
         return _aplicar_defaults_bets(dados_padrao)
 
 
-def _pg_salvar_dados(d):
-    conn = get_pg_conn()
+# Conexão persistente para salvar (evita o handshake SSL ~300ms a cada save).
+# Síncrono e seguro: mantém a confiabilidade, só elimina a reconexão repetida.
+_pg_save_conn = None
+_pg_save_lock = threading.Lock()
+
+def _pg_obter_conn_save():
+    global _pg_save_conn
+    if _pg_save_conn is not None:
+        try:
+            if _pg_save_conn.closed == 0:
+                return _pg_save_conn
+        except Exception:
+            pass
+    _pg_save_conn = psycopg2.connect(DATABASE_URL, sslmode="require") if PSYCOPG2_OK else None
+    return _pg_save_conn
+
+def _pg_executar_save(d):
+    conn = _pg_obter_conn_save()
     if not conn:
         return False
-    try:
-        cur = conn.cursor()
-        cur.execute(
-            "INSERT INTO app_store (chave, valor, atualizado_em) VALUES ('dados', %s::jsonb, NOW()) "
-            "ON CONFLICT (chave) DO UPDATE SET valor = EXCLUDED.valor, atualizado_em = NOW()",
-            (json.dumps(d, ensure_ascii=False),)
-        )
-        conn.commit()
-        cur.close()
-        conn.close()
-        return True
-    except Exception as e:
-        print("ERRO AO SALVAR NO POSTGRES:", e)
-        try:
-            conn.close()
-        except Exception:
-            pass
+    cur = conn.cursor()
+    cur.execute(
+        "INSERT INTO app_store (chave, valor, atualizado_em) VALUES ('dados', %s::jsonb, NOW()) "
+        "ON CONFLICT (chave) DO UPDATE SET valor = EXCLUDED.valor, atualizado_em = NOW()",
+        (json.dumps(d, ensure_ascii=False),)
+    )
+    conn.commit()
+    cur.close()
+    return True
+
+def _pg_salvar_dados(d):
+    if not PSYCOPG2_OK:
         return False
-
-
-def salvar():
-    # Cria snapshot antes de salvar (debounced — no máx 1x a cada 30 min)
-    criar_backup_pg()
-    # Salva no PostgreSQL
-    if _pg_salvar_dados(dados):
-        return
-
-    # Fallback: arquivo local
-    try:
-        if os.path.exists(ARQUIVO):
-            with open(ARQUIVO, "r", encoding="utf-8") as f:
-                atual = f.read().strip()
-            if atual:
-                with open(ARQUIVO + ".bak", "w", encoding="utf-8") as f:
-                    f.write(atual)
-
+    with _pg_save_lock:
         try:
-            if os.path.exists(ARQUIVO):
-                with open(ARQUIVO, "r", encoding="utf-8") as f:
-                    antigo = json.load(f)
-                if len(antigo.get("bets", [])) > 0 and len(dados.get("bets", [])) == 0:
-                    print("BLOQUEADO: tentativa de salvar dados.json vazio por cima de apostas existentes.")
-                    return
-        except Exception:
-            pass
+            return _pg_executar_save(d)
+        except Exception as e:
+            # Conexão pode ter caído (idle timeout do Render) — reconecta e tenta 1x
+            print("Save PG: reconectando após erro:", e)
+            global _pg_save_conn
+            try:
+                if _pg_save_conn:
+                    _pg_save_conn.close()
+            except Exception:
+                pass
+            _pg_save_conn = None
+            try:
+                return _pg_executar_save(d)
+            except Exception as e2:
+                print("ERRO AO SALVAR NO POSTGRES:", e2)
+                return False
 
-        with open(ARQUIVO, "w", encoding="utf-8") as f:
-            json.dump(dados, f, indent=4, ensure_ascii=False)
-    except Exception as e:
-        print("ERRO AO SALVAR dados.json:", e)
+
 
 
 def carregar_cache():
@@ -693,7 +712,7 @@ def registrar_movimentacao_casa(casa, tipo, valor, descricao=""):
     })
 
 
-def aplicar_movimento_manual_casa(casa, tipo, valor, destino=""):
+def aplicar_movimento_manual_casa(casa, tipo, valor, destino="", obs=""):
     try:
         casa = limpar_casa(casa)
         destino = limpar_casa(destino)
@@ -708,21 +727,26 @@ def aplicar_movimento_manual_casa(casa, tipo, valor, destino=""):
 
     if tipo == "deposito":
         alterar_saldo_casa(casa, valor)
-        registrar_movimentacao_casa(casa, "Depósito", valor, "Entrada manual")
+        registrar_movimentacao_casa(casa, "Depósito", valor, obs or "Entrada manual")
 
     elif tipo == "saque":
         alterar_saldo_casa(casa, -valor)
-        registrar_movimentacao_casa(casa, "Saque", -valor, "Saída manual")
+        registrar_movimentacao_casa(casa, "Saque", -valor, obs or "Saída manual")
 
     elif tipo == "bonus":
         alterar_saldo_casa(casa, valor)
-        registrar_movimentacao_casa(casa, "Bônus", valor, "Crédito de bônus")
+        registrar_movimentacao_casa(casa, "Bônus", valor, obs or "Crédito de bônus")
 
     elif tipo == "transferencia" and destino:
         alterar_saldo_casa(casa, -valor)
         alterar_saldo_casa(destino, valor)
-        registrar_movimentacao_casa(casa, "Transferência enviada", -valor, f"Para {destino}")
-        registrar_movimentacao_casa(destino, "Transferência recebida", valor, f"De {casa}")
+        registrar_movimentacao_casa(casa, "Transferência enviada", -valor, obs or f"Para {destino}")
+        registrar_movimentacao_casa(destino, "Transferência recebida", valor, obs or f"De {casa}")
+
+
+def _display_sem_barra(txt):
+    # Remove a "/" da EXIBIÇÃO (vira espaço). O dado original mantém a "/".
+    return re.sub(r"\s+", " ", re.sub(r"\s*/\s*", " ", str(txt or ""))).strip()
 
 
 def limpar_aposta_display_v39(b):
@@ -731,10 +755,12 @@ def limpar_aposta_display_v39(b):
     aposta = str(b2.get("aposta", "") or "").strip()
 
     if jogo and aposta.lower().startswith((jogo + " - ").lower()):
-        b2["aposta_display"] = aposta[len(jogo) + 3:].strip()
+        disp = aposta[len(jogo) + 3:].strip()
     else:
-        b2["aposta_display"] = aposta
+        disp = aposta
 
+    b2["aposta_display"] = _display_sem_barra(disp)
+    b2["jogo_display"] = _display_sem_barra(jogo)
     return b2
 
 
@@ -1455,16 +1481,24 @@ def metricas():
         if b.get("estado") in ["ganha", "perdida"]
     )
 
+    valor_em_aberto = round(sum(
+        float(b.get("valor", 0) or 0)
+        for b in bets_user
+        if b.get("estado", "") == ""
+    ), 2)
+
     roi = round((lucro_total / total_apostado_resolvido) * 100, 2) if total_apostado_resolvido else 0
     taxa = round((greens / (greens + reds)) * 100, 2) if (greens + reds) else 0
 
     return {
         "banca_atual": banca_atual,
+        "banca_inicial": round(float(dados.get("banca_inicial", 0)), 2),
         "lucro_total": lucro_total,
         "roi": roi,
         "taxa": taxa,
         "total": len(bets_user),
         "pendentes": pendentes,
+        "valor_em_aberto": valor_em_aberto,
         "greens": greens,
         "reds": reds,
         "saldo_casas_total": saldo_total_casas
@@ -1473,19 +1507,19 @@ def metricas():
 
 
 def grafico():
-    banca = float(dados.get("banca_inicial", 0))
     labels, valores = [], []
-
-    # Se houver saldo por casa, o gráfico usa o saldo atual como referência final,
-    # mas mantém evolução por lucro das apostas do usuário.
+    lucro_acum = 0.0
     for b in bets_do_usuario():
-        banca += float(b.get("lucro", 0))
+        lucro = float(b.get("lucro", 0) or 0)
+        if lucro == 0 and not b.get("estado"):
+            continue  # ignora pendentes (sem lucro real ainda)
+        lucro_acum += lucro
         labels.append(b.get("data", ""))
-        valores.append(round(banca, 2))
+        valores.append(round(lucro_acum, 2))
 
     if not labels:
         labels = ["Início"]
-        valores = [total_saldos_casas() or banca]
+        valores = [0]
 
     return labels, valores
 
@@ -1605,8 +1639,10 @@ def calendario_historico(ano=None, mes=None):
         "pior_dia_lucro": round(pior[1]["lucro"], 2),
     }
 
+    _meses_pt = ["Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho",
+                 "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"]
     return {
-        "mes_nome": mes_ref.strftime("%B").capitalize(),
+        "mes_nome": _meses_pt[mes - 1],
         "ano": ano,
         "mes": mes,
         "prev_mes": prev_mes,
@@ -1633,6 +1669,58 @@ def ranking_por_campo(campo):
     ]
 
     return sorted(lista, key=lambda x: x["lucro"], reverse=True)[:5]
+
+
+def categorizar_mercado(b):
+    """Classifica a aposta numa categoria de mercado limpa, a partir do texto
+    (mais confiável que o campo 'mercado' cru, que vem inconsistente do OCR)."""
+    raw_jogo = str(b.get("jogo", "") or "")
+    raw_aposta = str(b.get("aposta", "") or "")
+    jogo = normalizar_nome(raw_jogo)
+    txt = normalizar_nome(f"{raw_aposta} {b.get('mercado','')}")
+    def tem(*ks): return any(k in txt for k in ks)
+    linha_num = bool(re.search(r"\d+[.,]5", raw_aposta))
+
+    if "multipla" in jogo or "multipla" in txt or raw_aposta.count("/") >= 2 or raw_jogo.count("/") >= 1:
+        return "Múltipla"
+    if tem("escanteio", "escanteios", "corner", "corners", "canto", "cantos"):
+        return "Escanteios"
+    if tem("cartao", "cartoes", "amarelo", "vermelho", "card"):
+        return "Cartões"
+    if tem("ambas marcam", "ambas equipes marcam", "ambas as equipes", "ambos marcam", "btts", "ambas time"):
+        return "Ambas Marcam"
+    if tem("chute", "chutes", "finalizacao", "finalizacoes", "remate", "shots", "no gol", "a gol"):
+        return "Chutes / Finalizações"
+    if tem("handicap", "hcp", "hand"):
+        return "Handicap"
+    if tem("dupla chance", "double chance"):
+        return "Dupla Chance"
+    if ((tem("over", "under", "mais de", "menos de", "acima", "abaixo", "+ de", "total") or linha_num) and tem("gol", "gols")):
+        return "Total de Gols (Over/Under)"
+    if tem("over", "under", "mais de", "menos de", "acima de", "abaixo de"):
+        return "Over / Under"
+    if tem("resultado final", "1x2", "vencedor", "moneyline", " ml ", "vence", "vencer", "para ganhar", "empate", "resultado", "vitoria"):
+        return "Resultado (1X2 / ML)"
+    if tem("gol", "gols", "marca"):
+        return "Gols"
+    return "Outros"
+
+
+def ranking_mercados():
+    ranking = {}
+    for b in bets_do_usuario():
+        chave = categorizar_mercado(b)
+        ranking.setdefault(chave, {"lucro": 0, "apostas": 0})
+        ranking[chave]["lucro"] += float(b.get("lucro", 0) or 0)
+        ranking[chave]["apostas"] += 1
+
+    lista = [
+        {"nome": k, "lucro": round(v["lucro"], 2), "apostas": v["apostas"]}
+        for k, v in ranking.items()
+    ]
+    # ordena por nº de apostas (mais relevantes primeiro), "Outros" sempre por último
+    lista.sort(key=lambda x: (x["nome"] == "Outros", -x["apostas"], -x["lucro"]))
+    return lista[:8]
 
 
 def estatisticas_extras():
@@ -1668,7 +1756,7 @@ def estatisticas_extras():
         "tipo_seq": tipo_seq,
         "ranking_casas": ranking_por_campo("casa"),
         "ranking_esportes": ranking_por_campo("esporte"),
-        "ranking_mercados": ranking_por_campo("mercado")
+        "ranking_mercados": ranking_mercados()
     }
 
 
@@ -4736,6 +4824,16 @@ def criar_aposta_manual_payload(form):
 
     classificacao = classificar_aposta(aposta_texto, jogo)
 
+    horario_jogo_iso = limpar_linha(form.get("horario_jogo", ""))
+    horario_jogo = ""
+    if horario_jogo_iso:
+        try:
+            from datetime import datetime as _dt
+            d = _dt.fromisoformat(horario_jogo_iso)
+            horario_jogo = d.strftime("%d/%m/%Y %H:%M")
+        except Exception:
+            horario_jogo = horario_jogo_iso
+
     bet = {
         "id": str(uuid.uuid4()),
         "user_id": usuario_id_atual(),
@@ -4749,6 +4847,8 @@ def criar_aposta_manual_payload(form):
         "estado": "",
         "lucro": 0,
         "origem": "manual",
+        "horario_jogo": horario_jogo,
+        "horario_jogo_iso": horario_jogo_iso,
         "mercado": classificacao.get("mercado", "Outro"),
         "direcao": classificacao.get("direcao", ""),
         "linha": classificacao.get("linha", None),
@@ -5112,6 +5212,13 @@ def admin_promover(uid):
 @assinatura_required
 def adicionar_ajax():
     try:
+        odd = _parse_float(request.form.get("odd", 0))
+        valor = _parse_float(request.form.get("valor", 0))
+        if odd <= 0:
+            return jsonify({"ok": False, "erro": "Odd inválida. Informe um valor maior que zero."}), 400
+        if valor <= 0:
+            return jsonify({"ok": False, "erro": "Valor apostado inválido. Informe um valor maior que zero."}), 400
+
         bet = criar_aposta_manual_payload(request.form)
         registrar_nova_aposta_saldo(bet)
         dados["bets"].append(bet)
@@ -5240,6 +5347,22 @@ def editar_ajax():
     b["valor"] = _parse_float(payload.get("valor", 0))
     b["estado"] = payload.get("estado", b.get("estado", ""))
 
+    # Horário do jogo (campo datetime-local "YYYY-MM-DDTHH:MM" -> ISO + exibição)
+    horario_jogo = str(payload.get("horario_jogo", "") or "").strip()
+    if horario_jogo:
+        try:
+            _dt = datetime.fromisoformat(horario_jogo)
+            b["horario_jogo_iso"] = _dt.strftime("%Y-%m-%dT%H:%M:%S")
+            b["horario_jogo"] = _dt.strftime("%d/%m %H:%M")
+        except Exception:
+            b["horario_jogo_iso"] = horario_jogo
+            b["horario_jogo"] = horario_jogo
+
+    # Status do jogo definido manualmente no modal
+    status_manual = str(payload.get("status_jogo_manual", "") or "").strip()
+    b["status_jogo"] = status_manual
+    b["ao_vivo"] = status_manual.lower() in ("ao vivo", "em andamento")
+
     classificacao = classificar_aposta(b["aposta"], b["jogo"])
     b["mercado"] = payload.get("mercado") or classificacao["mercado"]
     b["direcao"] = classificacao["direcao"]
@@ -5289,6 +5412,17 @@ def colar():
                 if not isinstance(aposta_extraida, dict):
                     aposta_extraida = {"aposta": str(aposta_extraida or "")}
 
+                # Obs: a "/" é mantida no DADO (necessária pra detectar múltiplas e
+                # separar os jogos). A remoção da "/" acontece só na EXIBIÇÃO
+                # (ver display_sem_barra / aposta_display), pra nunca aparecer na tela.
+
+                # Remove prefixo "Jogo x Adversário - " do campo aposta quando o OCR o inclui
+                _aposta = aposta_extraida.get("aposta", "")
+                if _aposta and " - " in _aposta:
+                    _prefix, _, _resto = _aposta.partition(" - ")
+                    if re.search(r"\s(x|vs\.?)\s", _prefix, re.I) and _resto.strip():
+                        aposta_extraida["aposta"] = _resto.strip()
+
                 aposta_extraida.setdefault("aposta", "")
                 aposta_extraida.setdefault("casa", "")
                 aposta_extraida.setdefault("esporte", "")
@@ -5301,6 +5435,12 @@ def colar():
                 aposta_extraida.setdefault("valor", "")
                 aposta_extraida.setdefault("texto_bruto", texto)
                 aposta_extraida.setdefault("texto_interpretado", aposta_extraida.get("aposta", ""))
+
+                # Remove a "/" dos campos que aparecem no preview do OCR (vira espaço).
+                # mercado/itens_multipla_detalhados ficam intactos (guardam a info da múltipla).
+                for _c in ("aposta", "jogo", "casa", "esporte", "selecao", "linha", "periodo"):
+                    if isinstance(aposta_extraida.get(_c), str):
+                        aposta_extraida[_c] = _display_sem_barra(aposta_extraida[_c])
 
                 resultados.append(aposta_extraida)
 
@@ -5336,6 +5476,9 @@ def salvar_preview():
     apostas = request.json.get("apostas", [])
 
     for a in apostas:
+        if _parse_float(a.get("odd", 0)) <= 0 or _parse_float(a.get("valor", 0)) <= 0:
+            continue  # ignora silenciosamente apostas sem odd/valor válidos
+
         aposta_texto = limpar_linha(a["aposta"])
         jogo = limpar_linha(a.get("jogo", ""))
 
@@ -5373,8 +5516,21 @@ def salvar_preview():
             "saldo_debitado": False,
             "saldo_creditado_estado": "",
             "saldo_creditado_valor": 0.0,
-            "publica": aposta_publica_padrao_usuario()
+            "publica": aposta_publica_padrao_usuario(),
+            "horario_jogo_iso": limpar_linha(a.get("horario_jogo_iso", "")),
+            "horario_jogo": limpar_linha(a.get("horario_jogo", "")),
+            "status_jogo": "",
+            "ao_vivo": False,
         }
+
+        # Se vier horario_jogo_iso do autocomplete mas não horario_jogo, formata
+        if bet_preview["horario_jogo_iso"] and not bet_preview["horario_jogo"]:
+            try:
+                from datetime import datetime as _dt
+                d = _dt.fromisoformat(bet_preview["horario_jogo_iso"])
+                bet_preview["horario_jogo"] = d.strftime("%d/%m/%Y %H:%M")
+            except Exception:
+                pass
 
         registrar_nova_aposta_saldo(bet_preview)
         dados["bets"].append(bet_preview)
@@ -5484,16 +5640,45 @@ def v20_e_casa(linha):
 def v20_nome_casa(linha):
     ln = v20_norm(linha)
 
+    # 1) Match exato
     for casa in CASAS_DISPONIVEIS:
         cn = v20_norm(casa)
-        if not cn:
-            continue
-
-        if ln == cn:
+        if cn and ln == cn:
             return casa
 
-        if len(cn) >= 4 and re.search(rf"\b{re.escape(cn)}\b", ln):
+    # 2) Match de substring (nome da casa aparece dentro da linha)
+    for casa in CASAS_DISPONIVEIS:
+        cn = v20_norm(casa)
+        if cn and len(cn) >= 4 and re.search(rf"\b{re.escape(cn)}\b", ln):
             return casa
+
+    # 2.5) Confusões clássicas de OCR (0<->O, 1/i<->l, 4<->A, 5<->S, 8<->B) — pega "KT0"->"KTO", "Aplay"->"4play", "4PIay"->"4play"
+    def _ocr_canon(s):
+        return s.translate(str.maketrans({"0": "o", "1": "l", "i": "l", "4": "a", "5": "s", "8": "b"}))
+    ln_canon = _ocr_canon(ln)
+    for casa in CASAS_DISPONIVEIS:
+        cn = v20_norm(casa)
+        if cn and ln_canon == _ocr_canon(cn):
+            return casa
+
+    # 3) Fuzzy: corrige erros de OCR (ex: "8etano"->"Betano", "Bet36S"->"Bet365")
+    if ln and len(ln) >= 3:
+        melhor_casa = None
+        melhor_ratio = 0.0
+        for casa in CASAS_DISPONIVEIS:
+            cn = v20_norm(casa)
+            if not cn:
+                continue
+            # compara a linha inteira e também a primeira palavra dela (caso venha lixo junto)
+            r1 = difflib.SequenceMatcher(None, ln, cn).ratio()
+            primeira = ln.split(" ", 1)[0]
+            r2 = difflib.SequenceMatcher(None, primeira, cn).ratio() if primeira else 0.0
+            r = max(r1, r2)
+            if r > melhor_ratio:
+                melhor_ratio = r
+                melhor_casa = casa
+        if melhor_casa and melhor_ratio >= 0.82:
+            return melhor_casa
 
     return limpar_casa(linha)
 
@@ -8202,22 +8387,139 @@ def ultimas_apostas():
 # V42 - Rotas da página de saldos por casa
 # ============================================================
 
+def ajustes_saldo_usuario():
+    uid = usuario_id_atual()
+    return dados.setdefault("ajuste_saldo_por_usuario", {}).setdefault(uid, {})
+
+
+def _saldos_ajustados_por_casa(ignorar_ajuste=False):
+    """Cruza movimentações financeiras + apostas para calcular o saldo real por casa."""
+    bets = bets_do_usuario()
+    movs = movimentacoes_usuario()
+    ajustes = {} if ignorar_ajuste else ajustes_saldo_usuario()
+
+    casas = {}
+
+    def _get(nome):
+        try:
+            nome = limpar_casa(nome)
+        except Exception:
+            nome = str(nome or "").strip()
+        if not nome:
+            return None
+        kl = nome.lower()
+        if kl not in casas:
+            casas[kl] = {"casa": nome, "depositado": 0.0, "sacado": 0.0,
+                         "bonus": 0.0, "resultado": 0.0, "pendente": 0.0}
+        return casas[kl]
+
+    for m in movs:
+        c = _get(m.get("casa", ""))
+        if not c:
+            continue
+        tipo = (m.get("tipo", "") or "").lower()
+        val = float(m.get("valor", 0) or 0)
+        if "bônus" in tipo or "bonus" in tipo:
+            c["bonus"] += abs(val)
+        elif "saque" in tipo or "enviada" in tipo:
+            c["sacado"] += abs(val)
+        elif "depósito" in tipo or "deposito" in tipo or "recebida" in tipo:
+            c["depositado"] += abs(val)
+
+    for b in bets:
+        c = _get(b.get("casa", ""))
+        if not c:
+            continue
+        estado = b.get("estado", "")
+        if estado in ("ganha", "perdida", "anulada"):
+            c["resultado"] += float(b.get("lucro", 0) or 0)
+        elif not estado:
+            c["pendente"] += float(b.get("valor", 0) or 0)
+
+    # Casas que só existem por ajuste manual (sem movimentação/aposta)
+    for casa_key, aj in ajustes.items():
+        if casa_key not in casas and float(aj or 0) != 0:
+            casas[casa_key] = {"casa": casa_key.title(), "depositado": 0.0, "sacado": 0.0,
+                               "bonus": 0.0, "resultado": 0.0, "pendente": 0.0}
+
+    linhas = []
+    for kl, c in casas.items():
+        aj = float(ajustes.get(kl, 0) or 0)
+        c["ajuste"] = round(aj, 2)
+        c["saldo"] = round(c["depositado"] + c["bonus"] - c["sacado"] + c["resultado"] - c["pendente"] + aj, 2)
+        for k in ("depositado", "sacado", "bonus", "resultado", "pendente"):
+            c[k] = round(c[k], 2)
+        linhas.append(c)
+
+    linhas.sort(key=lambda x: x["casa"].lower())
+    return linhas
+
+
 @app.route("/saldos")
 @login_required
 @assinatura_required
 def saldos():
-    saldos = [
-        {"casa": casa, "saldo": float(valor or 0)}
-        for casa, valor in sorted(saldo_casas_usuario().items(), key=lambda x: x[0].lower())
-    ]
+    linhas = _saldos_ajustados_por_casa()
+    movs = list(reversed(movimentacoes_usuario()))
+
+    total_depositado = round(sum(c["depositado"] for c in linhas), 2)
+    total_sacado = round(sum(c["sacado"] for c in linhas), 2)
+    total_bonus = round(sum(c["bonus"] for c in linhas), 2)
+    total_saldo = round(sum(c["saldo"] for c in linhas), 2)
+
+    n_depositos = sum(1 for m in movs if "depós" in (m.get("tipo", "") or "").lower() or "depos" in (m.get("tipo", "") or "").lower())
+    n_saques = sum(1 for m in movs if "saque" in (m.get("tipo", "") or "").lower())
+    n_bonus = sum(1 for m in movs if "bônus" in (m.get("tipo", "") or "").lower() or "bonus" in (m.get("tipo", "") or "").lower())
 
     return render_template(
         "saldos.html",
-        saldos=saldos,
-        total_saldos=total_saldos_casas(),
+        linhas=linhas,
+        movimentacoes=movs,
         casas=CASAS_DISPONIVEIS,
-        movimentacoes=list(reversed(movimentacoes_usuario()))[:80]
+        total_depositado=total_depositado,
+        total_sacado=total_sacado,
+        total_bonus=total_bonus,
+        total_saldo=total_saldo,
+        n_depositos=n_depositos,
+        n_saques=n_saques,
+        n_bonus=n_bonus,
     )
+
+
+@app.route("/saldos/movimento/remover/<mid>", methods=["POST", "GET"])
+@login_required
+@assinatura_required
+def remover_movimento(mid):
+    movs = movimentacoes_usuario()
+    movs[:] = [m for m in movs if m.get("id") != mid]
+    salvar()
+    return redirect("/saldos")
+
+
+@app.route("/saldos/ajuste", methods=["POST"])
+@login_required
+@assinatura_required
+def saldos_ajuste():
+    try:
+        casa = limpar_casa(request.form.get("casa", ""))
+    except Exception:
+        casa = str(request.form.get("casa", "") or "").strip()
+    if not casa:
+        return redirect("/saldos")
+
+    saldo_desejado = _parse_float(request.form.get("saldo", 0))
+    # Saldo calculado SEM ajuste, para descobrir o delta necessário
+    base = _saldos_ajustados_por_casa(ignorar_ajuste=True)
+    atual = next((c["saldo"] for c in base if c["casa"].lower() == casa.lower()), 0.0)
+    ajuste = round(saldo_desejado - atual, 2)
+
+    aj_dict = ajustes_saldo_usuario()
+    if ajuste == 0:
+        aj_dict.pop(casa.lower(), None)
+    else:
+        aj_dict[casa.lower()] = ajuste
+    salvar()
+    return redirect("/saldos")
 
 
 @app.route("/saldos/salvar", methods=["POST"])
@@ -8243,8 +8545,9 @@ def saldo_movimento():
     destino = request.form.get("destino", "")
     tipo = request.form.get("tipo", "deposito")
     valor = _parse_float(request.form.get("valor", 0))
+    obs = request.form.get("obs", "").strip()
 
-    aplicar_movimento_manual_casa(casa, tipo, valor, destino)
+    aplicar_movimento_manual_casa(casa, tipo, valor, destino, obs)
     salvar()
 
     return redirect("/saldos")
@@ -8799,6 +9102,38 @@ def propagar_resultado_para_copias(aposta_base, estado):
 ESPN_CACHE = {}
 ESPN_CACHE_TTL = int(os.environ.get("ESPN_CACHE_TTL", "300"))
 
+# Tradução de seleções (ESPN usa inglês; usuário busca em português)
+ESPN_PAISES_PT = {
+    "brazil": "Brasil", "england": "Inglaterra", "germany": "Alemanha",
+    "spain": "Espanha", "france": "França", "italy": "Itália",
+    "netherlands": "Holanda", "panama": "Panamá", "united states": "Estados Unidos",
+    "belgium": "Bélgica", "croatia": "Croácia", "switzerland": "Suíça",
+    "wales": "País de Gales", "denmark": "Dinamarca", "poland": "Polônia",
+    "sweden": "Suécia", "mexico": "México", "uruguay": "Uruguai",
+    "colombia": "Colômbia", "ecuador": "Equador", "paraguay": "Paraguai",
+    "japan": "Japão", "south korea": "Coreia do Sul", "egypt": "Egito",
+    "morocco": "Marrocos", "nigeria": "Nigéria", "senegal": "Senegal",
+    "dominican republic": "República Dominicana", "bosnia-herzegovina": "Bósnia e Herzegovina",
+    "bosnia and herzegovina": "Bósnia e Herzegovina", "ivory coast": "Costa do Marfim",
+    "saudi arabia": "Arábia Saudita", "australia": "Austrália", "canada": "Canadá",
+    "scotland": "Escócia", "ireland": "Irlanda", "republic of ireland": "Irlanda",
+    "austria": "Áustria", "norway": "Noruega", "turkey": "Turquia", "turkiye": "Turquia",
+    "greece": "Grécia", "serbia": "Sérvia", "czechia": "Tchéquia", "czech republic": "Tchéquia",
+    "ukraine": "Ucrânia", "russia": "Rússia", "venezuela": "Venezuela", "bolivia": "Bolívia",
+    "iceland": "Islândia", "finland": "Finlândia", "romania": "Romênia", "hungary": "Hungria",
+    "slovakia": "Eslováquia", "slovenia": "Eslovênia", "algeria": "Argélia",
+    "cameroon": "Camarões", "ghana": "Gana", "south africa": "África do Sul",
+    "north macedonia": "Macedônia do Norte", "albania": "Albânia",
+    "costa rica": "Costa Rica", "honduras": "Honduras", "jamaica": "Jamaica",
+    "qatar": "Catar", "united arab emirates": "Emirados Árabes", "iran": "Irã",
+    "iraq": "Iraque", "china": "China", "china pr": "China",
+}
+
+def traduzir_time_pt(nome):
+    chave = re.sub(r"\s+", " ", str(nome or "").lower().strip())
+    return ESPN_PAISES_PT.get(chave, nome)
+
+
 def espn_normalizar_nome(s):
     s = str(s or "").lower().strip()
     s = unicodedata.normalize("NFD", s)
@@ -8806,6 +9141,23 @@ def espn_normalizar_nome(s):
     s = re.sub(r"[^a-z0-9 ]+", " ", s)
     s = re.sub(r"\s+", " ", s).strip()
     aliases = {
+        # Seleções: inglês -> português (após normalização, sem acento)
+        "brazil": "brasil", "england": "inglaterra", "germany": "alemanha",
+        "spain": "espanha", "france": "franca", "italy": "italia",
+        "netherlands": "holanda", "united states": "estados unidos",
+        "belgium": "belgica", "croatia": "croacia", "switzerland": "suica",
+        "wales": "pais de gales", "denmark": "dinamarca", "poland": "polonia",
+        "sweden": "suecia", "mexico": "mexico", "uruguay": "uruguai",
+        "colombia": "colombia", "ecuador": "equador", "paraguay": "paraguai",
+        "japan": "japao", "south korea": "coreia do sul", "egypt": "egito",
+        "morocco": "marrocos", "nigeria": "nigeria", "senegal": "senegal",
+        "dominican republic": "republica dominicana", "ivory coast": "costa do marfim",
+        "saudi arabia": "arabia saudita", "australia": "australia", "canada": "canada",
+        "scotland": "escocia", "ireland": "irlanda", "austria": "austria",
+        "norway": "noruega", "turkey": "turquia", "turkiye": "turquia",
+        "greece": "grecia", "serbia": "servia", "czechia": "tchequia",
+        "ukraine": "ucrania", "russia": "russia", "iceland": "islandia",
+        "finland": "finlandia", "romania": "romenia", "hungary": "hungria",
         "psg": "paris saint germain",
         "paris": "paris saint germain",
         "paris sg": "paris saint germain",
@@ -8952,6 +9304,26 @@ def espn_ligas_por_esporte(esporte):
         ("soccer", "uefa.europa"),
         ("soccer", "uefa.europa.conf"),
         ("soccer", "uefa.nations"),
+        ("soccer", "uefa.euro"),
+        ("soccer", "uefa.euro_qual"),
+
+        # Copa do Mundo FIFA
+        ("soccer", "fifa.world"),
+        ("soccer", "fifa.worldq.conmebol"),
+        ("soccer", "fifa.worldq.uefa"),
+        ("soccer", "fifa.worldq.concacaf"),
+        ("soccer", "fifa.worldq.afc"),
+        ("soccer", "fifa.worldq.caf"),
+
+        # Competições continentais / Copa América / Gold Cup
+        ("soccer", "conmebol.copa_america"),
+        ("soccer", "concacaf.gold_cup"),
+        ("soccer", "caf.nations"),
+        ("soccer", "afc.cup"),
+
+        # Amistosos internacionais
+        ("soccer", "fifa.friendly"),
+        ("soccer", "fifa.friendly.w"),
 
         # Outros comuns em apostas
         ("soccer", "mex.1"),
@@ -9363,7 +9735,7 @@ def v94_cache_jogos_espn(forcar=False):
                 if len(nomes) < 2:
                     continue
                 label, dt_br, ao_vivo, ordem = v98_status_espn_seguro(comp)
-                jogo_nome = f"{nomes[0]} x {nomes[1]}"
+                jogo_nome = f"{traduzir_time_pt(nomes[0])} x {traduzir_time_pt(nomes[1])}"
                 resultado.append({
                     "id": ev.get("id", ""),
                     "jogo": jogo_nome,
@@ -10056,9 +10428,9 @@ def api_buscar_jogos():
                     "jogo": jogo_nome,
                     "jogo_norm": jogo_norm,
                     "esporte": b.get("esporte", ""),
-                    "horario_jogo": "",
+                    "horario_jogo": str(b.get("data", "") or "")[:10],
                     "horario_jogo_iso": "",
-                    "status_jogo": "histórico",
+                    "status_jogo": "",
                     "ao_vivo": False,
                     "liga_nome": "Histórico",
                     "score": 20,
@@ -10482,8 +10854,75 @@ def _iniciar_backup_thread():
     t.start()
 
 
+@app.route("/favicon.ico")
+def favicon():
+    return app.send_static_file("favicon.svg")
+
+
 _iniciar_backup_thread()
 v97_iniciar_cache_espn_servidor()
 
+# ── Endpoint de seed para testes locais ──────────────────────────────────────
+# Só ativo quando NÃO está em produção (sem DATABASE_URL de produção do Render)
+if not os.environ.get("RENDER"):
+    @app.route("/dev/limpar_teste", methods=["POST"])
+    def dev_limpar_teste():
+        ADMIN_ID = "55959f11-5365-4ac7-a24d-e3e10b7e747c"
+        jogos_teste = {"Flamengo x Vasco","Palmeiras x Corinthians","Santos x São Paulo",
+            "Internacional x Grêmio","Atlético-MG x Cruzeiro","Real Madrid x Barcelona",
+            "Manchester City x Arsenal","PSG x Lyon","Bayern x Dortmund","Liverpool x Chelsea",
+            "Lakers x Warriors","Celtics x Heat","Brasil x Argentina","França x Espanha","Fluminense x Botafogo"}
+        tipos_teste = {"1X2 - Casa","1X2 - Fora","Dupla Chance - 1X","Ambas Marcam - Sim",
+            "Over 2.5 Gols","Under 2.5 Gols","Handicap -1","Handicap +1"}
+        bets = dados.get("bets", [])
+        antes = len(bets)
+        def _e_teste(b):
+            if b.get("user_id") != ADMIN_ID:
+                return False
+            # padrão exato do reseed: data sem hora (10 chars) + jogo e aposta da lista de teste
+            data = str(b.get("data", "") or "")
+            return (len(data) <= 10 and b.get("jogo") in jogos_teste and b.get("aposta") in tipos_teste)
+        dados["bets"] = [b for b in bets if not _e_teste(b)]
+        removidas = antes - len(dados["bets"])
+        salvar()
+        return {"ok": True, "removidas": removidas, "restantes": len(dados["bets"])}
+
+    @app.route("/dev/reseed", methods=["POST"])
+    def dev_reseed():
+        import uuid, random
+        ADMIN_ID = "55959f11-5365-4ac7-a24d-e3e10b7e747c"
+        casas = ["Bet365","Betano","Sportingbet","KTO","1xBet","Pinnacle","Betfair","Superbet"]
+        esportes = ["Futebol","Basquete","Tênis","Vôlei","Futebol","Futebol"]
+        jogos = ["Flamengo x Vasco","Palmeiras x Corinthians","Santos x São Paulo","Internacional x Grêmio",
+                 "Atlético-MG x Cruzeiro","Real Madrid x Barcelona","Manchester City x Arsenal",
+                 "PSG x Lyon","Bayern x Dortmund","Liverpool x Chelsea","Lakers x Warriors",
+                 "Celtics x Heat","Brasil x Argentina","França x Espanha","Fluminense x Botafogo"]
+        apostas_tipos = ["1X2 - Casa","1X2 - Fora","Dupla Chance - 1X","Ambas Marcam - Sim",
+                         "Over 2.5 Gols","Under 2.5 Gols","Handicap -1","Handicap +1"]
+        estados_passado = ["ganha","ganha","perdida","perdida","perdida","anulada"]
+        today = datetime.now()
+        novos = []
+        for i in range(50):
+            dias_atras = random.randint(2, 60)
+            dt = today - timedelta(days=dias_atras)
+            estado = random.choice(estados_passado) if i < 40 else "pendente"
+            if estado == "pendente":
+                dt = today + timedelta(days=random.randint(0, 2))
+            odd = round(random.uniform(1.5, 4.5), 2)
+            valor = round(random.choice([20, 30, 50, 100, 150, 200]), 2)
+            lucro = round((odd-1)*valor, 2) if estado=="ganha" else (-valor if estado=="perdida" else 0)
+            novos.append({
+                "id": str(uuid.uuid4()), "user_id": ADMIN_ID,
+                "casa": random.choice(casas), "esporte": random.choice(esportes),
+                "jogo": random.choice(jogos), "aposta": random.choice(apostas_tipos),
+                "odd": odd, "valor": valor,
+                "estado": estado if estado != "pendente" else "",
+                "lucro": lucro, "data": dt.strftime("%d/%m/%Y"),
+                "horario_jogo_iso": dt.strftime("%Y-%m-%dT%H:%M:%S"),
+            })
+        dados.setdefault("bets", []).extend(novos)
+        salvar()
+        return {"ok": True, "adicionadas": len(novos), "total": len(dados["bets"])}
+
 if __name__ == "__main__":
-    app.run(debug=True)
+    app.run(debug=False, use_reloader=False)

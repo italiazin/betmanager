@@ -2,54 +2,89 @@
 <html lang="pt-BR">
 <head>
     <meta charset="UTF-8">
-    <title>Estatísticas</title>
-    <link rel="stylesheet" href="/static/style.css">
-</head>
+    <title>Estatísticas — Bet Manager</title>
+    <link rel="stylesheet" href="/static/style.css?v=fix21">
+    <style>
+        .cards { display:grid; grid-template-columns:repeat(auto-fit,minmax(155px,1fr)); gap:12px; margin-bottom:24px; }
+        .est-grid { display:grid; grid-template-columns:1.5fr 1fr; gap:20px; align-items:start; margin-bottom:24px; }
+        @media(max-width:1100px){ .est-grid{ grid-template-columns:1fr; } }
 
+        .est-panel { background:rgba(15,23,42,.92); border:1px solid #1e293b; border-radius:16px; padding:22px; }
+        .est-panel-head { display:flex; align-items:center; justify-content:space-between; margin-bottom:18px; flex-wrap:wrap; gap:12px; }
+        .est-panel-title { font-size:16px; font-weight:700; color:#e2e8f0; }
+
+        .cal-nav-row { display:flex; align-items:center; gap:14px; }
+        .cal-nav { width:30px; height:30px; border-radius:8px; border:1px solid rgba(51,65,85,.6); background:transparent; color:#94a3b8; font-size:16px; cursor:pointer; display:flex; align-items:center; justify-content:center; text-decoration:none; transition:.15s; }
+        .cal-nav:hover { border-color:rgba(96,165,250,.5); color:#93c5fd; }
+        .card-mes-btn { background:rgba(37,99,235,.15); border:1px solid rgba(59,130,246,.35); color:#93c5fd; border-radius:9px; padding:8px 14px; font-size:12px; font-weight:600; cursor:pointer; display:inline-flex; align-items:center; gap:7px; transition:.15s; }
+        .card-mes-btn:hover { background:rgba(37,99,235,.28); }
+
+        .calendar-weekdays { display:grid; grid-template-columns:repeat(7,1fr); gap:6px; margin-bottom:6px; }
+        .calendar-weekdays span { text-align:center; font-size:11px; font-weight:600; color:#475569; text-transform:uppercase; }
+        .calendar { display:grid; grid-template-columns:repeat(7,1fr); gap:6px; }
+        .calendar-day { position:relative; min-height:64px; border-radius:10px; padding:6px; background:rgba(30,41,59,.35); border:1px solid transparent; display:flex; flex-direction:column; gap:1px; transition:.15s; }
+        .calendar-day.day-green { background:rgba(34,197,94,.10); border-color:rgba(34,197,94,.22); }
+        .calendar-day.day-red { background:rgba(248,113,113,.10); border-color:rgba(248,113,113,.22); }
+        .calendar-day .day-number { font-size:11px; color:#64748b; font-weight:600; }
+        .calendar-day strong { font-size:12px; font-weight:700; }
+        .calendar-day small { font-size:9px; color:#475569; }
+        .green-text { color:#4ade80; }
+        .red-text { color:#f87171; }
+
+        .resumo-grid { display:grid; grid-template-columns:1fr 1fr; gap:10px; }
+        .resumo-tile { background:rgba(30,41,59,.4); border:1px solid rgba(51,65,85,.4); border-left-width:3px; border-radius:12px; padding:12px 14px; display:flex; flex-direction:column; gap:5px; }
+        .resumo-tile.full { grid-column:1 / -1; }
+        .rt-label { font-size:10px; color:#64748b; font-weight:600; text-transform:uppercase; letter-spacing:.04em; display:flex; align-items:center; gap:5px; }
+        .rt-val { font-size:19px; font-weight:700; color:#e2e8f0; line-height:1; }
+        .rt-sub { font-size:11px; color:#475569; font-weight:500; }
+        .tile-amber { border-left-color:#f59e0b; }
+        .tile-green { border-left-color:#22c55e; }
+        .tile-red   { border-left-color:#f87171; }
+        .tile-blue  { border-left-color:#3b82f6; }
+        .tile-slate { border-left-color:#64748b; }
+
+        .ranking-grid { display:grid; grid-template-columns:repeat(3,1fr); gap:16px; }
+        @media(max-width:1000px){ .ranking-grid{ grid-template-columns:1fr; } }
+        .rank-row { display:grid; grid-template-columns:1fr auto; align-items:center; gap:4px 10px; padding:9px 0; border-bottom:1px solid rgba(30,41,59,.5); }
+        .rank-row:last-child { border-bottom:none; }
+        .rank-row .rk-nome { color:#cbd5e1; font-size:13px; font-weight:600; }
+        .rank-row .rk-aps { grid-column:1; color:#475569; font-size:11px; }
+        .rank-row .rk-val { grid-column:2; grid-row:1/3; font-weight:700; font-size:14px; }
+    </style>
+</head>
 <body>
 
 <aside class="sidebar">
     <div class="sidebar-top">
-        <div class="logo">
-            <span class="logo-icon">🎯</span>
-            <span class="logo-text">Bet Manager</span>
-        </div>
+        <div class="logo"><span class="logo-icon">🎯</span><span class="logo-text">Bet Manager</span></div>
         <button type="button" class="sidebar-toggle" onclick="toggleSidebar()">‹</button>
     </div>
-
     <nav>
-        <a href="/" data-title="Dashboard"><span class="nav-icon">⌂</span><span class="nav-text">Dashboard</span></a>
-        <a href="/calculadora" data-title="Calculadora"><span class="nav-icon">🧮</span><span class="nav-text">Calculadora</span></a>
-        <a class="active" href="/estatisticas" data-title="Estatísticas"><span class="nav-icon">▥</span><span class="nav-text">Estatísticas</span></a>
-        <a href="/historico" data-title="Histórico"><span class="nav-icon">📋</span><span class="nav-text">Histórico</span></a>
-        <a href="/saldos" data-title="Saldos"><span class="nav-icon">💰</span><span class="nav-text">Saldos</span></a>
+        <div class="sidebar-nav-label">Menu</div>
+        <a href="/" data-title="Dashboard"><span class="nav-icon"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg></span><span class="nav-text">Dashboard</span></a>
+        <a class="active" href="/estatisticas" data-title="Estatísticas"><span class="nav-icon"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg></span><span class="nav-text">Estatísticas</span></a>
+        <a href="/historico" data-title="Histórico"><span class="nav-icon"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg></span><span class="nav-text">Histórico</span></a>
+        <a href="/saldos" data-title="Saldos"><span class="nav-icon"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="5" width="20" height="14" rx="2"/><line x1="2" y1="10" x2="22" y2="10"/></svg></span><span class="nav-text">Saldos</span></a>
+        <a href="/calculadora" data-title="Calculadora"><span class="nav-icon"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="2" width="16" height="20" rx="2"/><line x1="8" y1="6" x2="16" y2="6"/></svg></span><span class="nav-text">Calculadora</span></a>
         {% if usuario and usuario.is_admin %}
         <a href="/admin" data-title="Admin"><span class="nav-icon">⚙</span><span class="nav-text">Admin</span></a>
         {% endif %}
         <a href="/configuracoes" data-title="Configurações"><span class="nav-icon">⚙</span><span class="nav-text">Configurações</span></a>
         <a href="/logout" data-title="Sair"><span class="nav-icon">↪</span><span class="nav-text">Sair</span></a>
     </nav>
-
     <div class="sidebar-user-wrap">
         <div class="sidebar-user-card" onclick="toggleUserMenu(event)">
             <div class="sidebar-user-avatar">{{ usuario_inicial if usuario_inicial else "U" }}</div>
-            <div class="sidebar-user-info">
-                <strong>{{ usuario.nome if usuario else "Usuário" }}</strong>
-                <span>{{ usuario.email if usuario else "" }}</span>
-            </div>
+            <div class="sidebar-user-info"><strong>{{ usuario.nome if usuario else "Usuário" }}</strong><span>{{ usuario.email if usuario else "" }}</span></div>
             <span class="sidebar-user-arrow">⌄</span>
         </div>
-
         <div id="sidebarUserMenu" class="sidebar-user-menu">
             <a href="/configuracoes">👤 Perfil / Configurações</a>
             <a href="/saldos">💰 Saldos</a>
-            {% if usuario and usuario.is_admin %}
-            <a href="/admin">⚙ Admin</a>
-            {% endif %}
+            {% if usuario and usuario.is_admin %}<a href="/admin">⚙ Admin</a>{% endif %}
             <a href="/logout" class="logout-link">🚪 Sair</a>
         </div>
     </div>
-
 </aside>
 
 <main class="app">
@@ -57,74 +92,81 @@
 <header class="topbar">
     <div>
         <h1>Estatísticas</h1>
-        <p>Histórico, calendário e rankings da sua performance</p>
+        <p>Calendário, performance e rankings da sua banca.</p>
     </div>
-
-    <a href="/" class="api-button">Voltar ao Dashboard</a>
+    <a href="/" class="api-button">← Dashboard</a>
 </header>
 
+<!-- Cards -->
 <section class="cards">
-    <div class="metric-card banca-card">
-        <span>Banca Atual</span>
-        <strong>R$ {{ "%.2f"|format(m.banca_atual) }}</strong>
+    <div class="metric-card mc-green">
+        <div class="mc-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/></svg></div>
+        <span class="mc-label">Lucro Total</span>
+        <strong class="mc-value {{ 'mc-pos' if m.lucro_total >= 0 else 'mc-neg' }}">R$ {{ "%.2f"|format(m.lucro_total) }}</strong>
     </div>
-
-    <div class="metric-card">
-        <span>Lucro Total</span>
-        <strong class="{{ 'green-text' if m.lucro_total >= 0 else 'red-text' }}">
-            R$ {{ "%.2f"|format(m.lucro_total) }}
-        </strong>
+    <div class="metric-card mc-purple">
+        <div class="mc-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg></div>
+        <span class="mc-label">ROI</span>
+        <strong class="mc-value">{{ "%.2f"|format(m.roi) }}%</strong>
     </div>
-
-    <div class="metric-card">
-        <span>ROI</span>
-        <strong>{{ "%.2f"|format(m.roi) }}%</strong>
+    <div class="metric-card mc-amber">
+        <div class="mc-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/></svg></div>
+        <span class="mc-label">Taxa de Acerto</span>
+        <strong class="mc-value">{{ "%.2f"|format(m.taxa) }}%</strong>
+        <div class="mc-bar"><div class="mc-bar-fill" style="width:{{ [m.taxa,100]|min }}%"></div></div>
     </div>
-
-    <div class="metric-card">
-        <span>Taxa de Acerto</span>
-        <strong>{{ "%.2f"|format(m.taxa) }}%</strong>
+    <div class="metric-card mc-cyan">
+        <div class="mc-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg></div>
+        <span class="mc-label">Ticket Médio</span>
+        <strong class="mc-value">R$ {{ "%.2f"|format(extras.ticket_medio) }}</strong>
     </div>
-
-    <div class="metric-card">
-        <span>Total Apostas</span>
-        <strong>{{ m.total }}</strong>
+    <div class="metric-card mc-slate">
+        <div class="mc-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg></div>
+        <span class="mc-label">Total Apostas</span>
+        <strong class="mc-value">{{ m.total }}</strong>
     </div>
-
-    <div class="metric-card pending-card">
-        <span>Pendentes</span>
-        <strong>{{ m.pendentes }}</strong>
+    <div class="metric-card mc-orange">
+        <div class="mc-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg></div>
+        <span class="mc-label">Pendentes</span>
+        <strong class="mc-value mc-orange-val">{{ m.pendentes }}</strong>
     </div>
 </section>
 
-<section class="history-grid">
-    <div class="panel">
-        <div class="calendar-title-row">
-            <a class="calendar-nav" href="/estatisticas?mes={{ calendario.prev_mes }}&ano={{ calendario.prev_ano }}">‹</a>
-            <h2>Calendário - {{ calendario.mes_nome }} {{ calendario.ano }}</h2>
-            <a class="calendar-nav" href="/estatisticas?mes={{ calendario.next_mes }}&ano={{ calendario.next_ano }}">›</a>
+<!-- Calendário + Resumo -->
+<section class="est-grid">
+    <div class="est-panel">
+        <div class="est-panel-head">
+            <div class="cal-nav-row">
+                <a class="cal-nav" href="/estatisticas?mes={{ calendario.prev_mes }}&ano={{ calendario.prev_ano }}">‹</a>
+                <span class="est-panel-title">{{ calendario.mes_nome }} {{ calendario.ano }}</span>
+                <a class="cal-nav" href="/estatisticas?mes={{ calendario.next_mes }}&ano={{ calendario.next_ano }}">›</a>
+            </div>
+            <button class="card-mes-btn"
+                onclick="cardDoMes()"
+                data-mes="{{ calendario.mes_nome }}" data-ano="{{ calendario.ano }}"
+                data-lucro="{{ calendario.resumo_mes.lucro }}" data-apostas="{{ calendario.resumo_mes.apostas }}"
+                data-dpos="{{ calendario.resumo_mes.dias_positivos }}" data-dneg="{{ calendario.resumo_mes.dias_negativos }}">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
+                Card do mês
+            </button>
         </div>
 
         <div class="calendar-weekdays">
-            <span>Dom</span>
-            <span>Seg</span>
-            <span>Ter</span>
-            <span>Qua</span>
-            <span>Qui</span>
-            <span>Sex</span>
-            <span>Sáb</span>
+            <span>Dom</span><span>Seg</span><span>Ter</span><span>Qua</span><span>Qui</span><span>Sex</span><span>Sáb</span>
         </div>
-
         <div class="calendar">
             {% for semana in calendario.semanas %}
                 {% for dia in semana %}
                     <div class="calendar-day {{ dia.classe }}">
-                        <span class="day-number">{{ dia.dia }}</span>
-
                         {% if dia.dia %}
-                            <strong class="{{ 'green-text' if dia.lucro > 0 else 'red-text' if dia.lucro < 0 else '' }}">
-                                R$ {{ "%.2f"|format(dia.lucro) }}
-                            </strong>
+                            <button class="cal-share-btn" title="Baixar card do dia"
+                                onclick="cardDoDia(this)"
+                                data-dia="{{ dia.dia }}" data-mes="{{ calendario.mes }}" data-ano="{{ calendario.ano }}"
+                                data-mesnome="{{ calendario.mes_nome }}" data-lucro="{{ dia.lucro }}" data-apostas="{{ dia.apostas }}">
+                                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
+                            </button>
+                            <span class="day-number">{{ dia.dia }}</span>
+                            <strong class="{{ 'green-text' if dia.lucro > 0 else 'red-text' if dia.lucro < 0 else '' }}">R$ {{ "%.2f"|format(dia.lucro) }}</strong>
                             <small>{{ dia.apostas }} aposta(s)</small>
                         {% endif %}
                     </div>
@@ -133,71 +175,71 @@
         </div>
     </div>
 
-    <div class="panel stats-panel">
-        <h2>Resumo avançado</h2>
-
-        <div class="extra-stat">
-            <span>Ticket Médio</span>
-            <strong>R$ {{ "%.2f"|format(extras.ticket_medio) }}</strong>
-        </div>
-
-        <div class="extra-stat">
-            <span>Maior Green</span>
-            <strong class="green-text">R$ {{ "%.2f"|format(extras.maior_green) }}</strong>
-        </div>
-
-        <div class="extra-stat">
-            <span>Maior Red</span>
-            <strong class="red-text">R$ {{ "%.2f"|format(extras.maior_red) }}</strong>
-        </div>
-
-        <div class="extra-stat">
-            <span>Sequência Atual</span>
-            <strong>{{ extras.sequencia }} {{ extras.tipo_seq }}</strong>
+    <div class="est-panel">
+        <div class="est-panel-title" style="margin-bottom:14px;">Resumo avançado</div>
+        <div class="resumo-grid">
+            <div class="resumo-tile full tile-amber">
+                <span class="rt-label">🔥 Sequência atual</span>
+                <strong class="rt-val {{ 'green-text' if extras.tipo_seq == 'ganha' else ('red-text' if extras.tipo_seq == 'perdida' else '') }}">
+                    {{ extras.sequencia }} {{ "greens seguidos" if extras.tipo_seq == "ganha" else ("reds seguidos" if extras.tipo_seq == "perdida" else "—") }}
+                </strong>
+            </div>
+            <div class="resumo-tile tile-green">
+                <span class="rt-label">Maior Green</span>
+                <strong class="rt-val green-text">R$ {{ "%.2f"|format(extras.maior_green) }}</strong>
+            </div>
+            <div class="resumo-tile tile-red">
+                <span class="rt-label">Maior Red</span>
+                <strong class="rt-val red-text">R$ {{ "%.2f"|format(extras.maior_red) }}</strong>
+            </div>
+            <div class="resumo-tile {{ 'tile-green' if calendario.resumo_mes.lucro >= 0 else 'tile-red' }} full">
+                <span class="rt-label">Lucro do mês</span>
+                <strong class="rt-val {{ 'green-text' if calendario.resumo_mes.lucro >= 0 else 'red-text' }}">R$ {{ "%.2f"|format(calendario.resumo_mes.lucro) }}</strong>
+            </div>
+            <div class="resumo-tile tile-blue">
+                <span class="rt-label">Dias positivos</span>
+                <strong class="rt-val green-text">{{ calendario.resumo_mes.dias_positivos }}</strong>
+            </div>
+            <div class="resumo-tile tile-slate">
+                <span class="rt-label">Dias negativos</span>
+                <strong class="rt-val red-text">{{ calendario.resumo_mes.dias_negativos }}</strong>
+            </div>
+            {% if calendario.resumo_mes.melhor_dia %}
+            <div class="resumo-tile tile-green">
+                <span class="rt-label">Melhor dia</span>
+                <strong class="rt-val green-text">R$ {{ "%.2f"|format(calendario.resumo_mes.melhor_dia_lucro) }}</strong>
+                <span class="rt-sub">dia {{ calendario.resumo_mes.melhor_dia }}</span>
+            </div>
+            {% endif %}
+            {% if calendario.resumo_mes.pior_dia %}
+            <div class="resumo-tile tile-red">
+                <span class="rt-label">Pior dia</span>
+                <strong class="rt-val red-text">R$ {{ "%.2f"|format(calendario.resumo_mes.pior_dia_lucro) }}</strong>
+                <span class="rt-sub">dia {{ calendario.resumo_mes.pior_dia }}</span>
+            </div>
+            {% endif %}
         </div>
     </div>
 </section>
 
+<!-- Rankings -->
 <section class="ranking-grid">
-    <div class="panel">
-        <h2>Ranking por Casa</h2>
-
+    <div class="est-panel">
+        <div class="est-panel-title" style="margin-bottom:8px;">Ranking por Casa</div>
         {% for item in extras.ranking_casas[:8] %}
-        <div class="ranking-row">
-            <span>{{ item.nome }}</span>
-            <small>{{ item.apostas }} aposta(s)</small>
-            <strong class="{{ 'green-text' if item.lucro >= 0 else 'red-text' }}">
-                R$ {{ "%.2f"|format(item.lucro) }}
-            </strong>
-        </div>
+        <div class="rank-row"><span class="rk-nome">{{ item.nome }}</span><span class="rk-aps">{{ item.apostas }} aposta(s)</span><strong class="rk-val {{ 'green-text' if item.lucro >= 0 else 'red-text' }}">R$ {{ "%.2f"|format(item.lucro) }}</strong></div>
         {% endfor %}
     </div>
-
-    <div class="panel">
-        <h2>Ranking por Esporte</h2>
-
+    <div class="est-panel">
+        <div class="est-panel-title" style="margin-bottom:8px;">Ranking por Esporte</div>
         {% for item in extras.ranking_esportes[:8] %}
-        <div class="ranking-row">
-            <span>{{ item.nome }}</span>
-            <small>{{ item.apostas }} aposta(s)</small>
-            <strong class="{{ 'green-text' if item.lucro >= 0 else 'red-text' }}">
-                R$ {{ "%.2f"|format(item.lucro) }}
-            </strong>
-        </div>
+        <div class="rank-row"><span class="rk-nome">{{ item.nome }}</span><span class="rk-aps">{{ item.apostas }} aposta(s)</span><strong class="rk-val {{ 'green-text' if item.lucro >= 0 else 'red-text' }}">R$ {{ "%.2f"|format(item.lucro) }}</strong></div>
         {% endfor %}
     </div>
-
-    <div class="panel">
-        <h2>Ranking por Mercado</h2>
-
+    <div class="est-panel">
+        <div class="est-panel-title" style="margin-bottom:8px;">Ranking por Mercado</div>
         {% for item in extras.ranking_mercados[:8] %}
-        <div class="ranking-row">
-            <span>{{ item.nome }}</span>
-            <small>{{ item.apostas }} aposta(s)</small>
-            <strong class="{{ 'green-text' if item.lucro >= 0 else 'red-text' }}">
-                R$ {{ "%.2f"|format(item.lucro) }}
-            </strong>
-        </div>
+        <div class="rank-row"><span class="rk-nome">{{ item.nome }}</span><span class="rk-aps">{{ item.apostas }} aposta(s)</span><strong class="rk-val {{ 'green-text' if item.lucro >= 0 else 'red-text' }}">R$ {{ "%.2f"|format(item.lucro) }}</strong></div>
         {% endfor %}
     </div>
 </section>
@@ -207,38 +249,102 @@
 <script>
 function toggleSidebar(){
     document.body.classList.toggle("sidebar-collapsed")
-    const collapsed = document.body.classList.contains("sidebar-collapsed")
-    localStorage.setItem("sidebarCollapsed", collapsed ? "1" : "0")
-    const btn = document.querySelector(".sidebar-toggle")
-    if(btn) btn.innerText = collapsed ? "›" : "‹"
+    const c=document.body.classList.contains("sidebar-collapsed")
+    localStorage.setItem("sidebarCollapsed",c?"1":"0")
+    const btn=document.querySelector(".sidebar-toggle");if(btn) btn.innerText=c?"›":"‹"
 }
-
-document.addEventListener("DOMContentLoaded", ()=>{
-    const collapsed = localStorage.getItem("sidebarCollapsed") === "1"
-    if(collapsed){
-        document.body.classList.add("sidebar-collapsed")
-        const btn = document.querySelector(".sidebar-toggle")
-        if(btn) btn.innerText = "›"
-    }
+document.addEventListener("DOMContentLoaded",()=>{
+    if(localStorage.getItem("sidebarCollapsed")==="1"){ document.body.classList.add("sidebar-collapsed"); const btn=document.querySelector(".sidebar-toggle");if(btn) btn.innerText="›" }
 })
-</script>
+function toggleUserMenu(ev){ if(ev) ev.stopPropagation(); const m=document.getElementById("sidebarUserMenu");if(m) m.classList.toggle("open") }
+document.addEventListener("click",function(e){ const m=document.getElementById("sidebarUserMenu"),c=document.querySelector(".sidebar-user-card"); if(m&&c&&!m.contains(e.target)&&!c.contains(e.target)) m.classList.remove("open") })
 
+// ───────────── Card de PnL (canvas nativo, sem dependência) ─────────────
+const MESES = ["Janeiro","Fevereiro","Março","Abril","Maio","Junho","Julho","Agosto","Setembro","Outubro","Novembro","Dezembro"]
+function _fmt(v){ const n=Number(v||0); return (n<0?"-R$ ":"R$ ")+Math.abs(n).toFixed(2) }
 
-<script id="v62-userbox-js">
-function toggleUserMenu(ev){
-    if(ev) ev.stopPropagation()
-    const menu = document.getElementById("sidebarUserMenu")
-    if(menu) menu.classList.toggle("open")
+function desenharCard(opts){
+    // opts: {titulo, subtitulo, lucro, stats:[{label,valor,cor}], arquivo}
+    const W=620, H=780, ctx=Object.assign(document.createElement("canvas"),{width:W,height:H}).getContext("2d")
+    const cv=ctx.canvas
+    const pos = Number(opts.lucro) >= 0
+    const accent = pos ? "#22c55e" : "#f87171"
+
+    // fundo
+    const g=ctx.createLinearGradient(0,0,W,H); g.addColorStop(0,"#0f172a"); g.addColorStop(1,"#020617")
+    ctx.fillStyle=g; ctx.fillRect(0,0,W,H)
+    // brilho do accent no topo
+    const gg=ctx.createRadialGradient(W/2,120,20,W/2,120,400); gg.addColorStop(0, pos?"rgba(34,197,94,.18)":"rgba(248,113,113,.16)"); gg.addColorStop(1,"rgba(0,0,0,0)")
+    ctx.fillStyle=gg; ctx.fillRect(0,0,W,H)
+    // borda
+    ctx.strokeStyle=accent; ctx.lineWidth=4; _rr(ctx,8,8,W-16,H-16,22); ctx.stroke()
+
+    ctx.textAlign="center"
+    // header
+    ctx.fillStyle="#e2e8f0"; ctx.font="700 30px Segoe UI, Arial"; ctx.fillText("🎯 Bet Manager", W/2, 88)
+    ctx.fillStyle="#64748b"; ctx.font="600 16px Segoe UI, Arial"; ctx.fillText(opts.titulo.toUpperCase(), W/2, 130)
+    // subtitulo (data)
+    ctx.fillStyle="#94a3b8"; ctx.font="500 20px Segoe UI, Arial"; ctx.fillText(opts.subtitulo, W/2, 175)
+
+    // PnL grande
+    ctx.fillStyle=accent; ctx.font="800 76px Segoe UI, Arial"
+    ctx.fillText((pos?"+":"")+_fmt(opts.lucro).replace("R$ ","R$ "), W/2, 320)
+    ctx.fillStyle="#475569"; ctx.font="600 15px Segoe UI, Arial"; ctx.fillText(pos?"LUCRO":"PREJUÍZO", W/2, 360)
+
+    // linha divisória
+    ctx.strokeStyle="rgba(255,255,255,.08)"; ctx.lineWidth=1; ctx.beginPath(); ctx.moveTo(70,420); ctx.lineTo(W-70,420); ctx.stroke()
+
+    // stats em linhas
+    let y=475
+    ctx.font="500 18px Segoe UI, Arial"
+    for(const s of opts.stats){
+        ctx.textAlign="left"; ctx.fillStyle="#94a3b8"; ctx.fillText(s.label, 80, y)
+        ctx.textAlign="right"; ctx.fillStyle=s.cor||"#e2e8f0"; ctx.font="700 18px Segoe UI, Arial"; ctx.fillText(s.valor, W-80, y)
+        ctx.font="500 18px Segoe UI, Arial"
+        y+=52
+    }
+    // rodapé
+    ctx.textAlign="center"; ctx.fillStyle="#334155"; ctx.font="500 13px Segoe UI, Arial"
+    ctx.fillText("Gerado por Bet Manager • controle sua banca", W/2, H-40)
+
+    cv.toBlob(function(blob){
+        const a=document.createElement("a"); a.href=URL.createObjectURL(blob); a.download=opts.arquivo
+        document.body.appendChild(a); a.click(); a.remove(); setTimeout(()=>URL.revokeObjectURL(a.href),1000)
+    }, "image/png")
 }
+// helper: retângulo arredondado
+function _rr(ctx,x,y,w,h,r){ ctx.beginPath(); ctx.moveTo(x+r,y); ctx.arcTo(x+w,y,x+w,y+h,r); ctx.arcTo(x+w,y+h,x,y+h,r); ctx.arcTo(x,y+h,x,y,r); ctx.arcTo(x,y,x+w,y,r); ctx.closePath() }
 
-document.addEventListener("click", function(e){
-    const menu = document.getElementById("sidebarUserMenu")
-    const card = document.querySelector(".sidebar-user-card")
-    if(menu && card && !menu.contains(e.target) && !card.contains(e.target)){
-        menu.classList.remove("open")
-    }
-})
+function cardDoDia(btn){
+    const d=btn.dataset, dia=d.dia, mes=Number(d.mes), ano=d.ano
+    const lucro=Number(d.lucro), apostas=Number(d.apostas)
+    desenharCard({
+        titulo:"Resultado do dia",
+        subtitulo:`${String(dia).padStart(2,"0")} de ${MESES[mes-1]} de ${ano}`,
+        lucro:lucro,
+        stats:[
+            {label:"Apostas no dia", valor:String(apostas)},
+            {label:"Resultado", valor:(lucro>=0?"+":"")+_fmt(lucro), cor:lucro>=0?"#4ade80":"#f87171"},
+        ],
+        arquivo:`pnl_${ano}-${String(mes).padStart(2,"0")}-${String(dia).padStart(2,"0")}.png`
+    })
+}
+function cardDoMes(){
+    const b=document.querySelector(".card-mes-btn").dataset
+    const lucro=Number(b.lucro), apostas=Number(b.apostas), dpos=Number(b.dpos), dneg=Number(b.dneg)
+    desenharCard({
+        titulo:"Resultado do mês",
+        subtitulo:`${b.mes} ${b.ano}`,
+        lucro:lucro,
+        stats:[
+            {label:"Total de apostas", valor:String(apostas)},
+            {label:"Dias positivos", valor:String(dpos), cor:"#4ade80"},
+            {label:"Dias negativos", valor:String(dneg), cor:"#f87171"},
+            {label:"Resultado do mês", valor:(lucro>=0?"+":"")+_fmt(lucro), cor:lucro>=0?"#4ade80":"#f87171"},
+        ],
+        arquivo:`pnl_${b.ano}-${b.mes}.png`
+    })
+}
 </script>
-
 </body>
 </html>

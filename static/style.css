@@ -220,8 +220,8 @@ body {
 
 .cards {
     display: grid;
-    grid-template-columns: repeat(6, 1fr);
-    gap: 16px;
+    grid-template-columns: repeat(auto-fit, minmax(155px, 1fr));
+    gap: 12px;
     margin-bottom: 20px;
 }
 
@@ -234,34 +234,97 @@ body {
 }
 
 .metric-card {
-    padding: 18px;
-    min-height: 92px;
+    padding: 16px 18px 14px;
+    min-height: 96px;
+    position: relative;
+    overflow: hidden;
+    transition: transform .15s, box-shadow .15s;
+    border-left-width: 3px;
 }
+.metric-card:hover { transform: translateY(-2px); box-shadow: 0 16px 40px rgba(0,0,0,.35); }
 
-.metric-card span {
-    color: #94a3b8;
-    font-size: 13px;
+/* Cor do acento lateral por card */
+.mc-blue   { border-left-color: #3b82f6; }
+.mc-green  { border-left-color: #22c55e; }
+.mc-purple { border-left-color: #a78bfa; }
+.mc-amber  { border-left-color: #f59e0b; }
+.mc-slate  { border-left-color: #64748b; }
+.mc-orange { border-left-color: #f97316; }
+.mc-cyan   { border-left-color: #22d3ee; }
+
+/* Ícone canto superior direito */
+.mc-icon {
+    position: absolute;
+    top: 14px;
+    right: 14px;
+    opacity: 0.25;
 }
+.mc-blue   .mc-icon { color: #60a5fa; opacity: .35; }
+.mc-green  .mc-icon { color: #4ade80; opacity: .35; }
+.mc-purple .mc-icon { color: #c4b5fd; opacity: .35; }
+.mc-amber  .mc-icon { color: #fbbf24; opacity: .35; }
+.mc-slate  .mc-icon { color: #94a3b8; opacity: .3; }
+.mc-orange .mc-icon { color: #fb923c; opacity: .35; }
+.mc-cyan   .mc-icon { color: #67e8f9; opacity: .35; }
 
-.metric-card strong {
+.mc-label {
     display: block;
-    margin-top: 10px;
-    font-size: 24px;
+    color: #64748b;
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: .05em;
+    margin-bottom: 8px;
 }
+.mc-value {
+    display: block;
+    font-size: 22px;
+    font-weight: 700;
+    color: #e2e8f0;
+    line-height: 1.1;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.mc-pos { color: #4ade80; }
+.mc-neg { color: #f87171; }
+.mc-orange-val { color: #f97316; }
 
-.banca-card {
-    background: linear-gradient(135deg, #172554, #0f172a);
-}
+/* Mini progress bar (Taxa de Acerto) */
+.mc-bar { margin-top: 8px; height: 3px; background: rgba(255,255,255,.08); border-radius: 2px; overflow: hidden; }
+.mc-bar-fill { height: 100%; background: linear-gradient(90deg,#f59e0b,#fbbf24); border-radius: 2px; transition: width .5s; }
 
-.pending-card strong {
-    color: #f59e0b;
+/* Banca edit inline */
+.mc-edit-btn {
+    background: transparent;
+    border: 1px solid rgba(51,65,85,.6);
+    color: #475569;
+    border-radius: 6px;
+    width: 26px;
+    height: 26px;
+    cursor: pointer;
+    font-size: 13px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    transition: border-color .15s, color .15s;
 }
+.mc-edit-btn:hover { border-color: rgba(96,165,250,.5); color: #93c5fd; }
+
+.banca-card { background: linear-gradient(135deg, #172554 0%, #0f172a 100%); }
 
 .banca-view {
     display: flex;
     align-items: center;
     justify-content: space-between;
+    gap: 8px;
 }
+
+/* Legacy compat */
+.pending-card strong { color: #f59e0b; }
+.metric-card span { color: #94a3b8; font-size: 13px; }
+.metric-card strong { display: block; margin-top: 10px; font-size: 24px; }
 
 .icon-btn {
     background: rgba(255,255,255,0.12);
@@ -425,9 +488,26 @@ button:hover {
     align-items: center;
     justify-content: center;
     position: relative;
-    gap: 20px;
+    gap: 12px;
     margin-bottom: 16px;
 }
+.eye-toggle-btn {
+    background: transparent;
+    border: 1px solid rgba(51,65,85,.5);
+    border-radius: 8px;
+    color: #475569;
+    width: 34px;
+    height: 34px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: border-color .15s, color .15s, background .15s;
+    flex-shrink: 0;
+}
+.eye-toggle-btn:hover { border-color: rgba(96,165,250,.4); color: #94a3b8; }
+.eye-toggle-btn.eye-active { border-color: rgba(96,165,250,.5); color: #60a5fa; background: rgba(37,99,235,.12); }
+.date-range-sep { color: #475569; font-size: 12px; flex-shrink: 0; }
 
 .table-header h2 {
     position: absolute;
@@ -730,10 +810,6 @@ tbody tr:hover {
 }
 
 @media (max-width: 1200px) {
-    .cards {
-        grid-template-columns: repeat(2, 1fr);
-    }
-
     .main-grid,
     .history-grid,
     .ranking-grid {
@@ -971,10 +1047,6 @@ th {
 }
 
 @media (max-width: 1400px) {
-    .cards {
-        grid-template-columns: repeat(3, 1fr);
-    }
-
     .main-grid {
         grid-template-columns: 1fr;
     }
@@ -1185,7 +1257,7 @@ td, th {
 }
 
 .cards {
-    grid-template-columns: repeat(7, 1fr);
+    grid-template-columns: repeat(auto-fit, minmax(155px, 1fr));
 }
 
 .saldos-grid {
@@ -1235,10 +1307,6 @@ td, th {
         min-width: 0;
         height: auto !important;
         min-height: 360px !important;
-    }
-
-    .cards {
-        grid-template-columns: repeat(2, 1fr);
     }
 }
 
@@ -1537,7 +1605,7 @@ td, th {
 .table-panel th:nth-child(8), .table-panel td:nth-child(8) { width: 95px; }  /* Status */
 .table-panel th:nth-child(9), .table-panel td:nth-child(9) { width: 90px; }  /* Lucro */
 .table-panel th:nth-child(10), .table-panel td:nth-child(10) { width: 115px; } /* API */
-.table-panel th:nth-child(11), .table-panel td:nth-child(11) { width: 145px; } /* Ações */
+.table-panel th:nth-child(11), .table-panel td:nth-child(11) { width: 1%; white-space: nowrap; } /* Ações */
 
 .table-panel td {
     white-space: nowrap;
@@ -4348,10 +4416,10 @@ td:nth-child(5) {
 .metric-zero-v137 { color: #e5f0ff !important; }
 
 /* V147 */
-tr.bet-row[data-v147-filtered="0"]{display:none!important;}
+tr.bet-row[data-v147-filtered="0"]{display:none;}
 
 /* V149 - performance: histórico e status estável */
-.v149-historico-hidden { display: none !important; }
+.v149-historico-hidden { display: none; }
 .historico-btn-v149 { margin-left: 8px !important; }
 .historico-badge-v149 {
     display: inline-flex !important;
@@ -4458,8 +4526,346 @@ tr.bet-row[data-v147-filtered="0"]{display:none!important;}
 .cal-share-btn:hover { background:rgba(30,41,59,.85); color:rgba(255,255,255,.85); }
 .calendar-day:hover .cal-share-btn { opacity:1; }
 
-/* Historico panel — corrige coluna Ações oculta e overflow */
-.table-panel.historico-panel { overflow-x: auto !important; }
-.historico-panel .historico-table { table-layout: auto !important; min-width: 950px !important; }
+/* ================================================================
+   V160 — Filtros reformulados + pills de status + separadores clean
+   ================================================================ */
+
+/* Barra de filtros */
+.bet-filter-bar {
+    padding: 14px 18px 10px;
+    border-bottom: 1px solid rgba(30,41,59,.8);
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+.bet-filter-inputs {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+    flex-wrap: wrap;
+}
+.bet-fi-search {
+    flex: 1;
+    min-width: 200px;
+    background: rgba(30,41,59,.65);
+    border: 1px solid rgba(51,65,85,.6);
+    color: #e2e8f0;
+    border-radius: 8px;
+    font-size: 13px;
+    padding: 0 12px;
+    height: 36px;
+    outline: none;
+    transition: border-color .15s, box-shadow .15s;
+}
+.bet-fi-search::placeholder { color: #475569; }
+.bet-fi-search:focus { border-color: rgba(96,165,250,.45); box-shadow: 0 0 0 2px rgba(96,165,250,.08); }
+.bet-fi-sel {
+    background: rgba(30,41,59,.65);
+    border: 1px solid rgba(51,65,85,.6);
+    color: #cbd5e1;
+    border-radius: 8px;
+    font-size: 13px;
+    padding: 0 10px;
+    height: 36px;
+    cursor: pointer;
+    outline: none;
+    transition: border-color .15s;
+    -webkit-appearance: none;
+    appearance: none;
+    padding-right: 26px;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'%3E%3Cpath d='M0 0l5 6 5-6z' fill='%2364748b'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 8px center;
+}
+.bet-fi-sel:focus { border-color: rgba(96,165,250,.45); }
+.bet-fi-sel option { background: #1e293b; color: #e2e8f0; }
+
+/* Pills de status */
+.bet-status-pills {
+    display: flex;
+    gap: 5px;
+    flex-wrap: wrap;
+    align-items: center;
+}
+.bet-pill {
+    background: transparent;
+    border: 1px solid rgba(51,65,85,.5);
+    color: #64748b;
+    border-radius: 999px;
+    font-size: 12px;
+    font-weight: 600;
+    padding: 5px 14px;
+    cursor: pointer;
+    transition: background .15s, border-color .15s, color .15s;
+    white-space: nowrap;
+    line-height: 1;
+}
+.bet-pill:hover {
+    background: rgba(51,65,85,.3);
+    color: #94a3b8;
+    border-color: rgba(71,85,105,.6);
+}
+/* Todas */
+.bet-pill[data-status="todos"].active { background: rgba(37,99,235,.2); border-color: rgba(96,165,250,.4); color: #93c5fd; }
+/* Pendentes */
+.bet-pill[data-status="pendente"].active { background: rgba(120,53,15,.25); border-color: rgba(251,191,36,.35); color: #fbbf24; }
+/* Ganhas */
+.bet-pill[data-status="ganha"].active { background: rgba(20,83,45,.25); border-color: rgba(74,222,128,.35); color: #4ade80; }
+/* Perdidas */
+.bet-pill[data-status="perdida"].active { background: rgba(127,29,29,.25); border-color: rgba(248,113,113,.35); color: #f87171; }
+/* Anuladas */
+.bet-pill[data-status="anulada"].active { background: rgba(51,65,85,.35); border-color: rgba(100,116,139,.4); color: #94a3b8; }
+/* Finalizadas */
+.bet-pill-fin.active { background: rgba(88,28,135,.25); border-color: rgba(192,132,252,.35); color: #c084fc; }
+
+/* Badge de contagem dentro da pill Finalizadas */
+.bet-fin-badge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(255,255,255,.1);
+    border-radius: 999px;
+    font-size: 10px;
+    font-weight: 700;
+    min-width: 16px;
+    height: 16px;
+    padding: 0 4px;
+    margin-left: 4px;
+    vertical-align: middle;
+}
+.bet-pill-fin.active .bet-fin-badge { background: rgba(192,132,252,.2); color: #c084fc; }
+
+/* Separadores de dia */
+.day-separator-row-v136 td {
+    background: rgba(30,58,138,.22) !important;
+    border-top: 2px solid rgba(96,165,250,.35) !important;
+    border-bottom: 1px solid rgba(96,165,250,.12) !important;
+    padding: 8px 16px !important;
+}
+.day-separator-row-v136 span {
+    display: inline !important;
+    font-size: 12.5px !important;
+    font-weight: 700 !important;
+    color: #93c5fd !important;
+    letter-spacing: .15px !important;
+    margin-right: 10px !important;
+}
+.day-separator-row-v136 strong {
+    display: inline-flex !important;
+    padding: 2px 10px !important;
+    border-radius: 999px !important;
+    background: rgba(30,58,138,.35) !important;
+    color: #bfdbfe !important;
+    font-size: 11px !important;
+    font-weight: 600 !important;
+    border: 1px solid rgba(96,165,250,.25) !important;
+}
+
+/* Remove o toolbar antigo de agrupar (v136) se pills estiverem presentes */
+.table-panel:has(#betStatusPills) .smart-table-toolbar-v129 { display: none !important; }
+
+/* Grupo data + calendário */
+.bet-fi-date-group { display:flex; align-items:center; gap:6px; }
+
+/* Badge "ontem · hoje · amanhã" — padrão ±1 dia */
+.bet-fi-date-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    background: rgba(96,165,250,.12);
+    border: 1px solid rgba(96,165,250,.25);
+    color: #93c5fd;
+    border-radius: 20px;
+    font-size: 11.5px;
+    font-weight: 500;
+    padding: 0 10px;
+    height: 28px;
+    white-space: nowrap;
+    letter-spacing: 0.01em;
+    transition: opacity .2s;
+    pointer-events: none;
+    user-select: none;
+}
+
+.bet-fi-datepicker {
+    background: rgba(30,41,59,.65);
+    border: 1px solid rgba(51,65,85,.6);
+    color: #e2e8f0;
+    border-radius: 8px;
+    font-size: 13px;
+    height: 34px;
+    padding: 0 6px;
+    outline: none;
+    width: 148px;
+    cursor: pointer;
+    transition: border-color .15s;
+    color-scheme: dark;
+}
+/* Chromium: fix day/month/year text color */
+.bet-fi-datepicker::-webkit-datetime-edit { color: #e2e8f0; opacity: 1; }
+.bet-fi-datepicker::-webkit-datetime-edit-fields-wrapper { color: #e2e8f0; }
+.bet-fi-datepicker::-webkit-datetime-edit-day-field,
+.bet-fi-datepicker::-webkit-datetime-edit-month-field,
+.bet-fi-datepicker::-webkit-datetime-edit-year-field { color: #e2e8f0; }
+.bet-fi-datepicker::-webkit-datetime-edit-text { color: #64748b; }
+.bet-fi-datepicker:focus { border-color: rgba(96,165,250,.45); width: 148px; }
+.bet-fi-datepicker::-webkit-calendar-picker-indicator {
+    filter: invert(65%) sepia(30%) saturate(400%) hue-rotate(190deg);
+    cursor: pointer;
+    padding: 0;
+    margin: 0;
+}
+.bet-fi-clear-date {
+    background: rgba(51,65,85,.4);
+    border: 1px solid rgba(51,65,85,.5);
+    color: #94a3b8;
+    border-radius: 6px;
+    width: 26px; height: 26px;
+    cursor: pointer;
+    font-size: 15px;
+    line-height: 1;
+    display: inline-flex; align-items: center; justify-content: center;
+    transition: background .15s;
+}
+.bet-fi-clear-date:hover { background: rgba(127,29,29,.4); color: #f87171; border-color: rgba(248,113,113,.3); }
+
+/* Multi-select casas */
+.bet-fi-multi { position: relative; }
+.bet-fi-multi-btn {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    background: rgba(30,41,59,.65);
+    border: 1px solid rgba(51,65,85,.6);
+    color: #cbd5e1;
+    border-radius: 8px;
+    font-size: 13px;
+    height: 36px;
+    padding: 0 10px;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: border-color .15s;
+    min-width: 130px;
+}
+.bet-fi-multi-btn:hover { border-color: rgba(96,165,250,.4); }
+.bet-fi-multi-btn svg { flex-shrink: 0; color: #64748b; transition: transform .15s; }
+.bet-fi-multi-drop.open ~ .bet-fi-multi-btn svg,
+.bet-fi-multi:has(.open) .bet-fi-multi-btn svg { transform: rotate(180deg); }
+.bet-fi-multi-drop {
+    display: none;
+    position: absolute;
+    top: calc(100% + 6px);
+    left: 0;
+    background: #1e293b;
+    border: 1px solid rgba(51,65,85,.7);
+    border-radius: 10px;
+    padding: 8px 0;
+    min-width: 180px;
+    max-height: 260px;
+    overflow-y: auto;
+    z-index: 200;
+    box-shadow: 0 8px 32px rgba(0,0,0,.5);
+}
+.bet-fi-multi-drop.open { display: block; }
+.bet-fi-multi-search {
+    background: rgba(15,23,42,.8);
+    border: none;
+    border-bottom: 1px solid rgba(51,65,85,.5);
+    color: #e2e8f0;
+    font-size: 12px;
+    padding: 6px 12px;
+    width: 100%;
+    box-sizing: border-box;
+    outline: none;
+    margin-bottom: 4px;
+}
+.bet-fi-multi-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 12px;
+    cursor: pointer;
+    font-size: 13px;
+    color: #cbd5e1;
+    transition: background .1s;
+}
+.bet-fi-multi-item:hover { background: rgba(30,41,59,.8); }
+.bet-fi-multi-item input[type=checkbox] { accent-color: #3b82f6; width: 14px; height: 14px; cursor: pointer; flex-shrink: 0; }
+.bet-fi-multi-drop::-webkit-scrollbar { width: 4px; }
+.bet-fi-multi-drop::-webkit-scrollbar-track { background: transparent; }
+.bet-fi-multi-drop::-webkit-scrollbar-thumb { background: rgba(51,65,85,.6); border-radius: 2px; }
 .historico-panel th:nth-child(10),
 .historico-panel td:nth-child(10) { display: table-cell !important; width: 155px !important; overflow: visible !important; }
+
+/* ── Botões de ação redesenhados ── */
+.actions { gap: 5px !important; }
+.actions button {
+    width: 30px !important;
+    height: 30px !important;
+    min-width: 30px !important;
+    padding: 0 !important;
+    border-radius: 8px !important;
+    border: 1px solid transparent !important;
+    cursor: pointer;
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    font-size: 14px !important;
+    line-height: 1 !important;
+    transition: background .15s, border-color .15s, box-shadow .15s, color .15s !important;
+    font-family: inherit !important;
+}
+/* Verde — Ganha */
+.actions button.green {
+    background: rgba(22,163,74,.12) !important;
+    border-color: rgba(22,163,74,.30) !important;
+    color: #4ade80 !important;
+}
+.actions button.green:hover {
+    background: rgba(22,163,74,.28) !important;
+    border-color: rgba(74,222,128,.55) !important;
+    box-shadow: 0 0 10px rgba(22,163,74,.30) !important;
+}
+/* Vermelho — Perdida */
+.actions button.red {
+    background: rgba(220,38,38,.12) !important;
+    border-color: rgba(220,38,38,.30) !important;
+    color: #f87171 !important;
+}
+.actions button.red:hover {
+    background: rgba(220,38,38,.28) !important;
+    border-color: rgba(248,113,113,.55) !important;
+    box-shadow: 0 0 10px rgba(220,38,38,.30) !important;
+}
+/* Cinza — Anulada */
+.actions button.gray {
+    background: rgba(100,116,139,.10) !important;
+    border-color: rgba(100,116,139,.28) !important;
+    color: #94a3b8 !important;
+}
+.actions button.gray:hover {
+    background: rgba(100,116,139,.22) !important;
+    border-color: rgba(148,163,184,.5) !important;
+}
+/* Azul — Editar */
+.actions button.blue {
+    background: rgba(37,99,235,.12) !important;
+    border-color: rgba(37,99,235,.30) !important;
+    color: #60a5fa !important;
+}
+.actions button.blue:hover {
+    background: rgba(37,99,235,.28) !important;
+    border-color: rgba(96,165,250,.55) !important;
+    box-shadow: 0 0 10px rgba(37,99,235,.30) !important;
+}
+/* Escuro — Excluir */
+.actions button.dark {
+    background: rgba(15,23,42,.35) !important;
+    border-color: rgba(51,65,85,.35) !important;
+    color: #475569 !important;
+}
+.actions button.dark:hover {
+    background: rgba(127,29,29,.22) !important;
+    border-color: rgba(248,113,113,.40) !important;
+    color: #f87171 !important;
+}

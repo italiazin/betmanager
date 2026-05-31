@@ -1,11 +1,32 @@
 ﻿
+// Remove a "/" da EXIBIÇÃO (vira espaço). O dado original mantém a "/" pra detecção interna.
+window.semBarra = function(txt){ return String(txt||"").replace(/\s*\/\s*/g, " ").replace(/\s+/g, " ").trim() }
+
 function limparApostaDuplicadaVisual(){
     document.querySelectorAll("tbody tr").forEach(tr=>{
         const jogoEl = tr.querySelector(".jogo-cell")
         const apostaEl = tr.querySelector(".aposta-cell")
         if(!jogoEl || !apostaEl) return
-        const jogo = jogoEl.innerText.trim()
         let aposta = apostaEl.innerText.trim()
+        if(!aposta) return
+
+        // Se a aposta contém " - " e o trecho antes dele parece um jogo (tem " x " ou " vs ")
+        // ex: "PSG x Arsenal - PSG PARA GANHAR" → "PSG PARA GANHAR"
+        const dashIdx = aposta.indexOf(" - ")
+        if(dashIdx > 0){
+            const prefix = aposta.slice(0, dashIdx)
+            if(/\s(x|vs\.?)\s/i.test(prefix)){
+                const resto = aposta.slice(dashIdx + 3).trim()
+                if(resto){
+                    apostaEl.innerText = resto
+                    apostaEl.title = aposta
+                    return
+                }
+            }
+        }
+
+        // Fallback: match exato com o nome do jogo
+        const jogo = jogoEl.innerText.trim()
         if(jogo && aposta.toLowerCase().startsWith((jogo + " - ").toLowerCase())){
             apostaEl.innerText = aposta.slice(jogo.length + 3).trim()
             apostaEl.title = aposta
@@ -15,9 +36,9 @@ function limparApostaDuplicadaVisual(){
 document.addEventListener("DOMContentLoaded", limparApostaDuplicadaVisual)
 
 function formatarLinhaApostaNova(b){
-    const apostaVisual = (b.jogo && b.aposta && b.aposta.toLowerCase().startsWith((b.jogo + " - ").toLowerCase()))
+    const apostaVisual = window.semBarra((b.jogo && b.aposta && b.aposta.toLowerCase().startsWith((b.jogo + " - ").toLowerCase()))
         ? b.aposta.slice(b.jogo.length + 3)
-        : (b.aposta || "")
+        : (b.aposta || ""))
     const valor = parseFloat(b.valor || 0).toFixed(2)
     const lucro = parseFloat(b.lucro || 0).toFixed(2)
     return `
@@ -25,7 +46,7 @@ function formatarLinhaApostaNova(b){
         <td class="data-cell">${b.data || ""}</td>
         <td class="casa-cell">${b.casa || ""}</td>
         <td class="esporte-cell">${b.esporte || ""}</td>
-        <td class="jogo-cell">${b.jogo || ""}</td>
+        <td class="jogo-cell">${window.semBarra(b.jogo || "")}</td>
         <td class="aposta-cell" title="${b.aposta || ""}">${apostaVisual}</td>
         <td class="odd-cell">${b.odd || ""}</td>
         <td class="valor-cell">${valor}</td>
@@ -355,56 +376,216 @@ function converterDataBR(dataTexto){
     if(partes.length < 3) return null
     return new Date(parseInt(partes[2]), parseInt(partes[1])-1, parseInt(partes[0]))
 }
-function filtrarApostas(){
-    const busca = document.getElementById("searchInput").value.toLowerCase()
-    const jogoFiltro = (document.getElementById("jogoFilter")?.value || "").toLowerCase()
-    const status = document.getElementById("statusFilter").value
-    const dataFiltro = document.getElementById("dateFilter").value
-    const casas = valoresSelecionados(".casa-linha")
-    const esportes = valoresSelecionados(".sport-linha")
-    const minValue = parseFloat(document.getElementById("minValue").value)
-    const maxValue = parseFloat(document.getElementById("maxValue").value)
+function _limparSeparadores(){
+    const activePill = document.querySelector('#betStatusPills .bet-pill.active')
+    const pillStatus = activePill ? activePill.dataset.status : 'todos'
+    const buscaAtiva = !!(document.getElementById("searchInput")?.value || "")
+    const dataAtiva = !!(document.getElementById("datePicker")?.value || "")
+    const deveVerHistorico = _eyeAberto || buscaAtiva || dataAtiva || ["finalizadas","ganha","perdida","anulada"].includes(pillStatus)
     const hoje = new Date(); hoje.setHours(0,0,0,0)
-    document.querySelectorAll("tbody tr").forEach(linha=>{
+    const p = n => String(n).padStart(2,"0")
+    const fmtKey = d => `${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())}`
+    const ontemKey = fmtKey(new Date(hoje.getFullYear(), hoje.getMonth(), hoje.getDate()-1))
+    const amanhaKey = fmtKey(new Date(hoje.getFullYear(), hoje.getMonth(), hoje.getDate()+1))
+
+    const rows = Array.from(document.querySelectorAll("#betsMainTable tbody tr"))
+    let i = 0
+    while(i < rows.length){
+        const r = rows[i]
+        if(r.classList.contains("day-separator-row-v136")){
+            const dk = r.dataset.dayKey || ""
+            // Para "Todas/Pendentes": esconde separadores fora da janela ±1 dia por data
+            if(!deveVerHistorico && dk && dk !== "sem-data"){
+                if(dk < ontemKey || dk > amanhaKey){ r.style.display="none"; i++; continue }
+            }
+            // Para pills históricas: esconde separadores sem bets visíveis abaixo
+            let hasVisible = false
+            let j = i + 1
+            while(j < rows.length && !rows[j].classList.contains("day-separator-row-v136")){
+                const n = rows[j]
+                if(n.classList.contains("bet-row") && getComputedStyle(n).display !== "none"){
+                    hasVisible = true; break
+                }
+                j++
+            }
+            r.style.display = hasVisible ? "table-row" : "none"
+        } else if(r.classList.contains("game-group-row-v136")){
+            let hasVisible = false
+            let j = i + 1
+            while(j < rows.length && !rows[j].classList.contains("day-separator-row-v136") && !rows[j].classList.contains("game-group-row-v136")){
+                if(rows[j].classList.contains("bet-row") && getComputedStyle(rows[j]).display !== "none"){ hasVisible=true; break }
+                j++
+            }
+            r.style.display = hasVisible ? "" : "none"
+        }
+        i++
+    }
+}
+let _eyeAberto = false
+function toggleEye(){
+    _eyeAberto = !_eyeAberto
+    document.getElementById("eyeIconOpen").style.display = _eyeAberto ? "" : "none"
+    document.getElementById("eyeIconClosed").style.display = _eyeAberto ? "none" : ""
+    const btn = document.getElementById("eyeToggleBtn")
+    if(btn) btn.classList.toggle("eye-active", _eyeAberto)
+    filtrarApostas()
+}
+function onDatePickerChange(){
+    const dp=document.getElementById("datePicker"),cb=document.getElementById("clearDateBtn")
+    if(cb) cb.style.display=dp?.value?"inline-flex":"none"
+    filtrarApostas()
+}
+function clearDatePicker(){
+    const dp=document.getElementById("datePicker"),cb=document.getElementById("clearDateBtn")
+    if(dp) dp.value=""
+    if(cb) cb.style.display="none"
+    filtrarApostas()
+}
+function filtrarApostas(){
+    const activePill = document.querySelector('#betStatusPills .bet-pill.active')
+    const pillStatus = activePill ? activePill.dataset.status : null
+    const busca = (document.getElementById("searchInput")?.value || "").toLowerCase()
+    const status = pillStatus || document.getElementById("statusFilter")?.value || "todos"
+    const datePicker = document.getElementById("datePicker")?.value || ""
+    const casasChecked = Array.from(document.querySelectorAll("#casasDrop input[type=checkbox]:not([value=__todos]):checked")).map(c=>c.value.toLowerCase())
+    const esporteFiltro = (document.getElementById("esporteSelect")?.value || "").toLowerCase()
+    const hoje = new Date(); hoje.setHours(0,0,0,0)
+    const ontem = new Date(hoje); ontem.setDate(hoje.getDate()-1)
+    const amanha = new Date(hoje); amanha.setDate(hoje.getDate()+1)
+    const mostrarFinalizadas = status === "finalizadas"
+    // Busca por texto ou data específica ignora a janela ±1 dia (procura em todas as apostas)
+    const deveVerHistorico = _eyeAberto || !!busca || ["finalizadas","ganha","perdida","anulada"].includes(status)
+document.querySelectorAll("tbody tr.bet-row").forEach(linha=>{
         const texto = linha.innerText.toLowerCase()
-        const jogoTexto = linha.querySelector(".jogo-cell")?.innerText.toLowerCase().trim() || ""
-        const statusTexto = linha.querySelector(".status-cell")?.innerText.toLowerCase() || ""
-        const casaTexto = linha.querySelector(".casa-cell")?.innerText.toLowerCase().trim() || ""
-        const esporteTexto = linha.querySelector(".esporte-cell")?.innerText.toLowerCase().trim() || ""
-        const valor = parseFloat(linha.querySelector(".valor-cell")?.innerText.replace(",",".") || "0")
-        const dataTexto = linha.querySelector(".data-cell")?.innerText || ""
-        const dataAposta = converterDataBR(dataTexto)
+        const statusTexto = (linha.querySelector(".status-cell")?.innerText || "").toLowerCase()
+        const casaTexto = (linha.querySelector(".casa-cell")?.innerText || "").toLowerCase().trim()
+        const esporteTexto = (linha.querySelector(".esporte-cell")?.innerText || "").toLowerCase().trim()
+        // Prefer game date (ISO) so bets appear in the window when the GAME happens
+        const isoHorario = linha.dataset.horarioJogoIso || ""
+        let dataAposta = null
+        if(isoHorario){ const _d=new Date(isoHorario);if(!isNaN(_d.getTime())) dataAposta=new Date(_d.getFullYear(),_d.getMonth(),_d.getDate()) }
+        if(!dataAposta){ const dataTexto=linha.dataset.data||""; dataAposta=converterDataBR(dataTexto) }
+        const isFinished = statusTexto.includes("ganha")||statusTexto.includes("perdida")||statusTexto.includes("anulada")
         let mostrar = true
         if(busca && !texto.includes(busca)) mostrar = false
-        if(jogoFiltro && !jogoTexto.includes(jogoFiltro)) mostrar = false
-        if(status !== "todos" && !statusTexto.includes(status)) mostrar = false
-        if(casas.length > 0 && !casas.includes(casaTexto)) mostrar = false
-        if(esportes.length > 0 && !esportes.includes(esporteTexto)) mostrar = false
-        if(!isNaN(minValue) && valor < minValue) mostrar = false
-        if(!isNaN(maxValue) && valor > maxValue) mostrar = false
-        if(dataFiltro !== "todos" && dataAposta){
-            if(dataFiltro === "hoje"){ if(dataAposta.getTime() !== hoje.getTime()) mostrar = false }
-            else { const limite = new Date(hoje); limite.setDate(limite.getDate()-parseInt(dataFiltro)); if(dataAposta < limite) mostrar = false }
+        if(casasChecked.length > 0 && !casasChecked.includes(casaTexto)) mostrar = false
+        if(esporteFiltro && esporteFiltro !== "todos" && esporteTexto !== esporteFiltro) mostrar = false
+        // Filtro de data
+        if(datePicker){
+            if(dataAposta){ const p=n=>String(n).padStart(2,"0");const ds=`${dataAposta.getFullYear()}-${p(dataAposta.getMonth()+1)}-${p(dataAposta.getDate())}`;if(ds!==datePicker) mostrar=false }
+        } else if(!deveVerHistorico){
+            if(dataAposta && (dataAposta.getTime()<ontem.getTime()||dataAposta.getTime()>amanha.getTime())) mostrar=false
         }
-        linha.style.display = mostrar ? "" : "none"
+        if(mostrarFinalizadas){ if(!isFinished) mostrar = false }
+        else { if(status !== "todos" && !statusTexto.includes(status)) mostrar = false }
+        if(mostrar){
+            // só mexe na classe se ela existe (evita mutação/reflow à toa)
+            if(linha.classList.contains("v149-historico-hidden")) linha.classList.remove("v149-historico-hidden")
+            if(linha.classList.contains("group-collapsed-v136")) linha.classList.remove("group-collapsed-v136")
+            let prev = linha.previousElementSibling
+            while(prev && !prev.classList.contains("day-separator-row-v136")){
+                if(prev.classList.contains("game-group-row-v136")){ if(prev.style.display!=="") prev.style.display=""; break }
+                prev = prev.previousElementSibling
+            }
+        }
+        const novoDisplay = mostrar ? "table-row" : "none"
+        if(linha.style.display !== novoDisplay) linha.style.display = novoDisplay
+        const fv = mostrar ? "1" : "0"
+        if(linha.dataset.v147Filtered !== fv) linha.dataset.v147Filtered = fv
+    })
+    _limparSeparadores()
+}
+// Debounce único para digitação — evita rodar/reflow a cada tecla (tremida)
+function filtrarApostasDebounced(){
+    clearTimeout(window.__fa2)
+    window.__fa2 = setTimeout(filtrarApostas, 220)
+}
+function clickPill(pill){
+    document.querySelectorAll('#betStatusPills .bet-pill').forEach(p=>p.classList.remove('active'))
+    pill.classList.add('active')
+    const status = pill.dataset.status
+    const sf = document.getElementById('statusFilter')
+    if(sf){ sf.value = ['todos','ganha','perdida','pendente','anulada'].includes(status) ? status : 'todos' }
+    filtrarApostas()
+    if(status==='finalizadas') setTimeout(filtrarApostas, 220)
+    if(typeof window.v160UpdateFinBadge==='function') setTimeout(window.v160UpdateFinBadge, 300)
+}
+// Selects/checkboxes do filtro: aplica via mesmo debounce (evita execução dupla)
+document.addEventListener("DOMContentLoaded",()=>{
+    document.querySelectorAll("#apostas select,#casasDrop input").forEach(el=>{
+        el.addEventListener("change", filtrarApostasDebounced)
+    })
+})
+// Multi-select casas
+function toggleBetFiDrop(id){
+    const drop=document.getElementById(id);if(!drop) return
+    const isOpen=drop.classList.contains("open")
+    document.querySelectorAll(".bet-fi-multi-drop.open").forEach(d=>d.classList.remove("open"))
+    if(!isOpen) drop.classList.add("open")
+}
+function filtrarBetFiDrop(input,dropId){
+    const q=input.value.toLowerCase()
+    document.querySelectorAll(`#${dropId} .bet-fi-multi-item:not(:first-child)`).forEach(item=>{
+        item.style.display=item.innerText.toLowerCase().includes(q)?"":"none"
     })
 }
+function toggleTodosBetFi(cb,dropId){
+    const drop=document.getElementById(dropId);if(!drop) return
+    drop.querySelectorAll("input[type=checkbox]:not([value=__todos])").forEach(c=>{ c.checked=false })
+    cb.checked=true
+    atualizarLabelCasas();filtrarApostas()
+}
+function onCasaCheck(){
+    const todosChk=document.querySelector("#casasDrop input[value=__todos]");if(todosChk) todosChk.checked=false
+    const checked=Array.from(document.querySelectorAll("#casasDrop input[type=checkbox]:not([value=__todos]):checked"))
+    if(!checked.length&&todosChk) todosChk.checked=true
+    atualizarLabelCasas();filtrarApostas()
+}
+function atualizarLabelCasas(){
+    const label=document.getElementById("casasDropLabel");if(!label) return
+    const checked=Array.from(document.querySelectorAll("#casasDrop input[type=checkbox]:not([value=__todos]):checked"))
+    label.textContent=checked.length===0?"Todas as casas":checked.length===1?checked[0].value:checked.length+" casas"
+}
+// Fechar dropdown ao clicar fora
+document.addEventListener("click",function(e){
+    if(!e.target.closest(".bet-fi-multi")) document.querySelectorAll(".bet-fi-multi-drop.open").forEach(d=>d.classList.remove("open"))
+})
 
 // Chart init — labels/valores defined by inline script in index.html
 document.addEventListener("DOMContentLoaded", ()=>{
     const canvas = document.getElementById("grafico")
     if(!canvas || typeof Chart === "undefined") return
+    const ultimo = valores[valores.length - 1] || 0
+    const corLinha = ultimo >= 0 ? "#22c55e" : "#f87171"
+    const corFundo = ultimo >= 0 ? "rgba(34,197,94,0.12)" : "rgba(248,113,113,0.10)"
     new Chart(canvas, {
         type: "line",
-        data: { labels: labels, datasets: [{ label:"Banca", data:valores, borderWidth:3, tension:0.35, fill:true }] },
+        data: { labels: labels, datasets: [{
+            label: "Lucro acumulado",
+            data: valores,
+            borderColor: corLinha,
+            backgroundColor: corFundo,
+            borderWidth: 2.5,
+            tension: 0.4,
+            fill: true,
+            pointRadius: valores.length > 60 ? 0 : 2.5,
+            pointHoverRadius: 5,
+            pointBackgroundColor: corLinha,
+        }]},
         options: {
             responsive: true, maintainAspectRatio: false,
-            plugins: { legend: { labels: { color:"#cbd5e1" } } },
+            plugins: {
+                legend: { labels: { color:"#cbd5e1", font:{size:12} } },
+                tooltip: { callbacks: { label: ctx => " R$ " + ctx.parsed.y.toFixed(2) } }
+            },
             layout: { padding: { top:6, right:8, bottom:0, left:0 } },
-            elements: { point: { radius:2.5, hoverRadius:5 }, line: { borderWidth:3 } },
             scales: {
-                x: { ticks: { color:"#94a3b8", maxRotation:45, minRotation:45, autoSkip:true, maxTicksLimit:18, font:{size:10} }, grid: { color:"rgba(30,41,59,0.55)" } },
-                y: { ticks: { color:"#94a3b8", font:{size:10} }, grid: { color:"rgba(30,41,59,0.65)" } }
+                x: { ticks: { color:"#94a3b8", maxRotation:45, minRotation:45, autoSkip:true, maxTicksLimit:14, font:{size:10} }, grid: { color:"rgba(30,41,59,0.45)" } },
+                y: {
+                    ticks: { color:"#94a3b8", font:{size:10}, callback: v => "R$ "+v.toFixed(0) },
+                    grid: { color:"rgba(30,41,59,0.55)" },
+                    afterBuildTicks(axis){ if(!axis.ticks.some(t=>t.value===0)) axis.ticks.push({value:0}) },
+                }
             }
         }
     })
@@ -668,7 +849,7 @@ window.renderPreview = function(){
         const odd=String(a.odd||"").replace(",",".")
         let valor=String(a.valor||"").replace(",",".")
         if(odd&&valor&&parseFloat(odd)>1&&Math.abs(parseFloat(odd)-parseFloat(valor))<0.0001) valor=""
-        div.innerHTML+=`<div class="preview-card preview-card-client"><input id="c${i}" value="${window.escapeHtmlPreview(a.casa||'')}" placeholder="Casa"><input id="e${i}" value="${window.escapeHtmlPreview(a.esporte||'')}" placeholder="Esporte"><input id="j${i}" value="${window.escapeHtmlPreview(a.jogo||'')}" placeholder="Jogo"><input id="a${i}" value="${window.escapeHtmlPreview(a.aposta||'')}" placeholder="Aposta"><input id="o${i}" value="${window.escapeHtmlPreview(odd||'')}" placeholder="Odd"><input id="v${i}" value="${window.escapeHtmlPreview(valor||'')}" placeholder="Valor"><input type="hidden" id="m${i}" value="${window.escapeHtmlPreview(a.mercado||'')}"><input type="hidden" id="s${i}" value="${window.escapeHtmlPreview(a.selecao||'')}"><input type="hidden" id="l${i}" value="${window.escapeHtmlPreview(a.linha||'')}"><input type="hidden" id="p${i}" value="${window.escapeHtmlPreview(a.periodo||'')}"></div>`
+        div.innerHTML+=`<div class="preview-card preview-card-client"><input id="c${i}" value="${window.escapeHtmlPreview(a.casa||'')}" placeholder="Casa"><input id="e${i}" value="${window.escapeHtmlPreview(a.esporte||'')}" placeholder="Esporte"><input id="j${i}" value="${window.escapeHtmlPreview(window.semBarra(a.jogo||''))}" placeholder="Jogo"><input id="a${i}" value="${window.escapeHtmlPreview(window.semBarra(a.aposta||''))}" placeholder="Aposta"><input id="o${i}" value="${window.escapeHtmlPreview(odd||'')}" placeholder="Odd"><input id="v${i}" value="${window.escapeHtmlPreview(valor||'')}" placeholder="Valor"><input type="hidden" id="m${i}" value="${window.escapeHtmlPreview(a.mercado||'')}"><input type="hidden" id="s${i}" value="${window.escapeHtmlPreview(a.selecao||'')}"><input type="hidden" id="l${i}" value="${window.escapeHtmlPreview(a.linha||'')}"><input type="hidden" id="p${i}" value="${window.escapeHtmlPreview(a.periodo||'')}"></div>`
     })
     if(salvar){ salvar.style.display="block"; salvar.disabled=false; salvar.innerText="Salvar Apostas do Preview" }
     div.scrollIntoView({behavior:"smooth",block:"center"})
@@ -681,7 +862,7 @@ document.addEventListener("DOMContentLoaded", ()=>{
             const odd=document.getElementById(`o${i}`)?.value||""
             let valor=document.getElementById(`v${i}`)?.value||""
             if(odd&&valor&&parseFloat(String(odd).replace(",","."))>1&&Math.abs(parseFloat(String(odd).replace(",","."))-parseFloat(String(valor).replace(",",".")))< 0.0001) valor=""
-            return { aposta:document.getElementById(`a${i}`)?.value||"", casa:document.getElementById(`c${i}`)?.value||"", esporte:document.getElementById(`e${i}`)?.value||"", jogo:document.getElementById(`j${i}`)?.value||"", mercado:document.getElementById(`m${i}`)?.value||"", selecao:document.getElementById(`s${i}`)?.value||"", linha:document.getElementById(`l${i}`)?.value||"", periodo:document.getElementById(`p${i}`)?.value||"", odd, valor, texto_bruto:a.texto_bruto||"", texto_interpretado:a.texto_interpretado||"", itens_multipla:a.itens_multipla||{}, itens_multipla_detalhados:a.itens_multipla_detalhados||[], horario_jogo:a.horario_jogo||"" }
+            const jogoEl=document.getElementById(`j${i}`); const horarioIso=jogoEl?.dataset?.horario||a.horario_jogo_iso||""; return { aposta:document.getElementById(`a${i}`)?.value||"", casa:document.getElementById(`c${i}`)?.value||"", esporte:document.getElementById(`e${i}`)?.value||"", jogo:jogoEl?.value||"", mercado:document.getElementById(`m${i}`)?.value||"", selecao:document.getElementById(`s${i}`)?.value||"", linha:document.getElementById(`l${i}`)?.value||"", periodo:document.getElementById(`p${i}`)?.value||"", odd, valor, texto_bruto:a.texto_bruto||"", texto_interpretado:a.texto_interpretado||"", itens_multipla:a.itens_multipla||{}, itens_multipla_detalhados:a.itens_multipla_detalhados||[], horario_jogo:a.horario_jogo||"", horario_jogo_iso:horarioIso }
         })
         salvar.disabled=true; salvar.innerText="Salvando..."
         fetch("/salvar_preview", { method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({apostas:dados}) })
@@ -761,7 +942,23 @@ function atualizarHorariosEspn(){
         show(input,jogos.slice(0,12).map(j=>{const status=j.status_jogo||j.horario_jogo||"",p=fmt(j.horario_jogo,status),liga=j.liga_nome||j.league||"";return`<button type="button" class="game-autocomplete-option" data-jogo="${esc(j.jogo)}" data-horario="${esc(j.horario_jogo_iso||"")}" data-status="${esc(status)}" data-live="${j.ao_vivo?"1":"0"}"><span class="game-autocomplete-date"><small>${esc(p.data)}</small><strong>${esc(p.hora)}</strong></span><span class="game-autocomplete-main"><small>${esc(liga)}</small><strong>${esc(j.jogo)}</strong></span></button>`}).join(""))
         box(input).querySelectorAll(".game-autocomplete-option").forEach(btn=>{
             btn.addEventListener("mousedown",e=>e.preventDefault())
-            btn.onclick=()=>{ input.value=btn.dataset.jogo||input.value; input.dataset.horario=btn.dataset.horario||""; input.dataset.statusJogo=btn.dataset.status||""; input.dataset.aoVivo=btn.dataset.live||"0"; input.dataset.partidaSelecionada="1"; const hidden=document.getElementById("horarioJogo");if(hidden&&input.name==="jogo") hidden.value=input.dataset.horario||""; closeAll();if(typeof v72Toast==="function") v72Toast("Partida selecionada") }
+            btn.onclick=()=>{
+                input.value=btn.dataset.jogo||input.value
+                input.dataset.horario=btn.dataset.horario||""
+                input.dataset.statusJogo=btn.dataset.status||""
+                input.dataset.aoVivo=btn.dataset.live||"0"
+                input.dataset.partidaSelecionada="1"
+                const iso=input.dataset.horario||""
+                if(input.id==="editJogo"){
+                    // Modal de editar: atualiza o horário e o status do PRÓPRIO modal
+                    const eh=document.getElementById("editHorarioJogo")
+                    if(eh && typeof v106ToDatetimeLocal==="function"){ const dl=v106ToDatetimeLocal(iso); if(dl) eh.value=dl }
+                    const esj=document.getElementById("editStatusJogoManual"); if(esj) esj.value=input.dataset.statusJogo||""
+                } else if(input.name==="jogo"){
+                    const hidden=document.getElementById("horarioJogo"); if(hidden) hidden.value=iso
+                }
+                closeAll(); if(typeof v72Toast==="function") v72Toast("Partida selecionada")
+            }
         })
     }
     async function buscar(input){
@@ -798,34 +995,10 @@ function atualizarHorariosEspn(){
 function abrirModalBancaInicial(){ const modal=document.getElementById("bancaInicialModal");if(modal) modal.style.display="flex" }
 function fecharModalBancaInicial(){ const modal=document.getElementById("bancaInicialModal");if(modal) modal.style.display="none" }
 
-// v132
+// v132 — modais da banca inicial (cards/valores agora vêm prontos do servidor via metricas())
 (function(){
-    function money(v){ return "R$ "+Number(v||0).toFixed(2) }
-    function parseMoney(txt){ txt=String(txt||"").replace(/[^\d,.-]/g,"").trim(); if(txt.includes(",")&&txt.includes(".")) txt=txt.replace(/\./g,"").replace(",","."); else if(txt.includes(",")) txt=txt.replace(",","."); const n=parseFloat(txt);return isNaN(n)?0:n }
-    function findMetricsGrid(){ return document.querySelector(".metrics-grid")||document.querySelector(".metric-grid")||document.querySelector(".cards")||document.querySelector(".dashboard-cards")||document.querySelector(".stats-grid")||document.querySelector(".top-cards") }
-    function makeCard(id,title,value,editable){ const div=document.createElement("div");div.className="metric-card";if(editable) div.classList.add("banca-inicial-card");div.innerHTML=`<span>${title}</span><strong id="${id}">${value}</strong>${editable?'<button type="button" class="mini-edit-btn" onclick="abrirModalBancaInicial()">✎</button>':''}`;return div }
-    function ensureCards(){
-        const grid=findMetricsGrid();if(!grid) return
-        if(!document.getElementById("metric-banca-inicial")){ const card=makeCard("metric-banca-inicial","Banca Inicial","R$ 0.00",true); const bancaAtual=document.getElementById("metric-banca")?.closest(".metric-card"); if(bancaAtual&&bancaAtual.nextSibling) grid.insertBefore(card,bancaAtual.nextSibling); else grid.insertBefore(card,grid.firstChild) }
-        let va=document.getElementById("metric-valor-aberto")
-        if(!va){ const oldSaldo=document.getElementById("metric-saldo-casas"); if(oldSaldo){oldSaldo.id="metric-valor-aberto";const card=oldSaldo.closest(".metric-card");const title=card?.querySelector("span");if(title) title.textContent="Valor em Aberto"}else{grid.appendChild(makeCard("metric-valor-aberto","Valor em Aberto","R$ 0.00",false))} }
-    }
-    function getColumnIndex(label){ const ths=Array.from(document.querySelectorAll("table thead th")),target=String(label||"").toLowerCase();for(let i=0;i<ths.length;i++){if(ths[i].innerText.trim().toLowerCase()===target) return i}return -1 }
-    function calcularValorAberto(){
-        let total=0; const valorIdx=getColumnIndex("valor"),statusIdx=getColumnIndex("status")
-        document.querySelectorAll("tr.bet-row").forEach(row=>{
-            const statusTxt=(statusIdx>=0?row.children?.[statusIdx]?.innerText:row.querySelector(".status-badge")?.innerText||"").toLowerCase()
-            const fechado=statusTxt.includes("ganha")||statusTxt.includes("green")||statusTxt.includes("perdida")||statusTxt.includes("red")||statusTxt.includes("anulada")||statusTxt.includes("void")||statusTxt.includes("cancelada")||statusTxt.includes("cancelado")
-            if(!fechado){ const valorCell=valorIdx>=0?row.children?.[valorIdx]?.innerText:""; total+=parseMoney(valorCell) }
-        })
-        const el=document.getElementById("metric-valor-aberto");if(el) el.textContent=money(total)
-    }
-    async function carregarBancaInicial(){ try{ const r=await fetch("/api/v132_cards",{cache:"no-store"});const data=await r.json();const val=Number(data.banca_inicial||0);const el=document.getElementById("metric-banca-inicial");if(el) el.textContent=money(val);const inp=document.getElementById("bancaInicialInput");if(inp) inp.value=val.toFixed(2) }catch(e){} }
     window.abrirModalBancaInicial=function(){ const modal=document.getElementById("bancaInicialModal");if(modal) modal.style.display="flex" }
     window.fecharModalBancaInicial=function(){ const modal=document.getElementById("bancaInicialModal");if(modal) modal.style.display="none" }
-    function apply(){ ensureCards();calcularValorAberto();carregarBancaInicial() }
-    document.addEventListener("DOMContentLoaded",()=>{ apply();setInterval(calcularValorAberto,120000) })
-    document.addEventListener("click",()=>setTimeout(calcularValorAberto,400))
 })();
 
 // v135
@@ -874,18 +1047,17 @@ function fecharModalBancaInicial(){ const modal=document.getElementById("bancaIn
     function dayLabel(k){ if(k==="sem-data") return "Sem data";const[y,m,d]=k.split("-").map(Number);const dt=new Date(y,m-1,d);const today=new Date();today.setHours(0,0,0,0);const cmp=new Date(dt);cmp.setHours(0,0,0,0);const diff=Math.round((cmp-today)/86400000);const dd=String(dt.getDate()).padStart(2,"0"),mm=String(dt.getMonth()+1).padStart(2,"0");if(diff===0) return`Hoje — ${dd}/${mm}`;if(diff===1) return`Amanhã — ${dd}/${mm}`;if(diff===-1) return`Ontem — ${dd}/${mm}`;const dias=["Domingo","Segunda-feira","Terça-feira","Quarta-feira","Quinta-feira","Sexta-feira","Sábado"];return`${dias[dt.getDay()]} — ${dd}/${mm}/${dt.getFullYear()}` }
     function gStatus(row){ const r=String(raw(row)||"").toLowerCase();const d=parseISO(iso(row));if(trueMulti(row)) return["Múltipla","multi",30];if(d&&((Date.now()-d.getTime())/60000)>=130) return["Finalizado","finished",50];if(row.dataset.aoVivo==="1"||r.includes("ao vivo")||r.includes("live")) return["Ao vivo","live",0];if(r.includes("final")||r.includes("encerr")) return["Finalizado","finished",50];if(r.includes("em andamento")) return["Ao vivo","live",1];if(r.includes("sem horário")||r.includes("sem horario")) return["Sem horário","empty",40];if(r.includes("agendado")) return["Agendado","scheduled",4];if(d){const diff=(d.getTime()-Date.now())/60000;if(diff<-120) return["Finalizado","finished",50];if(diff<0) return["Ao vivo","live",1];if(diff<=60) return[`Falta ${Math.max(1,Math.floor(diff))}min`,"soon",2];if(d.toDateString()===new Date().toDateString()) return["Hoje","today",3];return["Futuro","scheduled",4]}return["Sem horário","empty",40] }
     function baseTime(row){ const d=dateObj(row);return d?d.getTime():9999999999999 }
-    function sortKey(row){ const p=gStatus(row)[2];let adj=0;if(p===50){const s=statusText(row);if(s.includes("ganha")||s.includes("green")) adj=0;else if(s.includes("perdida")||s.includes("red")) adj=1;else if(s.includes("anulada")) adj=2;else adj=3}return[p,baseTime(row),adj] }
-    function cmp(a,b){ const ka=sortKey(a),kb=sortKey(b);for(let i=0;i<ka.length;i++) if(ka[i]!==kb[i]) return sortAsc?ka[i]-kb[i]:kb[i]-ka[i];return 0 }
+    function cmp(a,b){ const ta=baseTime(a),tb=baseTime(b);return sortAsc?ta-tb:tb-ta }
     function renderLeft(row){ const c=cell(row,0);if(!c) return;const st=gStatus(row);const html=`<span class="game-date-main">${dateLabel(row)}</span><span class="game-date-status ${st[1]}">${st[0]}</span>`;if(c.dataset.v136!==html){c.classList.add("game-date-cell");c.innerHTML=html;c.dataset.v136=html} }
     function groupKey(row){ if(trueMulti(row)) return`__multi__:${row.dataset.id||Math.random()}`;return game(row).toLowerCase()||`__row__:${row.dataset.id||Math.random()}` }
     function rep(rows){ return rows.slice().sort(cmp)[0] }
     function clear(tbody){ tbody.querySelectorAll("tr.game-group-row-v129,tr.game-group-row-v130,tr.game-group-row-v136,tr.day-separator-row-v136").forEach(r=>r.remove());tbody.querySelectorAll("tr.bet-row").forEach(r=>r.classList.remove("group-child-v129","group-collapsed-v129","group-highlight-v129","group-child-v130","group-collapsed-v130","group-highlight-v130","group-child-v136","group-collapsed-v136","group-highlight-v136")) }
     function summary(rows){ let aberto=0,luc=0,green=0,red=0,pend=0;for(const r of rows){if(!closed(r)) aberto+=valor(r);luc+=lucro(r);const s=statusText(r);if(s.includes("ganha")||s.includes("green")) green++;else if(s.includes("perdida")||s.includes("red")) red++;else pend++}return{aberto,luc,green,red,pend} }
-    function dayRow(k,count){ const tr=document.createElement("tr");tr.className="day-separator-row-v136";const cols=document.querySelectorAll("table thead th").length||10;tr.innerHTML=`<td colspan="${cols}"><span>${dayLabel(k)}</span><strong>${count} aposta${count!==1?"s":""}</strong></td>`;return tr }
+    function dayRow(k,count){ const tr=document.createElement("tr");tr.className="day-separator-row-v136";tr.dataset.dayKey=k;const cols=document.querySelectorAll("table thead th").length||10;tr.innerHTML=`<td colspan="${cols}"><span>${dayLabel(k)}</span><strong>${count} aposta${count!==1?"s":""}</strong></td>`;return tr }
     function groupHeader(k,rows){ const r=rep(rows),st=gStatus(r),s=summary(rows),cols=document.querySelectorAll("table thead th").length||10;const collapsed=collapsedGroups.has(k),lc=s.luc>0?"pos":s.luc<0?"neg":"";const tr=document.createElement("tr");tr.className="game-group-row-v136";tr.dataset.groupKey=k;tr.innerHTML=`<td colspan="${cols}"><button type="button" class="game-group-toggle-v129"><span class="group-arrow-v129">${collapsed?"▶":"▼"}</span><strong>${game(r)}</strong><span class="group-count-v129">${rows.length} aposta${rows.length>1?"s":""}</span><span class="game-date-status ${st[1]}">${st[0]}</span><span class="group-time-v129">${dateLabel(r)}</span><span class="group-summary-line-v138"><span>Aberto ${money(s.aberto)}</span><span class="${lc}">Lucro ${money(s.luc)}</span></span></button></td>`;tr.querySelector("button").onclick=()=>{collapsedGroups.has(k)?collapsedGroups.delete(k):collapsedGroups.add(k);apply(true)};return tr }
     function setupToolbar(){ const panel=document.querySelector(".table-panel")||document.querySelector("table")?.parentElement;if(!panel||panel.querySelector(".smart-table-toolbar-v129")) return;const bar=document.createElement("div");bar.className="smart-table-toolbar-v129";bar.innerHTML=`<button type="button" id="toggleGroupV129" class="smart-table-btn-v129">📌 Agrupar jogos</button><button type="button" id="expandGroupsV129" class="smart-table-btn-v129 secondary">Expandir tudo</button>`;const target=panel.querySelector(".table-scroll-wrap")||panel.querySelector("table");if(target&&target.parentElement===panel) panel.insertBefore(bar,target);else panel.prepend(bar);bar.querySelector("#toggleGroupV129").onclick=()=>{groupMode=!groupMode;bar.querySelector("#toggleGroupV129").textContent=groupMode?"☰ Lista simples":"📌 Agrupar jogos";apply(true)};bar.querySelector("#expandGroupsV129").onclick=()=>{collapsedGroups.clear();apply(true)} }
     function setupSort(){ const th=document.getElementById("gameDateSortHeader"),arrow=document.getElementById("gameDateSortArrow");if(!th||th.dataset.v136Ready==="1") return;th.dataset.v136Ready="1";th.onclick=()=>{sortAsc=!sortAsc;if(arrow) arrow.textContent=sortAsc?"↑":"↓";apply(true)} }
-    function autoCollapse(groups){ if(initializedCollapse) return;initializedCollapse=true;for(const[k,rows]of groups.entries()) if(rows.length>=3&&!k.startsWith("__multi__")) collapsedGroups.add(k) }
+    function autoCollapse(groups){ initializedCollapse=true; }
     function apply(force=false){
         const tbody=document.querySelector("table tbody");if(!tbody) return
         setupToolbar();setupSort()
@@ -898,12 +1070,14 @@ function fecharModalBancaInicial(){ const modal=document.getElementById("bancaIn
             const entries=Array.from(groups.entries()).sort((a,b)=>cmp(rep(a[1]),rep(b[1])))
             let currentDay=null
             for(const[k,rs]of entries){ const dk=dayKey(rep(rs));if(dk!==currentDay){currentDay=dk;let count=0;for(const[,xs]of entries) if(dayKey(rep(xs))===dk) count+=xs.length;tbody.appendChild(dayRow(dk,count))};if(rs.length>1&&!k.startsWith("__multi__")){tbody.appendChild(groupHeader(k,rs));const collapsed=collapsedGroups.has(k);rs.forEach(r=>{r.classList.add("group-child-v136");if(collapsed) r.classList.add("group-collapsed-v136");if(rs.length>=3) r.classList.add("group-highlight-v136");tbody.appendChild(r)})}else rs.forEach(r=>tbody.appendChild(r)) }
-        }else{ let currentDay=null;for(const r of rows){const dk=dayKey(r);if(dk!==currentDay){currentDay=dk;tbody.appendChild(dayRow(dk,rows.filter(x=>dayKey(x)===dk).length))};tbody.appendChild(r) } }
+        }else{ const daySeen=new Set();for(const r of rows){const dk=dayKey(r);if(!daySeen.has(dk)){daySeen.add(dk);tbody.appendChild(dayRow(dk,rows.filter(x=>dayKey(x)===dk).length))};tbody.appendChild(r) } }
     }
     function preserve(fn){ const y=window.scrollY;fn();requestAnimationFrame(()=>window.scrollTo({top:y,behavior:"auto"})) }
     document.addEventListener("DOMContentLoaded",()=>{ apply(true);setInterval(()=>preserve(()=>apply(false)),300000) })
     document.addEventListener("click",e=>{ const t=String(e.target?.innerText||"").toLowerCase();if(t.includes("salvar apostas")||t.includes("adicionar")||t.includes("salvar")||t.includes("excluir")||t.includes("editar")){setTimeout(()=>preserve(()=>apply(true)),700);setTimeout(()=>preserve(()=>apply(true)),1600)} })
     window.v136SmartTableApply=apply
+    // Run filtrarApostas after v147's 0ms timer has fired
+    document.addEventListener("DOMContentLoaded",()=>{ setTimeout(()=>{ if(typeof filtrarApostas==="function") filtrarApostas() },50) })
 })();
 
 // v141
@@ -962,6 +1136,12 @@ function fecharModalBancaInicial(){ const modal=document.getElementById("bancaIn
     document.addEventListener("click",e=>{const t=norm(e.target?.innerText||"");if(t.includes("agrupar")||t.includes("expandir")||t.includes("salvar")||t.includes("editar")||t.includes("excluir")||t.includes("buscar")){setTimeout(()=>{bind();apply()},350);setTimeout(apply,1300)}})
     window.v147ApplyFilters=apply
 })();
+// Wrap v147ApplyFilters: whenever something calls it (e.g. v150 at 900ms/2000ms),
+// filtrarApostas re-runs right after to re-apply the date filter
+;(function(){
+    const _orig=window.v147ApplyFilters
+    window.v147ApplyFilters=function(){ if(_orig) _orig(); if(typeof filtrarApostas==="function") filtrarApostas() }
+})();
 
 // v149
 (function(){
@@ -970,7 +1150,7 @@ function fecharModalBancaInicial(){ const modal=document.getElementById("bancaIn
     function statusIdx(){ const ths=Array.from(document.querySelectorAll("table thead th"));for(let i=0;i<ths.length;i++){if(norm(ths[i].innerText).replace(/\s+[↑↓]$/,"")==="status") return i}return -1 }
     function rowDate(row){ const txt=row.children?.[0]?.innerText||"";const m=txt.match(/(\d{2})\/(\d{2})(?:\/(\d{4}))?/);if(!m) return null;return new Date(Number(m[3]||new Date().getFullYear()),Number(m[2])-1,Number(m[1])) }
     function isOldFinished(row){ const si=statusIdx();const st=norm(si>=0?row.children?.[si]?.innerText:"");const finished=st.includes("ganha")||st.includes("green")||st.includes("perdida")||st.includes("red")||st.includes("anulada")||st.includes("void");if(!finished) return false;const d=rowDate(row);if(!d) return false;const today=new Date();today.setHours(0,0,0,0);d.setHours(0,0,0,0);return d.getTime()<today.getTime() }
-    function ensureHistoricoButton(){ const panel=document.querySelector(".table-panel")||document.querySelector("table")?.parentElement;if(!panel||document.getElementById("toggleHistoricoV149")) return;const bar=panel.querySelector(".smart-table-toolbar-v129")||panel;const btn=document.createElement("button");btn.type="button";btn.id="toggleHistoricoV149";btn.className="smart-table-btn-v129 secondary historico-btn-v149";btn.textContent="📦 Mostrar finalizadas antigas";btn.onclick=()=>{mostrarHistoricoAntigo=!mostrarHistoricoAntigo;btn.textContent=mostrarHistoricoAntigo?"📦 Ocultar finalizadas antigas":"📦 Mostrar finalizadas antigas";aplicarHistorico()};if(bar.classList&&bar.classList.contains("smart-table-toolbar-v129")){bar.appendChild(btn)}else{const target=panel.querySelector(".table-scroll-wrap")||panel.querySelector("table");if(target&&target.parentElement===panel) panel.insertBefore(btn,target);else panel.prepend(btn)} }
+    function ensureHistoricoButton(){ const panel=document.querySelector(".table-panel")||document.querySelector("table")?.parentElement;if(!panel||document.getElementById("toggleHistoricoV149")||document.getElementById("betStatusPills")) return;const bar=panel.querySelector(".smart-table-toolbar-v129")||panel;const btn=document.createElement("button");btn.type="button";btn.id="toggleHistoricoV149";btn.className="smart-table-btn-v129 secondary historico-btn-v149";btn.textContent="📦 Mostrar finalizadas antigas";btn.onclick=()=>{mostrarHistoricoAntigo=!mostrarHistoricoAntigo;btn.textContent=mostrarHistoricoAntigo?"📦 Ocultar finalizadas antigas":"📦 Mostrar finalizadas antigas";aplicarHistorico()};if(bar.classList&&bar.classList.contains("smart-table-toolbar-v129")){bar.appendChild(btn)}else{const target=panel.querySelector(".table-scroll-wrap")||panel.querySelector("table");if(target&&target.parentElement===panel) panel.insertBefore(btn,target);else panel.prepend(btn)} }
     function aplicarHistorico(){ const rows=Array.from(document.querySelectorAll("tr.bet-row"));let hidden=0;rows.forEach(row=>{if(isOldFinished(row)&&!mostrarHistoricoAntigo){row.classList.add("v149-historico-hidden");hidden++}else{row.classList.remove("v149-historico-hidden")}});let badge=document.getElementById("historicoHiddenBadgeV149");const btn=document.getElementById("toggleHistoricoV149");if(btn){if(!badge){badge=document.createElement("span");badge.id="historicoHiddenBadgeV149";badge.className="historico-badge-v149";btn.appendChild(badge)};badge.textContent=hidden?" "+hidden:""} }
     async function checarVersaoApostas(){ try{const r=await fetch("/api/apostas_versao",{cache:"no-store"});const data=await r.json();if(!data||!data.ok) return;if(ultimaVersaoApostas===null){ultimaVersaoApostas=data.versao;return};if(data.versao!==ultimaVersaoApostas){ultimaVersaoApostas=data.versao;if(feedVisivel){try{if(typeof carregarFeedApostas==="function") carregarFeedApostas(false)}catch(e){}};setTimeout(()=>{try{if(typeof v147ApplyFilters==="function") v147ApplyFilters()}catch(e){}; aplicarHistorico()},500)}}catch(e){} }
     function patchStatusButtons(){ document.querySelectorAll("tr.bet-row button,tr.bet-row a").forEach(btn=>{if(btn.dataset.v149StatusReady==="1") return;const t=norm(btn.innerText||btn.title||btn.getAttribute("aria-label")||"");const icon=(btn.innerText||"").trim();const looksStatus=t.includes("green")||t.includes("ganha")||t.includes("red")||t.includes("perdida")||t.includes("anular")||t.includes("anulada")||["✓","✔","x","✕","-"].includes(icon);if(!looksStatus) return;btn.dataset.v149StatusReady="1";btn.addEventListener("click",()=>{const row=btn.closest("tr.bet-row");if(row){row.classList.add("v149-status-changing");setTimeout(()=>row.classList.remove("v149-status-changing"),2200)};setTimeout(()=>{try{if(typeof v147ApplyFilters==="function") v147ApplyFilters()}catch(e){}; try{if(typeof v141AtualizarLucroPorBanca==="function") v141AtualizarLucroPorBanca()}catch(e){}; aplicarHistorico()},900)},{capture:true})}) }
@@ -978,6 +1158,7 @@ function fecharModalBancaInicial(){ const modal=document.getElementById("bancaIn
     document.addEventListener("DOMContentLoaded",()=>{ setTimeout(boot,0);setTimeout(boot,200);setInterval(checarVersaoApostas,30000) })
     document.addEventListener("click",e=>{ const t=norm(e.target?.innerText||"");if(t.includes("ultimas apostas")||t.includes("últimas apostas")) feedVisivel=true;if(t.includes("evolucao")||t.includes("evolução")) feedVisivel=false;if(t.includes("salvar")||t.includes("editar")||t.includes("excluir")||t.includes("agrupar")||t.includes("expandir")){setTimeout(()=>{ensureHistoricoButton();patchStatusButtons();aplicarHistorico()},800)} })
     window.v149AplicarHistorico=aplicarHistorico
+    window.v149SetMostrarHistorico=function(v){ mostrarHistoricoAntigo=Boolean(v); aplicarHistorico() }
 })();
 
 // v150
@@ -987,11 +1168,47 @@ function fecharModalBancaInicial(){ const modal=document.getElementById("bancaIn
     function parseGameDateFromCell(row){ const txt=row.children?.[0]?.innerText||"";const m=txt.match(/(\d{2})\/(\d{2})(?:\/(\d{4}))?\s+(\d{1,2}):(\d{2})/);if(!m) return null;return new Date(Number(m[3]||new Date().getFullYear()),Number(m[2])-1,Number(m[1]),Number(m[4]),Number(m[5])) }
     function gameDate(row){ return parseGameDateFromDataset(row)||parseGameDateFromCell(row) }
     function shouldFinalize(row){ const d=gameDate(row);if(!d) return false;return(Date.now()-d.getTime())/60000>=LIMITE_MINUTOS }
-    function forceFinalizeOldLiveGames(){ document.querySelectorAll("tr.bet-row").forEach(row=>{if(!shouldFinalize(row)) return;row.dataset.aoVivo="0";row.dataset.statusJogo="Finalizado";row.dataset.horarioJogo="Finalizado";const first=row.children?.[0];if(first){const main=first.querySelector(".game-date-main")?.innerText||first.innerText.split("\n")[0]||"";first.classList.add("game-date-cell");first.innerHTML=`<span class="game-date-main">${main}</span><span class="game-date-status finished">Finalizado</span>`}}) }
+    function forceFinalizeOldLiveGames(){ document.querySelectorAll("tr.bet-row").forEach(row=>{if(!shouldFinalize(row)) return;if(row.dataset.v150Finalized==="1") return;row.dataset.v150Finalized="1";row.dataset.aoVivo="0";row.dataset.statusJogo="Finalizado";row.dataset.horarioJogo="Finalizado";const first=row.children?.[0];if(first){const main=first.querySelector(".game-date-main")?.innerText||first.innerText.split("\n")[0]||"";first.classList.add("game-date-cell");first.innerHTML=`<span class="game-date-main">${main}</span><span class="game-date-status finished">Finalizado</span>`}}) }
     function refresh(){ forceFinalizeOldLiveGames();try{if(typeof v147ApplyFilters==="function") v147ApplyFilters()}catch(e){};try{if(typeof v149AplicarHistorico==="function") v149AplicarHistorico()}catch(e){} }
     document.addEventListener("DOMContentLoaded",()=>{ setTimeout(refresh,900);setTimeout(refresh,2000) })
-    document.addEventListener("click",()=>{ setTimeout(refresh,500) })
+    // Antes rodava a CADA clique (causava a tabela inteira piscar ao abrir o editar).
+    // Agora roda periodicamente — finaliza jogos antigos sem re-renderizar a cada clique.
+    setInterval(refresh, 60000)
     window.v150ForceFinalizeOldLiveGames=refresh
+})();
+
+// v160 — pills de status
+(function(){
+    function init(){
+        const pills=document.querySelectorAll('#betStatusPills .bet-pill')
+        if(!pills.length) return
+        pills.forEach(pill=>{
+            pill.addEventListener('click',function(){
+                pills.forEach(p=>p.classList.remove('active'))
+                this.classList.add('active')
+                const status=this.dataset.status
+                const sf=document.getElementById('statusFilter')
+                if(sf){ const valid=['todos','ganha','perdida','pendente','anulada'];sf.value=valid.includes(status)?status:'todos' }
+                if(typeof v149SetMostrarHistorico==='function') v149SetMostrarHistorico(['finalizadas','ganha','perdida','anulada'].includes(status))
+                filtrarApostas()
+                if(status==='finalizadas') setTimeout(filtrarApostas,220)
+                setTimeout(updateFinBadge,300)
+                try{ if(typeof v147ApplyFilters==='function'&&status!=='finalizadas') v147ApplyFilters() }catch(e){}
+            })
+        })
+        updateFinBadge()
+    }
+    function updateFinBadge(){
+        const badge=document.getElementById('finBadge');if(!badge) return
+        let count=0
+        document.querySelectorAll('tr.bet-row').forEach(r=>{
+            const st=(r.querySelector('.status-cell')?.innerText||'').toLowerCase()
+            if(st.includes('ganha')||st.includes('perdida')||st.includes('anulada')) count++
+        })
+        badge.textContent=count>0?count:''
+    }
+    document.addEventListener('DOMContentLoaded',()=>{ setTimeout(init,80); setTimeout(updateFinBadge,900) })
+    window.v160UpdateFinBadge=updateFinBadge
 })();
 
 // v154
@@ -1020,4 +1237,64 @@ function fecharModalBancaInicial(){ const modal=document.getElementById("bancaIn
     window.v154StatusAjaxOriginal=true
 })();
 
+// vFix — filtrarApostas tem a palavra final; neutraliza v149 quando pills existem
+;(function(){
+    document.addEventListener('DOMContentLoaded', function(){
+        if(document.getElementById('betStatusPills')){
+            window.v149AplicarHistorico = function(){}
+            window.v149SetMostrarHistorico = function(){}
+        }
+        // Anti-tremida: cancela o reflow do v147 durante a digitação na busca.
+        // Este listener é registrado por último (vFix roda após v147), então roda
+        // depois do listener do v147 e cancela o timer __v147t antes de ele executar.
+        // filtrarApostas já faz TODA a filtragem (busca, data, casa, esporte, status, olho).
+        // Sem isto, o v147 roda 120ms depois e re-mostra linhas, quebrando os filtros.
+        // Delegação no document (fase bubble = roda DEPOIS do listener do v147 no input).
+        // Cancela o v147 em QUALQUER input fora da barra de filtros (#apostas): modal de
+        // editar, nova aposta, preview do OCR, etc. — pra digitar neles não re-renderizar
+        // (piscar) a tabela de fundo. Cobre inputs dinâmicos (delegação).
+        function _cancelaV147(e){
+            const t = e.target
+            if(t && t.matches && t.matches('input, select') && !t.closest('#apostas')){
+                clearTimeout(window.__v147t)
+            }
+        }
+        document.addEventListener('input', _cancelaV147)
+        document.addEventListener('change', _cancelaV147)
+        // Filtros do #apostas: o v147 também é redundante (filtrarApostas faz tudo)
+        document.querySelectorAll('#apostas input, #apostas select').forEach(function(el){
+            el.addEventListener('input',  function(){ clearTimeout(window.__v147t) })
+            el.addEventListener('change', function(){ clearTimeout(window.__v147t) })
+        })
+        setTimeout(function(){ if(typeof filtrarApostas==='function') filtrarApostas() }, 250)
+        setTimeout(function(){ if(typeof filtrarApostas==='function') filtrarApostas() }, 1100)
+        setTimeout(function(){ if(typeof filtrarApostas==='function') filtrarApostas() }, 2500)
+        // Patch v136SmartTableApply para sempre limpar separadores depois de re-renderizar
+        setTimeout(function(){
+            const _origV136 = window.v136SmartTableApply
+            if(_origV136){
+                window.v136SmartTableApply = function(force){
+                    _origV136(force)
+                    setTimeout(function(){ if(typeof filtrarApostas==='function') filtrarApostas() }, 80)
+                }
+            }
+        }, 500)
+        // Rede de segurança: QUALQUER re-render da tabela (v136/v149/v150 internos,
+        // timers do ESPN, etc.) que adicione/remova linhas dispara uma re-filtragem.
+        // Sem isso, separadores de dias antigos reaparecem "do nada" quando algo
+        // recria a tabela sem chamar filtrarApostas. Observa só childList (não style),
+        // e desconecta durante a própria filtragem para nunca entrar em loop.
+        const _tbody = document.querySelector('#betsMainTable tbody')
+        if(_tbody && typeof MutationObserver !== 'undefined'){
+            let _t = null
+            const _obs = new MutationObserver(function(){
+                clearTimeout(_t)
+                _t = setTimeout(function(){
+                    if(typeof filtrarApostas === 'function') filtrarApostas()
+                }, 60)
+            })
+            _obs.observe(_tbody, { childList: true })
+        }
+    })
+})();
 
