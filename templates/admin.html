@@ -1,38 +1,6 @@
 <!DOCTYPE html>
 <html lang="pt-BR">
-<head><meta charset="UTF-8"><title>Admin</title><link rel="stylesheet" href="/static/style.css">
-<style>
-.admin-stats-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(160px,1fr)); gap:12px; margin-bottom:24px; }
-.admin-stat-card { background:rgba(30,41,59,.7); border:1px solid #1e293b; border-radius:12px; padding:14px 16px; }
-.admin-stat-card span { display:block; font-size:11px; color:#94a3b8; text-transform:uppercase; letter-spacing:.05em; margin-bottom:4px; }
-.admin-stat-card strong { font-size:22px; color:#f1f5f9; }
-.admin-stat-card.green strong { color:#4ade80; }
-.admin-stat-card.red strong { color:#f87171; }
-.admin-table { width:100%; border-collapse:collapse; font-size:13px; }
-.admin-table th { background:rgba(15,23,42,.8); color:#94a3b8; padding:10px 12px; text-align:left; font-size:11px; text-transform:uppercase; letter-spacing:.05em; border-bottom:1px solid #1e293b; white-space:nowrap; }
-.admin-table td { padding:12px; border-bottom:1px solid rgba(30,41,59,.6); color:#e2e8f0; vertical-align:middle; }
-.admin-table tr:hover td { background:rgba(30,41,59,.4); }
-.badge { display:inline-block; padding:3px 9px; border-radius:20px; font-size:11px; font-weight:700; }
-.badge.green { background:rgba(74,222,128,.15); color:#4ade80; border:1px solid rgba(74,222,128,.3); }
-.badge.red { background:rgba(248,113,113,.15); color:#f87171; border:1px solid rgba(248,113,113,.3); }
-.badge.yellow { background:rgba(251,191,36,.15); color:#fbbf24; border:1px solid rgba(251,191,36,.3); }
-.badge.blue { background:rgba(96,165,250,.15); color:#60a5fa; border:1px solid rgba(96,165,250,.3); }
-.admin-actions { display:flex; gap:6px; flex-wrap:wrap; }
-/* Modal de confirmação */
-.confirm-modal-bg { display:none; position:fixed; inset:0; background:rgba(0,0,0,.7); z-index:9999; align-items:center; justify-content:center; }
-.confirm-modal-bg.open { display:flex; }
-.confirm-modal { background:#0f172a; border:1px solid #334155; border-radius:16px; padding:28px 32px; max-width:440px; width:90%; }
-.confirm-modal h3 { font-size:16px; color:#f1f5f9; margin:0 0 8px; }
-.confirm-modal p { font-size:13px; color:#94a3b8; margin:0 0 18px; line-height:1.5; }
-.confirm-modal .nome-destaque { color:#f87171; font-weight:700; }
-.confirm-modal label { display:flex; align-items:center; gap:8px; font-size:13px; color:#cbd5e1; cursor:pointer; margin-bottom:20px; }
-.confirm-modal label input[type=checkbox] { width:16px; height:16px; cursor:pointer; }
-.confirm-modal-btns { display:flex; gap:10px; justify-content:flex-end; }
-.btn-cancel-modal { background:rgba(51,65,85,.6); color:#94a3b8; border:none; border-radius:8px; padding:8px 18px; cursor:pointer; font-size:13px; }
-.btn-apagar-modal { background:#dc2626; color:#fff; border:none; border-radius:8px; padding:8px 18px; cursor:pointer; font-size:13px; font-weight:700; }
-.btn-apagar-modal:disabled { opacity:.4; cursor:not-allowed; }
-</style>
-</head>
+<head><meta charset="UTF-8"><title>Admin</title><link rel="stylesheet" href="/static/style.css"></head>
 <body>
 <aside class="sidebar">
     <div class="sidebar-top"><div class="logo"><span class="logo-icon">🎯</span><span class="logo-text">Bet Manager</span></div></div>
@@ -42,6 +10,7 @@
         <a class="active" href="/admin" data-title="Admin"><span class="nav-icon">⚙</span><span class="nav-text">Admin</span></a>
         <a href="/logout" data-title="Sair"><span class="nav-icon">↪</span><span class="nav-text">Sair</span></a>
     </nav>
+
     <div class="sidebar-user-wrap">
         <div class="sidebar-user-card" onclick="toggleUserMenu(event)">
             <div class="sidebar-user-avatar">{{ usuario_inicial if usuario_inicial else "U" }}</div>
@@ -51,159 +20,166 @@
             </div>
             <span class="sidebar-user-arrow">⌄</span>
         </div>
+
         <div id="sidebarUserMenu" class="sidebar-user-menu">
             <a href="/configuracoes">👤 Perfil / Configurações</a>
             <a href="/saldos">💰 Saldos</a>
-            {% if usuario and usuario.is_admin %}<a href="/admin">⚙ Admin</a>{% endif %}
+            {% if usuario and usuario.is_admin %}
+            <a href="/admin">⚙ Admin</a>
+            {% endif %}
             <a href="/logout" class="logout-link">🚪 Sair</a>
         </div>
     </div>
+
 </aside>
-
 <main class="app">
-<header class="topbar"><div><h1>Painel Admin</h1><p>Visão geral do sistema</p></div></header>
+<header class="topbar"><div><h1>Painel Admin</h1><p>Usuários cadastrados em usuarios.json</p></div></header>
 
-<section class="panel" style="padding:20px 24px; margin-bottom:16px;">
-    <h2 style="margin-bottom:16px; font-size:15px; color:#94a3b8; text-transform:uppercase; letter-spacing:.05em;">Resumo Geral</h2>
-    <div class="admin-stats-grid">
-        <div class="admin-stat-card">
-            <span>Usuários</span>
-            <strong>{{ total_geral.usuarios }}</strong>
+<section class="panel" id="durabilidadePanel">
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap">
+        <h2 style="margin:0">🛡️ Saúde do Sistema — Proteção das Apostas</h2>
+        <button class="dark" onclick="carregarDurabilidade()">↻ Atualizar</button>
+    </div>
+    <p style="color:#8a93a6;margin:6px 0 14px">Estado ao vivo das 4 camadas que garantem que nenhuma aposta se perca.</p>
+    <div id="durCards" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:12px">
+        <div style="color:#8a93a6">Carregando…</div>
+    </div>
+    <div id="durAlertas" style="margin-top:14px"></div>
+
+    <div style="margin-top:22px">
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap">
+            <h3 style="margin:0;color:#e6e9ef">📋 Atividade recente das apostas</h3>
+            <button class="dark" onclick="carregarAtividade()">↻ Atualizar</button>
         </div>
-        <div class="admin-stat-card">
-            <span>Total de Apostas</span>
-            <strong>{{ total_geral.bets }}</strong>
-        </div>
-        <div class="admin-stat-card">
-            <span>Total Apostado</span>
-            <strong>R$ {{ "%.2f"|format(total_geral.valor_apostado) }}</strong>
-        </div>
-        <div class="admin-stat-card {{ 'green' if total_geral.lucro >= 0 else 'red' }}">
-            <span>Lucro Total (plataforma)</span>
-            <strong>R$ {{ "%.2f"|format(total_geral.lucro) }}</strong>
+        <p style="color:#8a93a6;margin:4px 0 10px;font-size:13px">Cada aposta criada/editada/excluída, com confirmação de que foi salva e protegida.</p>
+        <div style="overflow-x:auto">
+            <table id="durAtividade" style="width:100%;border-collapse:collapse;font-size:13px">
+                <thead><tr style="text-align:left;color:#8a93a6;border-bottom:1px solid #2a2f3a">
+                    <th style="padding:6px 8px">Quando</th><th style="padding:6px 8px">Usuário</th>
+                    <th style="padding:6px 8px">Ação</th><th style="padding:6px 8px">Aposta</th>
+                    <th style="padding:6px 8px">Salva</th><th style="padding:6px 8px">Backup</th>
+                </tr></thead>
+                <tbody><tr><td colspan="6" style="padding:8px;color:#8a93a6">Carregando…</td></tr></tbody>
+            </table>
         </div>
     </div>
 </section>
 
-<section class="panel" style="padding:20px 24px;">
-    <h2 style="margin-bottom:16px; font-size:15px; color:#94a3b8; text-transform:uppercase; letter-spacing:.05em;">Usuários ({{ usuarios|length }})</h2>
-    <div style="overflow-x:auto;">
-    <table class="admin-table">
-        <thead>
-            <tr>
-                <th>Usuário</th>
-                <th>Email</th>
-                <th>Cadastro</th>
-                <th>Status</th>
-                <th>Plano</th>
-                <th>Ações</th>
-            </tr>
-        </thead>
-        <tbody>
+<section class="panel">
+    <h2>Usuários</h2>
+    <div class="admin-grid">
         {% for u in usuarios %}
-        <tr>
-            <td><strong>{{ u.nome }}</strong>{% if u.is_admin %} <span class="badge blue">admin</span>{% endif %}</td>
-            <td style="color:#94a3b8;">{{ u.email }}</td>
-            <td style="color:#64748b; font-size:12px;">{{ u.criado_em[:10] if u.criado_em else '—' }}</td>
-            <td>
-                <span class="badge {{ 'green' if u.ativo else 'red' }}">{{ 'Ativo' if u.ativo else 'Bloqueado' }}</span>
-                {% if u.assinatura_ativa %}<span class="badge green" style="margin-left:4px;">Sub ON</span>{% else %}<span class="badge yellow" style="margin-left:4px;">Sem sub</span>{% endif %}
-            </td>
-            <td><span class="badge blue">{{ u.plano or 'free' }}</span></td>
-            <td>
-                <div class="admin-actions">
-                    <a href="/admin/toggle/{{ u.id }}"><button class="{{ 'dark' if u.ativo else 'blue' }}" style="font-size:11px;padding:4px 8px;">{{ 'Bloquear' if u.ativo else 'Ativar' }}</button></a>
-                    <a href="/admin/assinatura/{{ u.id }}"><button class="blue" style="font-size:11px;padding:4px 8px;">{{ 'Sub OFF' if u.assinatura_ativa else 'Sub ON' }}</button></a>
-                    <a href="/admin/promover/{{ u.id }}"><button class="blue" style="font-size:11px;padding:4px 8px;">{{ 'Rem. admin' if u.is_admin else 'Tornar admin' }}</button></a>
-                    {% if not u.is_admin %}
-                    <button class="red" style="font-size:11px;padding:4px 8px;" onclick="abrirConfirmarApagar('{{ u.id }}', '{{ u.nome }}')">🗑 Apostas</button>
-                    {% endif %}
-                </div>
-            </td>
-        </tr>
+        <div class="admin-row">
+            <strong>{{ u.nome }}</strong>
+            <span>{{ u.email }}</span>
+            <span class="badge {{ 'green' if u.ativo else 'red' }}">{{ 'Ativo' if u.ativo else 'Bloqueado' }}</span>
+            <span class="badge {{ 'green' if u.assinatura_ativa else 'yellow' }}">{{ 'Assinatura ON' if u.assinatura_ativa else 'Sem assinatura' }}</span>
+            <span class="badge blue plan-badge">{{ u.plano }}</span>
+            <a href="/admin/toggle/{{ u.id }}"><button class="dark">{{ 'Bloquear' if u.ativo else 'Ativar' }}</button></a>
+            <a href="/admin/assinatura/{{ u.id }}"><button class="blue">{{ 'Desativar assinatura' if u.assinatura_ativa else 'Ativar assinatura' }}</button></a>
+            <a href="/admin/promover/{{ u.id }}"><button class="blue">{{ 'Remover admin' if u.is_admin else 'Tornar admin' }}</button></a>
+        </div>
         {% endfor %}
-        </tbody>
-    </table>
-    </div>
-</section>
-
-<section class="panel" style="padding:20px 24px; margin-top:16px;">
-    <h2 style="margin-bottom:8px; font-size:15px; color:#94a3b8; text-transform:uppercase; letter-spacing:.05em;">Backup de Dados</h2>
-    <p style="font-size:13px; color:#64748b; margin-bottom:16px;">Baixe um arquivo JSON com todas as apostas e usuários para salvar no seu PC.</p>
-    <div style="display:flex; gap:10px; flex-wrap:wrap; align-items:center;">
-        <a href="/admin/exportar" download>
-            <button class="blue" style="font-size:13px; padding:8px 18px;">⬇ Baixar Backup JSON</button>
-        </a>
-        <a href="/admin/exportar_sql" download>
-            <button class="blue" style="font-size:13px; padding:8px 18px;">⬇ Baixar Backup SQL</button>
-        </a>
-        <button class="dark" style="font-size:13px; padding:8px 18px;" onclick="criarSnapshot()">💾 Salvar Snapshot no Banco</button>
-        <span id="snapshotMsg" style="font-size:12px; color:#4ade80; display:none;">Snapshot salvo!</span>
     </div>
 </section>
 </main>
 
-<!-- Modal de confirmação dupla -->
-<div class="confirm-modal-bg" id="confirmarApagarModal">
-    <div class="confirm-modal">
-        <h3>Apagar apostas do usuário</h3>
-        <p>Você está prestes a apagar <strong>todas as apostas</strong> de <span class="nome-destaque" id="confirmarNomeUsuario"></span>. Esta ação é <strong style="color:#f87171;">irreversível</strong>.</p>
-        <label>
-            <input type="checkbox" id="confirmarCheckbox" onchange="toggleBtnApagar()">
-            Sim, entendo que todas as apostas serão apagadas permanentemente.
-        </label>
-        <div class="confirm-modal-btns">
-            <button class="btn-cancel-modal" onclick="fecharConfirmar()">Cancelar</button>
-            <form id="formApagarApostas" method="POST" action="" style="margin:0;">
-                <button type="submit" class="btn-apagar-modal" id="btnConfirmarApagar" disabled>Apagar apostas</button>
-            </form>
-        </div>
-    </div>
-</div>
-
-<script>
-function toggleUserMenu(ev){if(ev) ev.stopPropagation();const menu=document.getElementById("sidebarUserMenu");if(menu) menu.classList.toggle("open")}
-document.addEventListener("click",function(e){const menu=document.getElementById("sidebarUserMenu");const card=document.querySelector(".sidebar-user-card");if(menu&&card&&!menu.contains(e.target)&&!card.contains(e.target)) menu.classList.remove("open")})
-
-function abrirConfirmarApagar(uid, nome) {
-    document.getElementById("confirmarNomeUsuario").textContent = nome
-    document.getElementById("formApagarApostas").action = "/admin/apagar_apostas/" + uid
-    document.getElementById("confirmarCheckbox").checked = false
-    document.getElementById("btnConfirmarApagar").disabled = true
-    document.getElementById("confirmarApagarModal").classList.add("open")
+<script id="durabilidade-js">
+function _fmtData(s){
+    if(!s) return "—";
+    return String(s).replace("T"," ").slice(0,16);
 }
-function fecharConfirmar() {
-    document.getElementById("confirmarApagarModal").classList.remove("open")
+function _card(titulo, ok, linhas){
+    const cor = ok ? "#1f9d55" : "#d64545";
+    const bg  = ok ? "rgba(31,157,85,.08)" : "rgba(214,69,69,.08)";
+    const icone = ok ? "✅" : "⚠️";
+    const corpo = linhas.map(l => `<div style="display:flex;justify-content:space-between;gap:10px;font-size:13px;margin:3px 0">
+        <span style="color:#8a93a6">${l[0]}</span><strong style="color:#e6e9ef;text-align:right">${l[1]}</strong></div>`).join("");
+    return `<div style="border:1px solid ${cor};border-left:4px solid ${cor};background:${bg};border-radius:10px;padding:13px 15px">
+        <div style="font-weight:700;color:#e6e9ef;margin-bottom:8px">${icone} ${titulo}</div>${corpo}</div>`;
 }
-function toggleBtnApagar() {
-    document.getElementById("btnConfirmarApagar").disabled = !document.getElementById("confirmarCheckbox").checked
-}
-document.getElementById("confirmarApagarModal").addEventListener("click", function(e) {
-    if(e.target === this) fecharConfirmar()
-})
+function carregarDurabilidade(){
+    const box = document.getElementById("durCards");
+    box.innerHTML = '<div style="color:#8a93a6">Carregando…</div>';
+    fetch("/admin/durabilidade/status").then(r => r.json()).then(d => {
+        const c = d.camadas || {};
+        const l1 = c.c1_ledger || {}, l2 = c.c2_alarme || {}, l3 = c.c3_backup || {}, l4 = c.c4_trava || {};
+        let html = "";
+        html += _card("Camada 1 — Ledger imutável", !!l1.ok, [
+            ["Eventos registrados", (l1.eventos_total ?? 0).toLocaleString("pt-BR")],
+            ["Apostas rastreadas", (l1.apostas_rastreadas ?? 0).toLocaleString("pt-BR")],
+            ["Apostas no app agora", (l1.apostas_no_blob ?? 0).toLocaleString("pt-BR")],
+            ["Usuários no ledger", l1.usuarios ?? 0],
+            ["Última gravação", _fmtData(l1.ultima_gravacao)],
+        ]);
+        html += _card("Camada 2 — Alarme de perda", !!l2.ok, [
+            ["Alertas registrados", l2.total_alertas ?? 0],
+            ["Status", (l2.total_alertas ? "houve alertas — ver abaixo" : "nenhuma perda detectada")],
+        ]);
+        html += _card("Camada 3 — Backup retenção real", !!l3.ok, [
+            ["Snapshots guardados", l3.snapshots ?? 0],
+            ["Mais antigo", _fmtData(l3.mais_antigo)],
+            ["Mais recente", _fmtData(l3.mais_recente)],
+            ["Apostas no último", (l3.apostas_no_ultimo ?? 0).toLocaleString("pt-BR")],
+        ]);
+        html += _card("Camada 4 — Trava anti-produção", !!l4.ok, [
+            ["Rodando no Render", l4.no_render ? "sim (protegido)" : "não (local)"],
+            ["Banco conectado", l4.db_ativo ? "sim" : "não"],
+            ["Baseline em memória", (d.baseline_memoria ?? "—")],
+        ]);
+        const l5 = c.c5_usuarios || {}, l6 = c.c6_offsite || {};
+        html += _card("Camada 5 — Ledger de usuários", !!l5.ok, [
+            ["Eventos registrados", (l5.eventos ?? 0).toLocaleString("pt-BR")],
+            ["Usuários rastreados", l5.usuarios_rastreados ?? 0],
+        ]);
+        html += _card("Camada 6 — Backup off-site (GitHub)", !!l6.ok, [
+            ["Configurado", l6.configurado ? "sim (criptografado)" : "não — configurar"],
+            ["Repositório", l6.repo || "—"],
+        ]);
+        box.innerHTML = html;
 
-async function criarSnapshot() {
-    const btn = event.target
-    btn.disabled = true
-    btn.textContent = "Salvando..."
-    try {
-        const r = await fetch("/admin/backups/criar", {method:"POST"})
-        const d = await r.json()
-        const msg = document.getElementById("snapshotMsg")
-        if (d.status === "ok" || d.id) {
-            msg.textContent = "Snapshot salvo! ID: " + (d.id || "ok")
-            msg.style.color = "#4ade80"
+        const al = document.getElementById("durAlertas");
+        if(l2.ultimos && l2.ultimos.length){
+            al.innerHTML = '<div style="font-weight:600;color:#e6e9ef;margin-bottom:6px">Últimos alertas de perda</div>'
+                + l2.ultimos.map(x => `<div style="font-family:monospace;font-size:12px;color:#d64545;background:rgba(214,69,69,.07);padding:5px 8px;border-radius:6px;margin:3px 0">${x}</div>`).join("");
         } else {
-            msg.textContent = "Erro: " + (d.erro || "desconhecido")
-            msg.style.color = "#f87171"
+            al.innerHTML = '<div style="color:#1f9d55;font-size:13px">✓ Nenhum alerta de perda registrado.</div>';
         }
-        msg.style.display = "inline"
-        setTimeout(() => { msg.style.display = "none" }, 4000)
-    } catch(e) {
-        alert("Erro ao salvar snapshot: " + e)
-    }
-    btn.disabled = false
-    btn.textContent = "💾 Salvar Snapshot no Banco"
+    }).catch(e => { box.innerHTML = '<div style="color:#d64545">Erro ao carregar status: '+e+'</div>'; });
 }
+function carregarAtividade(){
+    const tb = document.querySelector("#durAtividade tbody");
+    tb.innerHTML = '<tr><td colspan="6" style="padding:8px;color:#8a93a6">Carregando…</td></tr>';
+    fetch("/admin/durabilidade/atividade").then(r => r.json()).then(d => {
+        const evs = d.eventos || [];
+        if(!evs.length){ tb.innerHTML = '<tr><td colspan="6" style="padding:8px;color:#8a93a6">Nenhuma atividade ainda.</td></tr>'; return; }
+        if(evs[0] && evs[0].erro){ tb.innerHTML = '<tr><td colspan="6" style="padding:8px;color:#d64545">Erro: '+evs[0].erro+'</td></tr>'; return; }
+        const corAcao = {criou:"#1f9d55", editou:"#3b82f6", excluiu:"#d64545"};
+        tb.innerHTML = evs.map(e => `<tr style="border-bottom:1px solid #1e222b">
+            <td style="padding:6px 8px;color:#8a93a6;white-space:nowrap">${_fmtData(e.ts)}</td>
+            <td style="padding:6px 8px;color:#e6e9ef">${e.usuario}</td>
+            <td style="padding:6px 8px;color:${corAcao[e.acao]||'#e6e9ef'};font-weight:600">${e.acao}</td>
+            <td style="padding:6px 8px;color:#cbd2e0">${e.descricao}</td>
+            <td style="padding:6px 8px;color:#1f9d55;white-space:nowrap">✓ salva</td>
+            <td style="padding:6px 8px;white-space:nowrap">${e.no_backup ? '<span style="color:#1f9d55">✓ no backup</span>' : '<span style="color:#caa23a">⏳ próximo backup</span>'}</td>
+        </tr>`).join("");
+    }).catch(e => { tb.innerHTML = '<tr><td colspan="6" style="padding:8px;color:#d64545">Erro ao carregar: '+e+'</td></tr>'; });
+}
+document.addEventListener("DOMContentLoaded", function(){ carregarDurabilidade(); carregarAtividade(); });
+
+function toggleUserMenu(ev){
+    if(ev) ev.stopPropagation()
+    const menu = document.getElementById("sidebarUserMenu")
+    if(menu) menu.classList.toggle("open")
+}
+
+document.addEventListener("click", function(e){
+    const menu = document.getElementById("sidebarUserMenu")
+    const card = document.querySelector(".sidebar-user-card")
+    if(menu && card && !menu.contains(e.target) && !card.contains(e.target)){
+        menu.classList.remove("open")
+    }
+})
 </script>
+
 </body></html>

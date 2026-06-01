@@ -1,5 +1,6 @@
 from flask import Flask, render_template, request, redirect, jsonify, session, url_for
 import json
+import copy
 import uuid
 import os
 import re
@@ -22,6 +23,8 @@ try:
 except ImportError:
     PSYCOPG2_OK = False
 
+import durabilidade as Dur
+
 import pytesseract
 from PIL import Image
 
@@ -42,10 +45,24 @@ ARQUIVO = os.path.join(BASE_DIR, "dados.json")
 CACHE_API = os.path.join(BASE_DIR, "api_cache.json")
 USUARIOS_PATH = os.path.join(BASE_DIR, "usuarios.json")
 
-DATABASE_URL = os.environ.get(
-    "DATABASE_URL",
-    "postgresql://betmanager_user:BKrSw4b2w25LpvLqPdhn8cMINstlIs9R@dpg-d7snnsreo5us73eks3s0-a.oregon-postgres.render.com/betmanager"
-)
+DATABASE_URL = os.environ.get("DATABASE_URL", "")
+
+# ============================================================
+# CAMADA 4 - TRAVA ANTI-PRODUCAO EM AMBIENTE LOCAL
+# A producao (Render) define a variavel de ambiente RENDER. Conectar ao banco
+# de producao a partir de um PC local (testes, reseed) foi a causa de perda de
+# dados. Aqui recusamos essa conexao explicitamente: se nao estamos no Render e
+# a URL aponta para o banco de producao, bloqueamos e caimos no fallback local.
+# ============================================================
+_ID_BANCO_PRODUCAO = "dpg-d7snnsreo5us73eks3s0-a"
+_RODANDO_NO_RENDER = bool(os.environ.get("RENDER"))
+if not _RODANDO_NO_RENDER and _ID_BANCO_PRODUCAO in (DATABASE_URL or ""):
+    print("=" * 64)
+    print("BLOQUEIO DE SEGURANCA (Camada 4): ambiente LOCAL tentando usar o")
+    print("banco de PRODUCAO. Conexao recusada para proteger os dados reais.")
+    print("Defina DATABASE_URL para um banco de teste, ou rode no Render.")
+    print("=" * 64)
+    DATABASE_URL = ""
 
 
 def get_pg_conn():
@@ -107,6 +124,11 @@ def init_pg_db():
         """)
         conn.commit()
         cur.close()
+        try:
+            Dur.init_durabilidade(conn)
+            print("Durabilidade: tabelas apostas_ledger e backups_v2 OK")
+        except Exception as e:
+            print("ERRO init durabilidade (app segue):", e)
         conn.close()
         print("PostgreSQL: tabelas storage, backups e app_store OK")
     except Exception as e:
@@ -149,10 +171,48 @@ def criar_backup_pg(label=None):
         cur.close()
         _ultimo_backup_ts = agora
         print(f"Backup criado: {lbl}")
+        # Camada 3: backup com retencao REAL (horarios 48h / diarios 30d / semanais 12).
+        # Roda em paralelo ao backup antigo durante a transicao (rede dupla).
+        try:
+            total = len(dados.get("bets", []))
+            Dur.criar_backup_v2(conn, snapshot, total_apostas=total, label=lbl)
+        except Exception as e:
+            print("AVISO backup_v2 (backup antigo ja' salvo):", e)
     except Exception as e:
         print("ERRO AO CRIAR BACKUP:", e)
     finally:
         release_pg_conn(conn)
+
+
+BACKUP_REPO = os.environ.get("BACKUP_REPO", "italiazin/betmanager-backups")
+
+
+def backup_offsite_github():
+    """Backup OFF-SITE criptografado no GitHub privado — sobrevive ao banco sumir.
+    Requer env vars BACKUP_CRYPT_KEY (chave Fernet) e GITHUB_BACKUP_TOKEN.
+    Faz no-op silencioso se nao estiver configurado (nao quebra o app)."""
+    key = os.environ.get("BACKUP_CRYPT_KEY")
+    token = os.environ.get("GITHUB_BACKUP_TOKEN") or os.environ.get("GITHUB_TOKEN")
+    if not key or not token:
+        return False
+    try:
+        snapshot = {
+            "ts": datetime.now().isoformat(),
+            "dados": dados,
+            "usuarios": carregar_usuarios(),
+        }
+        kb = key.encode() if isinstance(key, str) else key
+        cifrado = Dur.cifrar_blob(snapshot, kb)
+        caminho = "backups/bet_" + datetime.now().strftime("%Y%m%d") + ".json.enc"
+        ok, status = Dur.enviar_arquivo_github(
+            cifrado, BACKUP_REPO, caminho, token,
+            "backup " + datetime.now().strftime("%Y-%m-%d %H:%M"))
+        print(f"Backup off-site GitHub: {'OK' if ok else 'FALHOU'} (HTTP {status}) -> {caminho}")
+        return ok
+    except Exception as e:
+        print("ERRO backup off-site GitHub (app segue):", e)
+        return False
+
 
 CACHE_RESULTADOS = {}
 CACHE_EVENTOS = {}
@@ -325,11 +385,63 @@ def _pg_obter_conn_save():
     _pg_save_conn = psycopg2.connect(DATABASE_URL, sslmode="require") if PSYCOPG2_OK else None
     return _pg_save_conn
 
+# Baseline em memoria do ultimo save bem-sucedido, para o diff do ledger.
+# Inicializado em _bootstrap_ledger() apos carregar().
+_estado_bets_anterior = None
+# Baseline dos usuarios (ledger de cadastros). Inicializado em _bootstrap_ledger_usuarios().
+_estado_usuarios_anterior = None
+
+
+def _disparar_alarme(alertas):
+    """Registra (log + arquivo) uma queda abrupta de apostas. NAO bloqueia o save:
+    o ledger ja preservou o estado anterior, entao da' para reverter; aqui so' avisamos."""
+    for a in alertas:
+        msg = (f"[ALARME-QUEDA] {datetime.now().isoformat()} user_id={a['user_id']} "
+               f"apostas {a['antes']} -> {a['depois']} (perdidas {a['perdidas']})")
+        print(msg)
+        try:
+            with open(os.path.join(BASE_DIR, "alertas_perda.log"), "a", encoding="utf-8") as f:
+                f.write(msg + "\n")
+        except Exception:
+            pass
+
+
 def _pg_executar_save(d):
+    global _estado_bets_anterior
     conn = _pg_obter_conn_save()
     if not conn:
         return False
     cur = conn.cursor()
+    bets_novos = d.get("bets", []) or []
+
+    # --- Ledger (Camada 1): calcula o diff vs baseline e detecta quedas ---
+    eventos = []
+    if _estado_bets_anterior is not None:
+        try:
+            eventos = Dur.calcular_eventos(_estado_bets_anterior, bets_novos)
+            alertas = Dur.detectar_quedas(
+                Dur.contar_por_usuario(_estado_bets_anterior),
+                Dur.contar_por_usuario(bets_novos))
+            if alertas:
+                _disparar_alarme(alertas)
+        except Exception as e:
+            print("AVISO: falha ao calcular ledger (save segue):", e)
+            eventos = []
+
+    # --- Grava ledger + blob na MESMA transacao ---
+    # SAVEPOINT isola o ledger: se ele falhar, o save do blob acontece mesmo assim.
+    if eventos:
+        try:
+            cur.execute("SAVEPOINT sp_ledger")
+            Dur.gravar_eventos(cur, eventos)
+            cur.execute("RELEASE SAVEPOINT sp_ledger")
+        except Exception as e:
+            try:
+                cur.execute("ROLLBACK TO SAVEPOINT sp_ledger")
+            except Exception:
+                pass
+            print("AVISO: ledger nao gravou (save do blob segue):", e)
+
     cur.execute(
         "INSERT INTO app_store (chave, valor, atualizado_em) VALUES ('dados', %s::jsonb, NOW()) "
         "ON CONFLICT (chave) DO UPDATE SET valor = EXCLUDED.valor, atualizado_em = NOW()",
@@ -337,6 +449,9 @@ def _pg_executar_save(d):
     )
     conn.commit()
     cur.close()
+    # Atualiza o baseline so' apos commit bem-sucedido. Copia PROFUNDA para
+    # detectar tambem edicoes em campos aninhados mutados in-place no proximo diff.
+    _estado_bets_anterior = copy.deepcopy(bets_novos)
     return True
 
 def _pg_salvar_dados(d):
@@ -379,6 +494,36 @@ def salvar_cache(cache):
 
 init_pg_db()
 dados = carregar()
+
+
+def _bootstrap_ledger():
+    """Define o baseline em memoria para o diff e, se o ledger estiver vazio,
+    registra todas as apostas atuais como eventos 'criar' (uma vez so')."""
+    global _estado_bets_anterior
+    _estado_bets_anterior = copy.deepcopy(dados.get("bets", []))
+    if not PSYCOPG2_OK:
+        return
+    try:
+        conn = get_pg_conn()
+        if not conn:
+            return
+        cur = conn.cursor()
+        cur.execute("SELECT count(*) FROM apostas_ledger")
+        n = cur.fetchone()[0]
+        if n == 0 and _estado_bets_anterior:
+            eventos = [{"acao": "criar", "user_id": b.get("user_id", ""),
+                        "aposta_id": b.get("id"), "aposta": b}
+                       for b in _estado_bets_anterior if b.get("id")]
+            Dur.gravar_eventos(cur, eventos)
+            conn.commit()
+            print(f"Ledger bootstrap: {len(eventos)} apostas registradas.")
+        cur.close()
+        conn.close()
+    except Exception as e:
+        print("AVISO bootstrap ledger (app segue):", e)
+
+
+_bootstrap_ledger()
 
 
 # ============================================================
@@ -4969,16 +5114,32 @@ def carregar_usuarios():
 
 
 def salvar_usuarios(data):
-    global _usuarios_cache
+    global _usuarios_cache, _estado_usuarios_anterior
     import time
     # Atualiza cache imediatamente (não espera TTL)
     _usuarios_cache = {"data": data, "ts": time.monotonic()}
+    users_novos = data.get("users", []) or []
 
     # Salva em app_store (fonte principal)
     conn = get_pg_conn()
     if conn:
         try:
             cur = conn.cursor()
+            # Ledger de usuarios: registra cadastros/edicoes/remocoes. SAVEPOINT garante
+            # que, se o ledger falhar, o save dos usuarios acontece mesmo assim.
+            if _estado_usuarios_anterior is not None:
+                try:
+                    eventos = Dur.calcular_eventos(_estado_usuarios_anterior, users_novos)
+                    if eventos:
+                        cur.execute("SAVEPOINT sp_uled")
+                        Dur.gravar_eventos_usuarios(cur, eventos)
+                        cur.execute("RELEASE SAVEPOINT sp_uled")
+                except Exception as e:
+                    try:
+                        cur.execute("ROLLBACK TO SAVEPOINT sp_uled")
+                    except Exception:
+                        pass
+                    print("AVISO: ledger de usuarios nao gravou (save segue):", e)
             cur.execute(
                 "INSERT INTO app_store (chave, valor, atualizado_em) VALUES ('usuarios', %s::jsonb, NOW()) "
                 "ON CONFLICT (chave) DO UPDATE SET valor = EXCLUDED.valor, atualizado_em = NOW()",
@@ -4987,6 +5148,7 @@ def salvar_usuarios(data):
             conn.commit()
             cur.close()
             conn.close()
+            _estado_usuarios_anterior = copy.deepcopy(users_novos)
             return
         except Exception as e:
             print("ERRO AO SALVAR USUARIOS NO POSTGRES:", e)
@@ -4998,6 +5160,35 @@ def salvar_usuarios(data):
     # Fallback: arquivo local
     with open(USUARIOS_PATH, "w", encoding="utf-8") as f:
         json.dump(data, f, indent=4, ensure_ascii=False)
+
+
+def _bootstrap_ledger_usuarios():
+    """Define o baseline dos usuarios e, se o ledger de usuarios estiver vazio,
+    registra todos os usuarios atuais como 'criar' (uma vez)."""
+    global _estado_usuarios_anterior
+    users = carregar_usuarios().get("users", [])
+    _estado_usuarios_anterior = copy.deepcopy(users)
+    if not PSYCOPG2_OK:
+        return
+    try:
+        conn = get_pg_conn()
+        if not conn:
+            return
+        cur = conn.cursor()
+        cur.execute("SELECT count(*) FROM usuarios_ledger")
+        if cur.fetchone()[0] == 0 and users:
+            eventos = [{"acao": "criar", "aposta_id": u.get("id"), "aposta": u}
+                       for u in users if u.get("id")]
+            Dur.gravar_eventos_usuarios(cur, eventos)
+            conn.commit()
+            print(f"Ledger usuarios bootstrap: {len(eventos)} usuarios registrados.")
+        cur.close()
+        conn.close()
+    except Exception as e:
+        print("AVISO bootstrap ledger usuarios (app segue):", e)
+
+
+_bootstrap_ledger_usuarios()
 
 
 def buscar_usuario_email(email):
@@ -8678,6 +8869,196 @@ def admin_backup_restaurar(backup_id):
         return jsonify({"status": "erro", "msg": str(e)}), 500
 
 
+# ============================================================
+# RECUPERACAO VIA LEDGER (Camada 1) - desfaz perda de apostas de um usuario
+# ============================================================
+
+@app.route("/admin/ledger/usuario/<uid>")
+@admin_required
+def admin_ledger_usuario(uid):
+    """Diagnostico: mostra como as apostas do usuario evoluiram (quando caiu),
+    o estado atual e o estado de PICO recuperavel a partir do ledger."""
+    conn = get_pg_conn()
+    if not conn:
+        return jsonify({"status": "erro", "msg": "PostgreSQL indisponível"}), 500
+    try:
+        hist = Dur.historico_tamanho_usuario(conn, uid)
+        pico, pico_ts = Dur.recuperar_estado_pico(conn, uid)
+        conn.close()
+        atual = sum(1 for b in dados.get("bets", []) if b.get("user_id") == uid)
+        return jsonify({
+            "status": "ok",
+            "user_id": uid,
+            "apostas_atuais": atual,
+            "pico_apostas": len(pico),
+            "pico_em": str(pico_ts) if pico_ts else None,
+            "historico": [{"ts": str(ts), "n": n} for ts, n in hist[-300:]],
+        })
+    except Exception as e:
+        try:
+            conn.close()
+        except Exception:
+            pass
+        return jsonify({"status": "erro", "msg": str(e)}), 500
+
+
+@app.route("/admin/ledger/recuperar/<uid>", methods=["POST"])
+@admin_required
+def admin_ledger_recuperar(uid):
+    """Recupera as apostas do usuario a partir do ledger e as READICIONA.
+    Operacao ADITIVA e segura: nao remove nem altera apostas de ninguem; apenas
+    reinsere as apostas do usuario alvo que estiverem faltando no estado atual.
+    Por padrao usa o estado de PICO; aceita ?ate=<ISO> para um ponto especifico."""
+    global dados
+    conn = get_pg_conn()
+    if not conn:
+        return jsonify({"status": "erro", "msg": "PostgreSQL indisponível"}), 500
+    try:
+        ate = request.args.get("ate")
+        if ate:
+            recuperadas = Dur.reconstruir_apostas(Dur.ler_eventos_usuario(conn, uid, ate_ts=ate))
+        else:
+            recuperadas, _ = Dur.recuperar_estado_pico(conn, uid)
+        conn.close()
+        ids_atuais = {b.get("id") for b in dados.get("bets", []) if b.get("user_id") == uid}
+        novas = [b for b in recuperadas
+                 if b.get("user_id") == uid and b.get("id") not in ids_atuais]
+        if novas:
+            dados.setdefault("bets", []).extend(novas)
+            salvar()
+        return jsonify({"status": "ok", "user_id": uid,
+                        "restauradas": len(novas), "ja_tinha": len(ids_atuais)})
+    except Exception as e:
+        try:
+            conn.close()
+        except Exception:
+            pass
+        return jsonify({"status": "erro", "msg": str(e)}), 500
+
+
+@app.route("/admin/durabilidade/status")
+@admin_required
+def admin_durabilidade_status():
+    """Status ao vivo das 4 camadas de durabilidade, para o painel admin."""
+    info = {"camadas": {}}
+    n_bets = len(dados.get("bets", []))
+
+    # Camada 4 - trava anti-producao
+    info["camadas"]["c4_trava"] = {
+        "ok": True,
+        "no_render": bool(os.environ.get("RENDER")),
+        "db_ativo": False,
+    }
+
+    conn = get_pg_conn()
+    if conn:
+        info["camadas"]["c4_trava"]["db_ativo"] = True
+        try:
+            cur = conn.cursor()
+            # Camada 1 - ledger
+            cur.execute("SELECT count(*), count(DISTINCT aposta_id), "
+                        "count(DISTINCT user_id), max(ts) FROM apostas_ledger")
+            ev_total, ap_distintas, users_ledger, ultima = cur.fetchone()
+            info["camadas"]["c1_ledger"] = {
+                "ok": (ap_distintas or 0) >= n_bets and (ev_total or 0) > 0,
+                "eventos_total": ev_total or 0,
+                "apostas_rastreadas": ap_distintas or 0,
+                "usuarios": users_ledger or 0,
+                "ultima_gravacao": str(ultima) if ultima else None,
+                "apostas_no_blob": n_bets,
+            }
+            # Camada 3 - backups com retencao real
+            cur.execute("SELECT count(*), min(ts), max(ts) FROM backups_v2")
+            nb, b_min, b_max = cur.fetchone()
+            cur.execute("SELECT total_apostas FROM backups_v2 ORDER BY ts DESC LIMIT 1")
+            ult = cur.fetchone()
+            info["camadas"]["c3_backup"] = {
+                "ok": (nb or 0) > 0,
+                "snapshots": nb or 0,
+                "mais_antigo": str(b_min) if b_min else None,
+                "mais_recente": str(b_max) if b_max else None,
+                "apostas_no_ultimo": ult[0] if ult else None,
+            }
+            # Ledger de usuarios
+            cur.execute("SELECT count(*), count(DISTINCT usuario_id) FROM usuarios_ledger")
+            ul_ev, ul_users = cur.fetchone()
+            info["camadas"]["c5_usuarios"] = {
+                "ok": (ul_ev or 0) > 0,
+                "eventos": ul_ev or 0,
+                "usuarios_rastreados": ul_users or 0,
+            }
+            cur.close()
+        except Exception as e:
+            info["erro_db"] = str(e)
+        finally:
+            conn.close()
+
+    info["baseline_memoria"] = (len(_estado_bets_anterior)
+                                if _estado_bets_anterior is not None else None)
+
+    # Camada 6 - backup off-site criptografado (GitHub)
+    tem_key = bool(os.environ.get("BACKUP_CRYPT_KEY"))
+    tem_tok = bool(os.environ.get("GITHUB_BACKUP_TOKEN") or os.environ.get("GITHUB_TOKEN"))
+    info["camadas"]["c6_offsite"] = {
+        "ok": tem_key and tem_tok,
+        "configurado": tem_key and tem_tok,
+        "repo": BACKUP_REPO,
+    }
+
+    # Camada 2 - alarme (le o log)
+    log_path = os.path.join(BASE_DIR, "alertas_perda.log")
+    linhas = []
+    if os.path.exists(log_path):
+        try:
+            with open(log_path, encoding="utf-8") as f:
+                linhas = f.read().strip().splitlines()
+        except Exception:
+            linhas = []
+    info["camadas"]["c2_alarme"] = {
+        "ok": True,
+        "total_alertas": len([l for l in linhas if l.strip()]),
+        "ultimos": linhas[-5:],
+    }
+    return jsonify(info)
+
+
+@app.route("/admin/durabilidade/atividade")
+@admin_required
+def admin_durabilidade_atividade():
+    """Feed das ultimas apostas registradas: quem fez, qual aposta, se foi
+    salva (ledger) e se ja' esta coberta pelo ultimo backup."""
+    conn = get_pg_conn()
+    if not conn:
+        return jsonify({"eventos": []})
+    eventos = []
+    try:
+        cur = conn.cursor()
+        cur.execute("SELECT max(ts) FROM backups_v2")
+        ult_backup = cur.fetchone()[0]
+        cur.execute("SELECT ts, acao, user_id, aposta FROM apostas_ledger ORDER BY id DESC LIMIT 40")
+        rows = cur.fetchall()
+        cur.close()
+        nome_por_id = {u.get("id"): u.get("nome") for u in carregar_usuarios().get("users", [])}
+        rotulo = {"criar": "criou", "editar": "editou", "excluir": "excluiu"}
+        for ts, acao, uid, aposta in rows:
+            ap = aposta if isinstance(aposta, dict) else (json.loads(aposta) if aposta else {})
+            jogo = (ap.get("jogo") or "").strip()
+            sel = (ap.get("aposta") or "").strip()
+            desc = " — ".join([x for x in [jogo, sel] if x]) or "(aposta)"
+            eventos.append({
+                "ts": str(ts),
+                "acao": rotulo.get(acao, acao),
+                "usuario": nome_por_id.get(uid) or (uid[:8] if uid else "?"),
+                "descricao": desc[:90],
+                "no_backup": bool(ult_backup and ts <= ult_backup),
+            })
+    except Exception as e:
+        eventos = [{"erro": str(e)}]
+    finally:
+        conn.close()
+    return jsonify({"eventos": eventos})
+
+
 @app.route("/configuracoes", methods=["GET", "POST"])
 @login_required
 def configuracoes():
@@ -8944,6 +9325,8 @@ def _backup_diario_loop():
             ts = datetime.now().strftime("%Y%m%d_%H%M%S")
             criar_backup_pg(label=f"agendado_{ts}")
             print(f"[backup] Snapshot agendado criado: agendado_{ts}")
+            # Backup off-site criptografado (GitHub) — sobrevive ao banco sumir
+            backup_offsite_github()
         except Exception as e:
             print(f"[backup] ERRO no loop agendado: {e}")
             time.sleep(3600)  # espera 1h antes de tentar de novo
