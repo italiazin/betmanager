@@ -102,44 +102,7 @@
 </head>
 <body>
 
-<aside class="sidebar">
-    <div class="sidebar-top">
-        <div class="logo">
-            <span class="logo-icon">🎯</span>
-            <span class="logo-text">Bet Manager</span>
-        </div>
-        <button type="button" class="sidebar-toggle" onclick="toggleSidebar()" title="Recolher menu">‹</button>
-    </div>
-    <nav>
-        <div class="sidebar-nav-label">Menu</div>
-        <a href="/" data-title="Dashboard"><span class="nav-icon"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg></span><span class="nav-text">Dashboard</span></a>
-        <a href="/estatisticas" data-title="Estatísticas"><span class="nav-icon"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg></span><span class="nav-text">Estatísticas</span></a>
-        <a href="/historico" data-title="Histórico"><span class="nav-icon"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg></span><span class="nav-text">Histórico</span></a>
-        <a class="active" href="/saldos" data-title="Saldos"><span class="nav-icon"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="5" width="20" height="14" rx="2"/><line x1="2" y1="10" x2="22" y2="10"/></svg></span><span class="nav-text">Saldos</span></a>
-        <a href="/calculadora" data-title="Calculadora"><span class="nav-icon"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="2" width="16" height="20" rx="2"/><line x1="8" y1="6" x2="16" y2="6"/></svg></span><span class="nav-text">Calculadora</span></a>
-        {% if usuario and usuario.is_admin %}
-        <a href="/admin" data-title="Admin"><span class="nav-icon">⚙</span><span class="nav-text">Admin</span></a>
-        {% endif %}
-        <a href="/configuracoes" data-title="Configurações"><span class="nav-icon">⚙</span><span class="nav-text">Configurações</span></a>
-        <a href="/logout" data-title="Sair"><span class="nav-icon">↪</span><span class="nav-text">Sair</span></a>
-    </nav>
-    <div class="sidebar-user-wrap">
-        <div class="sidebar-user-card" onclick="toggleUserMenu(event)">
-            <div class="sidebar-user-avatar">{{ usuario_inicial if usuario_inicial else "U" }}</div>
-            <div class="sidebar-user-info">
-                <strong>{{ usuario.nome if usuario else "Usuário" }}</strong>
-                <span>{{ usuario.email if usuario else "" }}</span>
-            </div>
-            <span class="sidebar-user-arrow">⌄</span>
-        </div>
-        <div id="sidebarUserMenu" class="sidebar-user-menu">
-            <a href="/configuracoes">👤 Perfil / Configurações</a>
-            <a href="/saldos">💰 Saldos</a>
-            {% if usuario and usuario.is_admin %}<a href="/admin">⚙ Admin</a>{% endif %}
-            <a href="/logout" class="logout-link">🚪 Sair</a>
-        </div>
-    </div>
-</aside>
+{% include '_sidebar.html' %}
 
 <main class="app">
 

@@ -5275,6 +5275,28 @@ def assinatura_required(fn):
     return wrapper
 
 
+# Gate central de assinatura: garante que um usuario logado SEM assinatura (e que
+# nao seja admin) so' acesse as paginas livres (login, cadastro, tela de bloqueio,
+# config da conta, sair, assets). Cobre TODAS as rotas, inclusive APIs e futuras,
+# sem depender de decorar cada uma.
+_ROTAS_LIVRES_SEM_ASSINATURA = {"login", "criar_conta", "bloqueado", "logout", "configuracoes"}
+
+
+@app.before_request
+def _gate_assinatura():
+    ep = request.endpoint
+    if not ep or ep == "static" or ep.startswith("static") or "favicon" in ep:
+        return
+    if ep in _ROTAS_LIVRES_SEM_ASSINATURA:
+        return
+    u = usuario_logado()
+    if u and not u.get("is_admin") and not u.get("assinatura_ativa"):
+        # responde JSON para chamadas de API, redireciona para paginas normais
+        if ep.startswith("api") or request.path.startswith("/api"):
+            return jsonify({"erro": "assinatura_inativa", "bloqueado": True}), 403
+        return redirect("/bloqueado")
+
+
 
 
 
@@ -5334,8 +5356,8 @@ def criar_conta():
                 "senha_hash": generate_password_hash(senha),
                 "is_admin": False,
                 "ativo": True,
-                "assinatura_ativa": True,
-                "plano": "pro",
+                "assinatura_ativa": False,
+                "plano": "free",
                 "apostas_publicas_padrao": False,
                 "criado_em": datetime.now().strftime("%d/%m/%Y %H:%M")
             })
@@ -5361,13 +5383,22 @@ def admin():
     bets = dados.get("bets", [])
     valor_apostado = sum(float(b.get("valor", 0) or 0) for b in bets)
     lucro = sum(float(b.get("lucro", 0) or 0) for b in bets if b.get("estado") in ("win", "lose", "green", "red", "cashout", "void", "reembolso"))
+    from collections import Counter
+    apostas_por_user = Counter(b.get("user_id") for b in bets)
     total_geral = {
         "usuarios": len(usuarios),
         "bets": len(bets),
         "valor_apostado": valor_apostado,
         "lucro": lucro,
+        "ativos": sum(1 for u in usuarios if u.get("ativo", True)),
+        "assinantes": sum(1 for u in usuarios if u.get("assinatura_ativa")),
+        "bloqueados": sum(1 for u in usuarios if not u.get("assinatura_ativa") and not u.get("is_admin")),
+        "admins": sum(1 for u in usuarios if u.get("is_admin")),
     }
-    return render_template("admin.html", usuarios=usuarios, total_geral=total_geral)
+    # admins primeiro, depois por numero de apostas (mais ativos no topo)
+    usuarios = sorted(usuarios, key=lambda u: (not u.get("is_admin"), -apostas_por_user.get(u.get("id"), 0)))
+    return render_template("admin.html", usuarios=usuarios, total_geral=total_geral,
+                           apostas_por_user=dict(apostas_por_user))
 
 
 @app.route("/admin/toggle/<uid>")

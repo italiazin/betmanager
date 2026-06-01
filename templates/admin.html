@@ -1,185 +1,176 @@
 <!DOCTYPE html>
 <html lang="pt-BR">
-<head><meta charset="UTF-8"><title>Admin</title><link rel="stylesheet" href="/static/style.css"></head>
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Admin · Bet Manager</title>
+<link rel="stylesheet" href="/static/style.css">
+<style>
+  .adm-metrics{display:grid;grid-template-columns:repeat(auto-fit,minmax(165px,1fr));gap:12px;margin-bottom:18px}
+  .adm-metric{background:#161922;border:1px solid #232838;border-left:4px solid #3b82f6;border-radius:12px;padding:14px 16px}
+  .adm-metric .lbl{color:#8a93a6;font-size:12px;text-transform:uppercase;letter-spacing:.04em}
+  .adm-metric .val{color:#e6e9ef;font-size:24px;font-weight:800;margin-top:4px;line-height:1.1}
+  .adm-metric.green{border-left-color:#1f9d55}.adm-metric.green .val{color:#37d67a}
+  .adm-metric.red{border-left-color:#d64545}.adm-metric.red .val{color:#ff6b6b}
+  .adm-metric.amber{border-left-color:#caa23a}.adm-metric.amber .val{color:#e8c34a}
+  .adm-metric.cyan{border-left-color:#22b8cf}.adm-metric.cyan .val{color:#4dd4e8}
+  .adm-toolbar{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:12px}
+  .adm-search{background:#0f1115;border:1px solid #2a2f3a;border-radius:9px;padding:8px 12px;color:#e6e9ef;width:260px;max-width:100%}
+  .adm-search:focus{outline:none;border-color:#3b82f6}
+  table.adm-users{width:100%;border-collapse:collapse}
+  table.adm-users th{text-align:left;color:#8a93a6;font-size:12px;text-transform:uppercase;letter-spacing:.03em;padding:8px 10px;border-bottom:1px solid #2a2f3a}
+  table.adm-users td{padding:10px;border-bottom:1px solid #1c2027;vertical-align:middle}
+  table.adm-users tr:hover td{background:#1a1e27}
+  .u-cell{display:flex;align-items:center;gap:10px}
+  .u-avatar{width:34px;height:34px;border-radius:50%;background:linear-gradient(135deg,#3b82f6,#1f9d55);display:flex;align-items:center;justify-content:center;font-weight:700;color:#fff;flex:0 0 auto}
+  .u-name{color:#e6e9ef;font-weight:600}.u-email{color:#8a93a6;font-size:12px}
+  .pill{display:inline-block;padding:2px 9px;border-radius:20px;font-size:11px;font-weight:700;white-space:nowrap}
+  .pill.on{background:rgba(31,157,85,.15);color:#37d67a}
+  .pill.off{background:rgba(214,69,69,.15);color:#ff6b6b}
+  .pill.warn{background:rgba(202,162,58,.15);color:#e8c34a}
+  .pill.plan{background:rgba(59,130,246,.15);color:#7aa9ff}
+  .pill.adm{background:rgba(155,89,255,.18);color:#c4a3ff}
+  .adm-actions{display:flex;gap:6px;flex-wrap:wrap}
+  .adm-actions button{font-size:12px;padding:5px 10px;border-radius:7px;cursor:pointer;border:1px solid #2a2f3a;background:#1a1e27;color:#cbd2e0}
+  .adm-actions button:hover{background:#222733}
+  .adm-actions button.go{border-color:#1f9d55;color:#37d67a}
+  .adm-actions button.dim{border-color:#caa23a;color:#e8c34a}
+  details.dur > summary{cursor:pointer;list-style:none;font-size:17px;font-weight:700;color:#e6e9ef;display:flex;align-items:center;gap:8px}
+  details.dur > summary::-webkit-details-marker{display:none}
+  details.dur > summary::before{content:"▸";color:#8a93a6;transition:transform .15s}
+  details.dur[open] > summary::before{transform:rotate(90deg)}
+  .dur-cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(225px,1fr));gap:12px;margin-top:14px}
+</style>
+</head>
 <body>
-<aside class="sidebar">
-    <div class="sidebar-top"><div class="logo"><span class="logo-icon">🎯</span><span class="logo-text">Bet Manager</span></div></div>
-    <nav>
-        <a href="/" data-title="Dashboard"><span class="nav-icon">⌂</span><span class="nav-text">Dashboard</span></a>
-        <a href="/saldos" data-title="Saldos"><span class="nav-icon">💰</span><span class="nav-text">Saldos</span></a>
-        <a class="active" href="/admin" data-title="Admin"><span class="nav-icon">⚙</span><span class="nav-text">Admin</span></a>
-        <a href="/logout" data-title="Sair"><span class="nav-icon">↪</span><span class="nav-text">Sair</span></a>
-    </nav>
+{% include '_sidebar.html' %}
 
-    <div class="sidebar-user-wrap">
-        <div class="sidebar-user-card" onclick="toggleUserMenu(event)">
-            <div class="sidebar-user-avatar">{{ usuario_inicial if usuario_inicial else "U" }}</div>
-            <div class="sidebar-user-info">
-                <strong>{{ usuario.nome if usuario else "Usuário" }}</strong>
-                <span>{{ usuario.email if usuario else "" }}</span>
-            </div>
-            <span class="sidebar-user-arrow">⌄</span>
-        </div>
-
-        <div id="sidebarUserMenu" class="sidebar-user-menu">
-            <a href="/configuracoes">👤 Perfil / Configurações</a>
-            <a href="/saldos">💰 Saldos</a>
-            {% if usuario and usuario.is_admin %}
-            <a href="/admin">⚙ Admin</a>
-            {% endif %}
-            <a href="/logout" class="logout-link">🚪 Sair</a>
-        </div>
-    </div>
-
-</aside>
 <main class="app">
-<header class="topbar"><div><h1>Painel Admin</h1><p>Usuários cadastrados em usuarios.json</p></div></header>
+<header class="topbar"><div><h1>Painel Admin</h1><p>Gestão de usuários e saúde do sistema</p></div></header>
 
-<section class="panel" id="durabilidadePanel">
-    <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap">
-        <h2 style="margin:0">🛡️ Saúde do Sistema — Proteção das Apostas</h2>
-        <button class="dark" onclick="carregarDurabilidade()">↻ Atualizar</button>
-    </div>
-    <p style="color:#8a93a6;margin:6px 0 14px">Estado ao vivo das 4 camadas que garantem que nenhuma aposta se perca.</p>
-    <div id="durCards" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:12px">
-        <div style="color:#8a93a6">Carregando…</div>
-    </div>
-    <div id="durAlertas" style="margin-top:14px"></div>
-
-    <div style="margin-top:22px">
-        <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap">
-            <h3 style="margin:0;color:#e6e9ef">📋 Atividade recente das apostas</h3>
-            <button class="dark" onclick="carregarAtividade()">↻ Atualizar</button>
-        </div>
-        <p style="color:#8a93a6;margin:4px 0 10px;font-size:13px">Cada aposta criada/editada/excluída, com confirmação de que foi salva e protegida.</p>
-        <div style="overflow-x:auto">
-            <table id="durAtividade" style="width:100%;border-collapse:collapse;font-size:13px">
-                <thead><tr style="text-align:left;color:#8a93a6;border-bottom:1px solid #2a2f3a">
-                    <th style="padding:6px 8px">Quando</th><th style="padding:6px 8px">Usuário</th>
-                    <th style="padding:6px 8px">Ação</th><th style="padding:6px 8px">Aposta</th>
-                    <th style="padding:6px 8px">Salva</th><th style="padding:6px 8px">Backup</th>
-                </tr></thead>
-                <tbody><tr><td colspan="6" style="padding:8px;color:#8a93a6">Carregando…</td></tr></tbody>
-            </table>
-        </div>
+<!-- METRICAS -->
+<section class="panel">
+    <div class="adm-metrics">
+        <div class="adm-metric"><div class="lbl">Usuários</div><div class="val">{{ total_geral.usuarios }}</div></div>
+        <div class="adm-metric green"><div class="lbl">Assinantes</div><div class="val">{{ total_geral.assinantes }}</div></div>
+        <div class="adm-metric amber"><div class="lbl">Bloqueados</div><div class="val">{{ total_geral.bloqueados }}</div></div>
+        <div class="adm-metric cyan"><div class="lbl">Apostas</div><div class="val">{{ "{:,}".format(total_geral.bets).replace(",", ".") }}</div></div>
+        <div class="adm-metric"><div class="lbl">Valor apostado</div><div class="val">R$ {{ "%.0f"|format(total_geral.valor_apostado) }}</div></div>
+        <div class="adm-metric {{ 'green' if total_geral.lucro >= 0 else 'red' }}"><div class="lbl">Lucro</div><div class="val">R$ {{ "%.0f"|format(total_geral.lucro) }}</div></div>
     </div>
 </section>
 
+<!-- USUARIOS -->
 <section class="panel">
-    <h2>Usuários</h2>
-    <div class="admin-grid">
-        {% for u in usuarios %}
-        <div class="admin-row">
-            <strong>{{ u.nome }}</strong>
-            <span>{{ u.email }}</span>
-            <span class="badge {{ 'green' if u.ativo else 'red' }}">{{ 'Ativo' if u.ativo else 'Bloqueado' }}</span>
-            <span class="badge {{ 'green' if u.assinatura_ativa else 'yellow' }}">{{ 'Assinatura ON' if u.assinatura_ativa else 'Sem assinatura' }}</span>
-            <span class="badge blue plan-badge">{{ u.plano }}</span>
-            <a href="/admin/toggle/{{ u.id }}"><button class="dark">{{ 'Bloquear' if u.ativo else 'Ativar' }}</button></a>
-            <a href="/admin/assinatura/{{ u.id }}"><button class="blue">{{ 'Desativar assinatura' if u.assinatura_ativa else 'Ativar assinatura' }}</button></a>
-            <a href="/admin/promover/{{ u.id }}"><button class="blue">{{ 'Remover admin' if u.is_admin else 'Tornar admin' }}</button></a>
-        </div>
-        {% endfor %}
+    <div class="adm-toolbar">
+        <h2 style="margin:0">Usuários</h2>
+        <input type="text" class="adm-search" id="buscaUsuario" placeholder="🔎 Buscar por nome ou e-mail…" oninput="filtrarUsuarios()">
     </div>
+    <div style="overflow-x:auto">
+    <table class="adm-users" id="tabelaUsuarios">
+        <thead><tr><th>Usuário</th><th>Apostas</th><th>Status</th><th>Ações</th></tr></thead>
+        <tbody>
+        {% for u in usuarios %}
+        <tr data-busca="{{ (u.nome ~ ' ' ~ u.email)|lower }}">
+            <td>
+                <div class="u-cell">
+                    <div class="u-avatar">{{ (u.nome[0]|upper) if u.nome else "?" }}</div>
+                    <div><div class="u-name">{{ u.nome }}{% if u.is_admin %} <span class="pill adm">admin</span>{% endif %}</div><div class="u-email">{{ u.email }}</div></div>
+                </div>
+            </td>
+            <td style="color:#cbd2e0;font-weight:600">{{ apostas_por_user.get(u.id, 0) }}</td>
+            <td>
+                <span class="pill {{ 'on' if u.ativo else 'off' }}">{{ 'Ativo' if u.ativo else 'Bloqueado' }}</span>
+                <span class="pill {{ 'on' if u.assinatura_ativa else 'warn' }}">{{ 'Assinatura ON' if u.assinatura_ativa else 'Sem assinatura' }}</span>
+                <span class="pill plan">{{ u.plano }}</span>
+            </td>
+            <td>
+                <div class="adm-actions">
+                    <a href="/admin/toggle/{{ u.id }}"><button>{{ 'Bloquear' if u.ativo else 'Ativar' }}</button></a>
+                    <a href="/admin/assinatura/{{ u.id }}"><button class="{{ 'dim' if u.assinatura_ativa else 'go' }}">{{ 'Desativar assinatura' if u.assinatura_ativa else 'Liberar assinatura' }}</button></a>
+                    <a href="/admin/promover/{{ u.id }}"><button>{{ 'Remover admin' if u.is_admin else 'Tornar admin' }}</button></a>
+                </div>
+            </td>
+        </tr>
+        {% endfor %}
+        </tbody>
+    </table>
+    </div>
+    <p id="semResultado" style="display:none;color:#8a93a6;padding:10px">Nenhum usuário encontrado.</p>
+</section>
+
+<!-- DURABILIDADE (colapsavel; atividade carrega so' ao abrir) -->
+<section class="panel">
+    <details class="dur" id="durDetails">
+        <summary>🛡️ Saúde do Sistema — Proteção das Apostas</summary>
+        <div style="display:flex;justify-content:flex-end;margin-top:8px"><button class="dark" onclick="carregarDurabilidade();carregarAtividade();return false;">↻ Atualizar</button></div>
+        <div id="durCards" class="dur-cards"><div style="color:#8a93a6">Carregando…</div></div>
+        <div id="durAlertas" style="margin-top:14px"></div>
+        <h3 style="margin:22px 0 6px;color:#e6e9ef">📋 Atividade recente das apostas</h3>
+        <p style="color:#8a93a6;margin:0 0 10px;font-size:13px">Cada aposta criada/editada/excluída, com confirmação de que foi salva e protegida.</p>
+        <div style="overflow-x:auto">
+            <table class="adm-users" id="durAtividade" style="font-size:13px">
+                <thead><tr><th>Quando</th><th>Usuário</th><th>Ação</th><th>Aposta</th><th>Salva</th><th>Backup</th></tr></thead>
+                <tbody><tr><td colspan="6" style="color:#8a93a6">Carregando…</td></tr></tbody>
+            </table>
+        </div>
+    </details>
 </section>
 </main>
 
-<script id="durabilidade-js">
-function _fmtData(s){
-    if(!s) return "—";
-    return String(s).replace("T"," ").slice(0,16);
+<script id="admin-js">
+function filtrarUsuarios(){
+    const q = (document.getElementById("buscaUsuario").value || "").toLowerCase().trim();
+    let visiveis = 0;
+    document.querySelectorAll("#tabelaUsuarios tbody tr").forEach(tr => {
+        const ok = !q || (tr.dataset.busca || "").includes(q);
+        tr.style.display = ok ? "" : "none";
+        if(ok) visiveis++;
+    });
+    document.getElementById("semResultado").style.display = visiveis ? "none" : "block";
 }
+
+function _fmtData(s){ return s ? String(s).replace("T"," ").slice(0,16) : "—"; }
 function _card(titulo, ok, linhas){
-    const cor = ok ? "#1f9d55" : "#d64545";
-    const bg  = ok ? "rgba(31,157,85,.08)" : "rgba(214,69,69,.08)";
-    const icone = ok ? "✅" : "⚠️";
-    const corpo = linhas.map(l => `<div style="display:flex;justify-content:space-between;gap:10px;font-size:13px;margin:3px 0">
-        <span style="color:#8a93a6">${l[0]}</span><strong style="color:#e6e9ef;text-align:right">${l[1]}</strong></div>`).join("");
-    return `<div style="border:1px solid ${cor};border-left:4px solid ${cor};background:${bg};border-radius:10px;padding:13px 15px">
-        <div style="font-weight:700;color:#e6e9ef;margin-bottom:8px">${icone} ${titulo}</div>${corpo}</div>`;
+    const cor = ok ? "#1f9d55" : "#d64545", bg = ok ? "rgba(31,157,85,.08)" : "rgba(214,69,69,.08)", ic = ok ? "✅" : "⚠️";
+    const corpo = linhas.map(l => `<div style="display:flex;justify-content:space-between;gap:10px;font-size:13px;margin:3px 0"><span style="color:#8a93a6">${l[0]}</span><strong style="color:#e6e9ef;text-align:right">${l[1]}</strong></div>`).join("");
+    return `<div style="border:1px solid ${cor};border-left:4px solid ${cor};background:${bg};border-radius:10px;padding:13px 15px"><div style="font-weight:700;color:#e6e9ef;margin-bottom:8px">${ic} ${titulo}</div>${corpo}</div>`;
 }
 function carregarDurabilidade(){
     const box = document.getElementById("durCards");
     box.innerHTML = '<div style="color:#8a93a6">Carregando…</div>';
     fetch("/admin/durabilidade/status").then(r => r.json()).then(d => {
         const c = d.camadas || {};
-        const l1 = c.c1_ledger || {}, l2 = c.c2_alarme || {}, l3 = c.c3_backup || {}, l4 = c.c4_trava || {};
-        let html = "";
-        html += _card("Camada 1 — Ledger imutável", !!l1.ok, [
-            ["Eventos registrados", (l1.eventos_total ?? 0).toLocaleString("pt-BR")],
-            ["Apostas rastreadas", (l1.apostas_rastreadas ?? 0).toLocaleString("pt-BR")],
-            ["Apostas no app agora", (l1.apostas_no_blob ?? 0).toLocaleString("pt-BR")],
-            ["Usuários no ledger", l1.usuarios ?? 0],
-            ["Última gravação", _fmtData(l1.ultima_gravacao)],
-        ]);
-        html += _card("Camada 2 — Alarme de perda", !!l2.ok, [
-            ["Alertas registrados", l2.total_alertas ?? 0],
-            ["Status", (l2.total_alertas ? "houve alertas — ver abaixo" : "nenhuma perda detectada")],
-        ]);
-        html += _card("Camada 3 — Backup retenção real", !!l3.ok, [
-            ["Snapshots guardados", l3.snapshots ?? 0],
-            ["Mais antigo", _fmtData(l3.mais_antigo)],
-            ["Mais recente", _fmtData(l3.mais_recente)],
-            ["Apostas no último", (l3.apostas_no_ultimo ?? 0).toLocaleString("pt-BR")],
-        ]);
-        html += _card("Camada 4 — Trava anti-produção", !!l4.ok, [
-            ["Rodando no Render", l4.no_render ? "sim (protegido)" : "não (local)"],
-            ["Banco conectado", l4.db_ativo ? "sim" : "não"],
-            ["Baseline em memória", (d.baseline_memoria ?? "—")],
-        ]);
-        const l5 = c.c5_usuarios || {}, l6 = c.c6_offsite || {};
-        html += _card("Camada 5 — Ledger de usuários", !!l5.ok, [
-            ["Eventos registrados", (l5.eventos ?? 0).toLocaleString("pt-BR")],
-            ["Usuários rastreados", l5.usuarios_rastreados ?? 0],
-        ]);
-        html += _card("Camada 6 — Backup off-site (GitHub)", !!l6.ok, [
-            ["Configurado", l6.configurado ? "sim (criptografado)" : "não — configurar"],
-            ["Repositório", l6.repo || "—"],
-        ]);
-        box.innerHTML = html;
-
+        const l1=c.c1_ledger||{},l2=c.c2_alarme||{},l3=c.c3_backup||{},l4=c.c4_trava||{},l5=c.c5_usuarios||{},l6=c.c6_offsite||{};
+        let h = "";
+        h += _card("Camada 1 — Ledger imutável", !!l1.ok, [["Eventos registrados",(l1.eventos_total??0).toLocaleString("pt-BR")],["Apostas rastreadas",(l1.apostas_rastreadas??0).toLocaleString("pt-BR")],["Apostas no app agora",(l1.apostas_no_blob??0).toLocaleString("pt-BR")],["Usuários no ledger",l1.usuarios??0],["Última gravação",_fmtData(l1.ultima_gravacao)]]);
+        h += _card("Camada 2 — Alarme de perda", !!l2.ok, [["Alertas registrados",l2.total_alertas??0],["Status",(l2.total_alertas?"houve alertas — ver abaixo":"nenhuma perda detectada")]]);
+        h += _card("Camada 3 — Backup retenção real", !!l3.ok, [["Snapshots guardados",l3.snapshots??0],["Mais antigo",_fmtData(l3.mais_antigo)],["Mais recente",_fmtData(l3.mais_recente)],["Apostas no último",(l3.apostas_no_ultimo??0).toLocaleString("pt-BR")]]);
+        h += _card("Camada 4 — Trava anti-produção", !!l4.ok, [["Rodando no Render",l4.no_render?"sim (protegido)":"não (local)"],["Banco conectado",l4.db_ativo?"sim":"não"],["Baseline em memória",(d.baseline_memoria??"—")]]);
+        h += _card("Camada 5 — Ledger de usuários", !!l5.ok, [["Eventos registrados",(l5.eventos??0).toLocaleString("pt-BR")],["Usuários rastreados",l5.usuarios_rastreados??0]]);
+        h += _card("Camada 6 — Backup off-site (GitHub)", !!l6.ok, [["Configurado",l6.configurado?"sim (criptografado)":"não — configurar"],["Repositório",l6.repo||"—"]]);
+        box.innerHTML = h;
         const al = document.getElementById("durAlertas");
         if(l2.ultimos && l2.ultimos.length){
-            al.innerHTML = '<div style="font-weight:600;color:#e6e9ef;margin-bottom:6px">Últimos alertas de perda</div>'
-                + l2.ultimos.map(x => `<div style="font-family:monospace;font-size:12px;color:#d64545;background:rgba(214,69,69,.07);padding:5px 8px;border-radius:6px;margin:3px 0">${x}</div>`).join("");
-        } else {
-            al.innerHTML = '<div style="color:#1f9d55;font-size:13px">✓ Nenhum alerta de perda registrado.</div>';
-        }
-    }).catch(e => { box.innerHTML = '<div style="color:#d64545">Erro ao carregar status: '+e+'</div>'; });
+            al.innerHTML = '<div style="font-weight:600;color:#e6e9ef;margin-bottom:6px">Últimos alertas de perda</div>' + l2.ultimos.map(x => `<div style="font-family:monospace;font-size:12px;color:#ff6b6b;background:rgba(214,69,69,.07);padding:5px 8px;border-radius:6px;margin:3px 0">${x}</div>`).join("");
+        } else { al.innerHTML = '<div style="color:#37d67a;font-size:13px">✓ Nenhum alerta de perda registrado.</div>'; }
+    }).catch(e => { box.innerHTML = '<div style="color:#ff6b6b">Erro ao carregar status: '+e+'</div>'; });
 }
 function carregarAtividade(){
     const tb = document.querySelector("#durAtividade tbody");
-    tb.innerHTML = '<tr><td colspan="6" style="padding:8px;color:#8a93a6">Carregando…</td></tr>';
+    tb.innerHTML = '<tr><td colspan="6" style="color:#8a93a6">Carregando…</td></tr>';
     fetch("/admin/durabilidade/atividade").then(r => r.json()).then(d => {
         const evs = d.eventos || [];
-        if(!evs.length){ tb.innerHTML = '<tr><td colspan="6" style="padding:8px;color:#8a93a6">Nenhuma atividade ainda.</td></tr>'; return; }
-        if(evs[0] && evs[0].erro){ tb.innerHTML = '<tr><td colspan="6" style="padding:8px;color:#d64545">Erro: '+evs[0].erro+'</td></tr>'; return; }
-        const corAcao = {criou:"#1f9d55", editou:"#3b82f6", excluiu:"#d64545"};
-        tb.innerHTML = evs.map(e => `<tr style="border-bottom:1px solid #1e222b">
-            <td style="padding:6px 8px;color:#8a93a6;white-space:nowrap">${_fmtData(e.ts)}</td>
-            <td style="padding:6px 8px;color:#e6e9ef">${e.usuario}</td>
-            <td style="padding:6px 8px;color:${corAcao[e.acao]||'#e6e9ef'};font-weight:600">${e.acao}</td>
-            <td style="padding:6px 8px;color:#cbd2e0">${e.descricao}</td>
-            <td style="padding:6px 8px;color:#1f9d55;white-space:nowrap">✓ salva</td>
-            <td style="padding:6px 8px;white-space:nowrap">${e.no_backup ? '<span style="color:#1f9d55">✓ no backup</span>' : '<span style="color:#caa23a">⏳ próximo backup</span>'}</td>
-        </tr>`).join("");
-    }).catch(e => { tb.innerHTML = '<tr><td colspan="6" style="padding:8px;color:#d64545">Erro ao carregar: '+e+'</td></tr>'; });
+        if(!evs.length){ tb.innerHTML = '<tr><td colspan="6" style="color:#8a93a6">Nenhuma atividade ainda.</td></tr>'; return; }
+        if(evs[0] && evs[0].erro){ tb.innerHTML = '<tr><td colspan="6" style="color:#ff6b6b">Erro: '+evs[0].erro+'</td></tr>'; return; }
+        const corAcao = {criou:"#37d67a",editou:"#7aa9ff",excluiu:"#ff6b6b"};
+        tb.innerHTML = evs.map(e => `<tr><td style="color:#8a93a6;white-space:nowrap">${_fmtData(e.ts)}</td><td style="color:#e6e9ef">${e.usuario}</td><td style="color:${corAcao[e.acao]||'#e6e9ef'};font-weight:600">${e.acao}</td><td style="color:#cbd2e0">${e.descricao}</td><td style="color:#37d67a;white-space:nowrap">✓ salva</td><td style="white-space:nowrap">${e.no_backup?'<span style="color:#37d67a">✓ no backup</span>':'<span style="color:#e8c34a">⏳ próximo backup</span>'}</td></tr>`).join("");
+    }).catch(e => { tb.innerHTML = '<tr><td colspan="6" style="color:#ff6b6b">Erro ao carregar: '+e+'</td></tr>'; });
 }
-document.addEventListener("DOMContentLoaded", function(){ carregarDurabilidade(); carregarAtividade(); });
-
-function toggleUserMenu(ev){
-    if(ev) ev.stopPropagation()
-    const menu = document.getElementById("sidebarUserMenu")
-    if(menu) menu.classList.toggle("open")
-}
-
-document.addEventListener("click", function(e){
-    const menu = document.getElementById("sidebarUserMenu")
-    const card = document.querySelector(".sidebar-user-card")
-    if(menu && card && !menu.contains(e.target) && !card.contains(e.target)){
-        menu.classList.remove("open")
-    }
-})
+// Otimizacao: so' busca os dados de durabilidade quando o painel e' aberto (lazy).
+let _durCarregado = false;
+document.getElementById("durDetails").addEventListener("toggle", function(){
+    if(this.open && !_durCarregado){ _durCarregado = true; carregarDurabilidade(); carregarAtividade(); }
+});
 </script>
-
 </body></html>
