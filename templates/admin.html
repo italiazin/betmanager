@@ -35,6 +35,11 @@
   .adm-actions button:hover{background:#222733}
   .adm-actions button.go{border-color:#1f9d55;color:#37d67a}
   .adm-actions button.dim{border-color:#caa23a;color:#e8c34a}
+  .adm-actions button.del{border-color:#d64545;color:#ff6b6b}
+  .adm-actions button.del:hover{background:rgba(214,69,69,.12)}
+  .adm-actions form{display:inline;margin:0}
+  .bk-row{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:7px 10px;border-bottom:1px solid #1c2027;font-size:13px}
+  .bk-row .lbl{color:#cbd2e0;font-family:monospace}.bk-row .dt{color:#8a93a6}
   details.dur > summary{cursor:pointer;list-style:none;font-size:17px;font-weight:700;color:#e6e9ef;display:flex;align-items:center;gap:8px}
   details.dur > summary::-webkit-details-marker{display:none}
   details.dur > summary::before{content:"▸";color:#8a93a6;transition:transform .15s}
@@ -89,6 +94,11 @@
                     <a href="/admin/toggle/{{ u.id }}"><button>{{ 'Bloquear' if u.ativo else 'Ativar' }}</button></a>
                     <a href="/admin/assinatura/{{ u.id }}"><button class="{{ 'dim' if u.assinatura_ativa else 'go' }}">{{ 'Desativar assinatura' if u.assinatura_ativa else 'Liberar assinatura' }}</button></a>
                     <a href="/admin/promover/{{ u.id }}"><button>{{ 'Remover admin' if u.is_admin else 'Tornar admin' }}</button></a>
+                    {% if usuario and u.id != usuario.id %}
+                    <form method="POST" action="/admin/apagar_apostas/{{ u.id }}" onsubmit="return confirm('Apagar as {{ apostas_por_user.get(u.id, 0) }} apostas de {{ u.nome }}?\n\nElas somem do app, mas o LEDGER guarda o histórico — dá pra recuperar depois.');">
+                        <button type="submit" class="del">🗑 Apostas</button>
+                    </form>
+                    {% endif %}
                 </div>
             </td>
         </tr>
@@ -114,6 +124,12 @@
                 <tbody><tr><td colspan="6" style="color:#8a93a6">Carregando…</td></tr></tbody>
             </table>
         </div>
+
+        <h3 style="margin:22px 0 6px;color:#e6e9ef">💾 Backups manuais</h3>
+        <p style="color:#8a93a6;margin:0 0 10px;font-size:13px">Cria um backup completo na hora (snapshot + retenção real + off-site criptografado) ou restaura um anterior.</p>
+        <button class="dark" onclick="criarBackup(this)">＋ Criar backup agora</button>
+        <span id="bkMsg" style="margin-left:10px;font-size:13px;color:#8a93a6"></span>
+        <div id="bkLista" style="margin-top:10px;border:1px solid #232838;border-radius:8px;overflow:hidden"></div>
     </details>
 </section>
 </main>
@@ -167,10 +183,40 @@ function carregarAtividade(){
         tb.innerHTML = evs.map(e => `<tr><td style="color:#8a93a6;white-space:nowrap">${_fmtData(e.ts)}</td><td style="color:#e6e9ef">${e.usuario}</td><td style="color:${corAcao[e.acao]||'#e6e9ef'};font-weight:600">${e.acao}</td><td style="color:#cbd2e0">${e.descricao}</td><td style="color:#37d67a;white-space:nowrap">✓ salva</td><td style="white-space:nowrap">${e.no_backup?'<span style="color:#37d67a">✓ no backup</span>':'<span style="color:#e8c34a">⏳ próximo backup</span>'}</td></tr>`).join("");
     }).catch(e => { tb.innerHTML = '<tr><td colspan="6" style="color:#ff6b6b">Erro ao carregar: '+e+'</td></tr>'; });
 }
+function carregarBackups(){
+    const box = document.getElementById("bkLista");
+    box.innerHTML = '<div style="padding:8px;color:#8a93a6">Carregando…</div>';
+    fetch("/admin/backups").then(r => r.json()).then(lista => {
+        if(!lista.length){ box.innerHTML = '<div style="padding:8px;color:#8a93a6">Nenhum backup ainda.</div>'; return; }
+        box.innerHTML = lista.map(b => `<div class="bk-row">
+            <span class="lbl">${b.label || ('#'+b.id)}</span>
+            <span class="dt">${_fmtData(b.created_at)}</span>
+            <button class="dark" style="font-size:12px;padding:4px 10px" onclick="restaurarBackup(${b.id}, this)">Restaurar</button>
+        </div>`).join("");
+    }).catch(e => { box.innerHTML = '<div style="padding:8px;color:#ff6b6b">Erro: '+e+'</div>'; });
+}
+function criarBackup(btn){
+    const msg = document.getElementById("bkMsg");
+    btn.disabled = true; msg.textContent = "Criando backup completo…"; msg.style.color = "#8a93a6";
+    fetch("/admin/backups/criar", {method:"POST"}).then(r => r.json()).then(d => {
+        if(d.status === "ok"){ msg.style.color = "#37d67a"; msg.textContent = "✓ Backup criado" + (d.offsite ? " + enviado off-site (GitHub)" : " (off-site não configurado)"); carregarBackups(); carregarDurabilidade(); }
+        else { msg.style.color = "#ff6b6b"; msg.textContent = "Erro: " + (d.msg || "falhou"); }
+        btn.disabled = false;
+    }).catch(e => { msg.style.color = "#ff6b6b"; msg.textContent = "Erro: "+e; btn.disabled = false; });
+}
+function restaurarBackup(id, btn){
+    if(!confirm("Restaurar este backup? Ele SOBRESCREVE os dados atuais de todos os usuários pelo estado salvo nesse ponto. Tem certeza?")) return;
+    btn.disabled = true; btn.textContent = "Restaurando…";
+    fetch("/admin/backups/restaurar/"+id, {method:"POST"}).then(r => r.json()).then(d => {
+        alert(d.status === "ok" ? ("Backup restaurado: " + (d.label || id)) : ("Erro: " + (d.msg || "falhou")));
+        location.reload();
+    }).catch(e => { alert("Erro: "+e); btn.disabled = false; btn.textContent = "Restaurar"; });
+}
+
 // Otimizacao: so' busca os dados de durabilidade quando o painel e' aberto (lazy).
 let _durCarregado = false;
 document.getElementById("durDetails").addEventListener("toggle", function(){
-    if(this.open && !_durCarregado){ _durCarregado = true; carregarDurabilidade(); carregarAtividade(); }
+    if(this.open && !_durCarregado){ _durCarregado = true; carregarDurabilidade(); carregarAtividade(); carregarBackups(); }
 });
 </script>
 </body></html>

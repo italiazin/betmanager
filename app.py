@@ -8850,21 +8850,15 @@ def admin_backups():
 @app.route("/admin/backups/criar", methods=["POST"])
 @admin_required
 def admin_backup_criar():
-    conn = get_pg_conn()
-    if not conn:
-        return jsonify({"status": "erro", "msg": "PostgreSQL indisponível"}), 500
+    """Backup COMPLETO sob demanda: snapshot antigo + retencao real (backups_v2)
+    + envio off-site criptografado. Ignora o debounce (forca agora)."""
+    global _ultimo_backup_ts
     try:
-        cur = conn.cursor()
         lbl = "manual_" + datetime.now().strftime("%Y%m%d_%H%M%S")
-        snapshot = {"dados": dados, "usuarios": carregar_usuarios()}
-        cur.execute(
-            "INSERT INTO backups (label, data) VALUES (%s, %s)",
-            (lbl, json.dumps(snapshot, ensure_ascii=False))
-        )
-        conn.commit()
-        cur.close()
-        conn.close()
-        return jsonify({"status": "ok", "label": lbl})
+        _ultimo_backup_ts = None  # forca o backup (ignora o intervalo minimo)
+        criar_backup_pg(label=lbl)        # grava na tabela antiga + backups_v2 (retencao real)
+        offsite = backup_offsite_github()  # envia ao GitHub cifrado (se configurado)
+        return jsonify({"status": "ok", "label": lbl, "offsite": bool(offsite)})
     except Exception as e:
         return jsonify({"status": "erro", "msg": str(e)}), 500
 
