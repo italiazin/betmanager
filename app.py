@@ -24,6 +24,7 @@ except ImportError:
     PSYCOPG2_OK = False
 
 import durabilidade as Dur
+import resultados as Res
 
 import pytesseract
 from PIL import Image
@@ -608,6 +609,7 @@ def usuario_logado():
                 u.setdefault("assinatura_ativa", bool(u.get("is_admin", False)))
                 u.setdefault("plano", "admin" if u.get("is_admin") else "free")
                 u.setdefault("apostas_publicas_padrao", False)
+                u.setdefault("tips_com_imagem", False)
                 return u
     except Exception:
         return None
@@ -639,32 +641,10 @@ def bet_pertence_usuario(b, uid=None):
     return b.get("user_id") == uid
 
 
-def bets_do_usuario():
-    try:
-        uid = usuario_id_atual()
-        return [b for b in dados.get("bets", []) if bet_pertence_usuario(b, uid)]
-    except Exception:
-        return []
 
 
-def saldo_casas_usuario():
-    try:
-        uid = usuario_id_atual()
-        saldos_por_usuario = dados.setdefault("saldo_casas_por_usuario", {})
-        if uid not in saldos_por_usuario:
-            saldos_por_usuario[uid] = {}
-        return saldos_por_usuario.setdefault(uid, {})
-    except Exception:
-        return {}
 
 
-def movimentacoes_usuario():
-    try:
-        uid = usuario_id_atual()
-        movs = dados.setdefault("movimentacoes_casas_por_usuario", {})
-        return movs.setdefault(uid, [])
-    except Exception:
-        return []
 
 
 def encontrar_chave_saldo_casa(casa):
@@ -707,11 +687,6 @@ def alterar_saldo_casa(casa, delta):
         saldos[chave] = round(float(saldos.get(chave, 0.0)) + float(delta or 0), 2)
 
 
-def total_saldos_casas():
-    try:
-        return round(sum(float(v or 0) for v in saldo_casas_usuario().values()), 2)
-    except Exception:
-        return 0.0
 
 
 def calcular_lucro(b):
@@ -913,33 +888,8 @@ def bets_display_v39():
     return [limpar_aposta_display_v39(b) for b in list(reversed(bets_do_usuario()))]
 
 
-def ultimas_apostas_comunidade_base(limit=10):
-    bets = list(reversed(dados.get("bets", [])))
-    saida = []
-
-    for b in bets:
-        if len(saida) >= limit:
-            break
-        if not b.get("publica", False):
-            continue
-
-        bd = limpar_aposta_display_v39(b)
-        saida.append({
-            "id": bd.get("id", ""),
-            "data": bd.get("data", ""),
-            "casa": bd.get("casa", ""),
-            "esporte": bd.get("esporte", ""),
-            "jogo": bd.get("jogo", ""),
-            "aposta": bd.get("aposta_display") or bd.get("aposta", ""),
-            "odd": bd.get("odd", ""),
-            "valor": bd.get("valor", "")
-        })
-
-    return saida
 
 
-def buscar_aposta(bet_id):
-    return buscar_aposta_segura_v61(bet_id)
 
 
 def _parse_float(v, default=0.0):
@@ -949,14 +899,6 @@ def _parse_float(v, default=0.0):
         return default
 
 
-def remover_emojis(texto):
-    texto = "".join(
-        ch for ch in str(texto)
-        if not unicodedata.category(ch).startswith("So")
-    )
-    texto = re.sub(r"[^\w\sÀ-ÿ.,:%/+\-$xX]", "", texto)
-    texto = re.sub(r"\s+", " ", texto).strip()
-    return texto
 
 
 def limpar_casa(texto):
@@ -1501,6 +1443,23 @@ def interpretar_aposta(texto_aposta, jogo=""):
         return info
 
     # =========================
+    # HANDICAP ("Time -1.5", "Time +1", "handicap -1")
+    # Vem antes de Total/Over-Under para nao confundir o sinal "-1.5" com "under".
+    # =========================
+    m_hcap = re.search(r"[+\-]\s*\d+(?:[.,]\d+)?", texto)
+    fala_total = texto_tem(t, ["gol", "gols", "goals", "over", "under",
+                               "mais de", "menos de", "acima", "abaixo"])
+    if texto_tem(t, ["handicap", "hdp", "asian handicap", "spread"]) or (m_hcap and not fala_total):
+        info["mercado"] = "Handicap"
+        info["selecao"] = extrair_selecao(texto, jogo)
+        try:
+            info["linha"] = float(m_hcap.group(0).replace(" ", "").replace(",", ".")) if m_hcap else linha
+        except Exception:
+            info["linha"] = linha
+        info["direcao"] = ""
+        return info
+
+    # =========================
     # TOTAL / OVER UNDER GOLS
     # =========================
     if direcao:
@@ -1905,17 +1864,8 @@ def estatisticas_extras():
     }
 
 
-def preparar_imagem(caminho):
-    img = Image.open(caminho)
-    largura, altura = img.size
-    img = img.resize((largura * 2, altura * 2))
-    img = img.convert("L")
-    return img
 
 
-def ler_imagem(caminho):
-    img = preparar_imagem(caminho)
-    return pytesseract.image_to_string(img, lang="por+eng", config="--psm 6")
 
 
 def limpar_odd(texto):
@@ -1951,24 +1901,6 @@ def limpar_odd(texto):
     return 1.0
 
 
-def limpar_valor(texto):
-    texto = str(texto).lower()
-    texto = texto.replace("r$", "").replace("rs", "").replace("r5", "").replace("r ", "").replace("$", "")
-    texto = remover_emojis(texto).replace(" ", "")
-    texto = re.sub(r"[^\d,\.]", "", texto)
-
-    if "," in texto:
-        texto = texto.replace(".", "").replace(",", ".")
-
-    match = re.search(r"\d+\.\d+", texto)
-    if match:
-        return float(match.group(0))
-
-    match = re.search(r"\d+", texto)
-    if match:
-        return float(match.group(0))
-
-    return 0.0
 
 
 
@@ -2249,28 +2181,6 @@ def normalizar_item_multipla(item):
     return item
 
 
-def extrair_partes_multipla(jogo, aposta):
-    jogos = separar_por_barra_inteligente(jogo)
-    selecoes = separar_por_barra_inteligente(aposta)
-
-    jogos_limpos = []
-    for j in jogos:
-        j2 = normalizar_item_multipla(j)
-        if j2:
-            jogos_limpos.append(j2)
-
-    selecoes_limpas = []
-    for s in selecoes:
-        s2 = normalizar_item_multipla(s)
-        if s2:
-            selecoes_limpas.append(s2)
-
-    return {
-        "jogos": jogos_limpos,
-        "selecoes": selecoes_limpas,
-        "qtd_jogos": len(jogos_limpos),
-        "qtd_selecoes": len(selecoes_limpas)
-    }
 
 
 def montar_resumo_multipla(partes):
@@ -2416,53 +2326,8 @@ def montar_resumo_itens_multipla(itens, partes):
     return montar_resumo_multipla(partes)
 
 
-def detectar_tipo_multipla(jogo, aposta):
-    partes = extrair_partes_multipla(jogo, aposta)
-
-    if partes["qtd_jogos"] > 1 or partes["qtd_selecoes"] > 1:
-        return True, partes
-
-    return False, partes
 
 
-def classificar_aposta_multiplas_ou_simples(jogo, tipo_aposta):
-    eh_multipla, partes = detectar_tipo_multipla(jogo, tipo_aposta)
-
-    t_aposta = normalizar_nome(tipo_aposta)
-    if texto_tem(t_aposta, ["vencerem seus jogos", "vencem seus jogos", "vencerem os seus jogos", "vencem os seus jogos"]):
-        eh_multipla = True
-        if not partes.get("selecoes"):
-            partes["selecoes"] = [tipo_aposta]
-            partes["qtd_selecoes"] = 1
-
-    if eh_multipla:
-        mercado_base, partes, itens = classificar_itens_multipla(jogo, tipo_aposta)
-
-        # usa a classificação geral só como fallback para direção/linha quando for múltipla homogênea
-        cls = classificar_aposta(f"{jogo} {tipo_aposta}", jogo)
-
-        cls["mercado"] = mercado_base
-        cls["itens_multipla"] = partes
-        cls["itens_multipla_detalhados"] = itens
-
-        # Em múltipla combinada, seleção precisa ser resumo curto, não texto bruto inteiro.
-        cls["selecao"] = montar_resumo_itens_multipla(itens, partes)
-
-        # Se tiver só um tipo over/under, pode manter direção/linha; se for combinada, deixa sem linha geral.
-        mercados = [i.get("mercado") for i in itens if i.get("mercado") != "Outro"]
-        direcoes = [i.get("direcao") for i in itens if i.get("direcao")]
-        linhas = [i.get("linha") for i in itens if i.get("linha") is not None]
-
-        if mercado_base == "Múltipla - Combinada":
-            cls["direcao"] = ""
-            cls["linha"] = None
-        elif len(set(direcoes)) == 1 and direcoes:
-            cls["direcao"] = direcoes[0]
-            cls["linha"] = linhas[0] if linhas else None
-
-        return cls
-
-    return classificar_aposta(tipo_aposta, jogo)
 
 
 def extrair_linhas_padrao_multibloco(texto):
@@ -2747,21 +2612,8 @@ def dividir_itens_v19(texto):
     return [limpar_item_multipla_v19(p) for p in re.split(r"\s*/\s*", str(texto)) if limpar_item_multipla_v19(p)]
 
 
-def extrair_partes_multipla(jogo, aposta):
-    jogos = dividir_itens_v19(jogo)
-    selecoes = dividir_itens_v19(aposta)
-
-    return {
-        "jogos": jogos,
-        "selecoes": selecoes,
-        "qtd_jogos": len(jogos),
-        "qtd_selecoes": len(selecoes)
-    }
 
 
-def detectar_tipo_multipla(jogo, aposta):
-    partes = extrair_partes_multipla(jogo, aposta)
-    return (partes["qtd_jogos"] > 1 or partes["qtd_selecoes"] > 1), partes
 
 
 def classificar_item_multipla_v19(item, jogo=""):
@@ -2877,42 +2729,6 @@ def montar_resumo_multipla_v19(itens, partes):
     return "múltipla"
 
 
-def classificar_aposta_multiplas_ou_simples(jogo, tipo_aposta):
-    eh_multipla, partes = detectar_tipo_multipla(jogo, tipo_aposta)
-
-    t_aposta = normalizar_nome(tipo_aposta)
-    if texto_tem(t_aposta, ["vencerem seus jogos", "vencem seus jogos", "vencerem os seus jogos", "vencem os seus jogos"]):
-        eh_multipla = True
-        if not partes.get("selecoes"):
-            partes["selecoes"] = [tipo_aposta]
-            partes["qtd_selecoes"] = 1
-
-    if eh_multipla:
-        base = partes.get("selecoes") or partes.get("jogos") or []
-        itens = [classificar_item_multipla_v19(i, jogo) for i in base if i]
-
-        mercados = [i["mercado"] for i in itens if i["mercado"] != "Outro"]
-
-        if not mercados:
-            mercado_base = "Múltipla"
-        elif len(set(mercados)) == 1:
-            mercado_base = f"Múltipla - {mercados[0]}"
-        else:
-            mercado_base = "Múltipla - Combinada"
-
-        cls = classificar_aposta(f"{jogo} {tipo_aposta}", jogo)
-        cls["mercado"] = mercado_base
-        cls["itens_multipla"] = partes
-        cls["itens_multipla_detalhados"] = itens
-        cls["selecao"] = montar_resumo_multipla_v19(itens, partes)
-
-        if mercado_base == "Múltipla - Combinada":
-            cls["direcao"] = ""
-            cls["linha"] = None
-
-        return cls
-
-    return classificar_aposta(tipo_aposta, jogo)
 
 
 def extrair_linhas_padrao_saas_v19(texto):
@@ -2998,42 +2814,6 @@ def extrair_linhas_padrao_saas_v19(texto):
 
 
 
-def extrair(texto):
-    try:
-        if "extrair_v20" in globals():
-            resultado = extrair_v20(texto)
-        elif "extrair_linhas_padrao_saas_v19" in globals():
-            resultado = extrair_linhas_padrao_saas_v19(texto)
-        elif "extrair_linhas_padrao_multibloco" in globals():
-            resultado = extrair_linhas_padrao_multibloco(texto)
-        else:
-            raise Exception("Nenhum extrator base encontrado")
-
-        return aplicar_formatacao_multiplas_combinadas(resultado)
-
-    except Exception as e:
-        print("ERRO OCR/extrair V25:", e)
-        texto_completo_limpo = limpar_linha(texto)
-        classificacao = classificar_aposta(texto_completo_limpo, "")
-        resultado = {
-            "casa": "",
-            "esporte": "Futebol",
-            "jogo": "",
-            "aposta": texto_completo_limpo[:180] if texto_completo_limpo else "Erro OCR - revise manualmente",
-            "odd": 1.0,
-            "valor": 0.0,
-            "mercado": classificacao["mercado"],
-            "direcao": classificacao["direcao"],
-            "linha": classificacao["linha"],
-            "periodo": classificacao["periodo"],
-            "selecao": classificacao["selecao"],
-            "btts_resposta": classificacao["btts_resposta"],
-            "texto_bruto": texto,
-            "texto_interpretado": texto_completo_limpo,
-            "itens_multipla": {},
-            "itens_multipla_detalhados": []
-        }
-        return aplicar_formatacao_multiplas_combinadas(resultado)
 
 
 
@@ -3042,125 +2822,14 @@ def extrair(texto):
 # Ex: "Flamengo e Palmeiras vencem" -> só ganha se Flamengo E Palmeiras ganharem.
 # ============================================================
 
-def separar_times_vencedores_texto(texto):
-    bruto = limpar_linha(texto)
-
-    bruto = re.sub(r"\b(vencerem seus jogos|vencem seus jogos|vencerem os seus jogos|vencem os seus jogos)\b", "", bruto, flags=re.I)
-    bruto = re.sub(r"\b(vence|vencem|vencer|vencerem|para vencer|ganha|ganham|resultado final|moneyline)\b", "", bruto, flags=re.I)
-    bruto = re.sub(r"\b(futebol|basquete|tenis|tênis|volei|vôlei)\b", "", bruto, flags=re.I)
-    bruto = re.sub(r"\s+", " ", bruto).strip(" /-|")
-
-    partes = re.split(r"\s*(?:/|,|\+|\be\b|\band\b)\s*", bruto, flags=re.I)
-
-    times = []
-    vistos = set()
-
-    for p in partes:
-        p = limpar_linha(p)
-        p = re.sub(r"\b(de|do|da|dos|das)\s+jogos?\b", "", p, flags=re.I)
-        p = re.sub(r"\s+", " ", p).strip(" /-|")
-
-        if len(p) < 3:
-            continue
-
-        n = normalizar_nome(p)
-
-        if n in ["resultado", "final", "vencedor", "vencedores", "time", "times"]:
-            continue
-
-        if n and n not in vistos:
-            vistos.add(n)
-            times.append(p)
-
-    return times
 
 
-def detectar_multipla_moneyline_times(aposta):
-    mercado = str(aposta.get("mercado", ""))
-    texto_total = " ".join([
-        str(aposta.get("aposta", "")),
-        str(aposta.get("selecao", "")),
-        str(aposta.get("texto_interpretado", ""))
-    ])
-
-    t = normalizar_nome(texto_total)
-
-    if mercado.startswith("Múltipla") and texto_tem(t, [
-        "vencem", "vencerem", "vence", "para vencer", "moneyline", "resultado final"
-    ]):
-        times = separar_times_vencedores_texto(texto_total)
-
-        if len(times) < 2:
-            times = separar_times_vencedores_texto(aposta.get("selecao", ""))
-
-        if len(times) < 2:
-            times = separar_times_vencedores_texto(aposta.get("aposta", ""))
-
-        return times if len(times) >= 2 else []
-
-    if texto_tem(t, ["vencem", "vencerem", "vencerem seus jogos", "vencem seus jogos"]):
-        times = separar_times_vencedores_texto(texto_total)
-        return times if len(times) >= 2 else []
-
-    return []
 
 
-def buscar_resultado_time_simples(nome_time, aposta_base):
-    temp = dict(aposta_base)
-    temp["jogo"] = nome_time
-    temp["selecao"] = nome_time
-    temp["mercado"] = "Moneyline"
-    temp["esporte"] = aposta_base.get("esporte", "Futebol") or "Futebol"
-
-    return buscar_resultado_futebol(temp)
 
 
-def validar_time_venceu_no_resultado(nome_time, resultado):
-    home = resultado.get("home_team", "")
-    away = resultado.get("away_team", "")
-    hs = resultado.get("home_score")
-    aw = resultado.get("away_score")
-
-    if hs is None or aw is None:
-        return None
-
-    if nome_bate(nome_time, home):
-        return hs > aw
-
-    if nome_bate(nome_time, away):
-        return aw > hs
-
-    return None
 
 
-def validar_multipla_moneyline_api(aposta):
-    times = detectar_multipla_moneyline_times(aposta)
-
-    if len(times) < 2:
-        return None, "múltipla sem times suficientes"
-
-    detalhes = []
-
-    for time_nome in times:
-        resultado = buscar_resultado_time_simples(time_nome, aposta)
-
-        if not resultado:
-            return None, f"resultado não encontrado para {time_nome}"
-
-        if resultado.get("status") not in ["FT", "AET", "PEN"]:
-            return None, f"jogo ainda não finalizado para {time_nome}"
-
-        venceu = validar_time_venceu_no_resultado(time_nome, resultado)
-
-        if venceu is None:
-            return None, f"não consegui confirmar o time {time_nome} no jogo encontrado"
-
-        detalhes.append(f"{time_nome}: {'ganhou' if venceu else 'não ganhou'}")
-
-        if not venceu:
-            return "perdida", " | ".join(detalhes)
-
-    return "ganha", " | ".join(detalhes)
 
 
 
@@ -3169,189 +2838,17 @@ def validar_multipla_moneyline_api(aposta):
 # V24 - MOTOR UNIVERSAL DE MÚLTIPLAS
 # ============================================================
 
-def dividir_itens_multipla_universal(texto):
-    bruto = limpar_linha(texto)
-    bruto = re.sub(r"\b(resultado final|moneyline)\s*[:\-]?", " ", bruto, flags=re.I)
-    bruto = re.sub(r"\b(futebol|basquete|tenis|tênis|volei|vôlei)\b", " ", bruto, flags=re.I)
-    bruto = re.sub(r"R\$\s*\d+[,.]?\d*", " ", bruto, flags=re.I)
-    bruto = re.sub(r"\s+", " ", bruto).strip(" /-|")
-
-    partes = re.split(r"\s*(?:/|\+|;|\n)\s*", bruto)
-    itens = []
-
-    for parte in partes:
-        parte = limpar_linha(parte).strip(" /-|")
-        if not parte:
-            continue
-        n = normalizar_nome(parte)
-
-        if re.search(r"\b(e|and)\b", n) and texto_tem(n, ["vencem", "vencerem", "vence", "para vencer"]):
-            frase = parte
-            frase = re.sub(r"\b(vencerem seus jogos|vencem seus jogos|vencerem os seus jogos|vencem os seus jogos)\b", "", frase, flags=re.I)
-            frase = re.sub(r"\b(vence|vencem|vencer|vencerem|para vencer|ganha|ganham)\b", "", frase, flags=re.I)
-            subs = re.split(r"\s+\b(?:e|and)\b\s+", frase, flags=re.I)
-            for sp in subs:
-                sp = limpar_linha(sp).strip(" /-|")
-                if len(sp) >= 3:
-                    itens.append(sp + " vence")
-            continue
-
-        itens.append(parte)
-
-    saida = []
-    vistos = set()
-    for item in itens:
-        item = re.sub(r"\s+", " ", item).strip(" /-|")
-        n = normalizar_nome(item)
-        if n and n not in vistos:
-            vistos.add(n)
-            saida.append(item)
-    return saida
-
-
-def extrair_itens_multipla_universal(aposta):
-    candidatos = []
-
-    det = aposta.get("itens_multipla_detalhados", [])
-    if isinstance(det, list):
-        for it in det:
-            if isinstance(it, dict) and it.get("texto"):
-                candidatos.append(str(it.get("texto")))
-
-    im = aposta.get("itens_multipla", {})
-    if isinstance(im, dict):
-        for campo in ["selecoes", "jogos"]:
-            val = im.get(campo, [])
-            if isinstance(val, list):
-                candidatos.extend([str(x) for x in val if str(x).strip()])
-
-    for campo in ["selecao", "aposta", "texto_interpretado"]:
-        val = str(aposta.get(campo, "") or "")
-        if val:
-            candidatos.extend(dividir_itens_multipla_universal(val))
-
-    texto_total = " ".join([str(aposta.get("aposta", "")), str(aposta.get("selecao", "")), str(aposta.get("texto_interpretado", ""))])
-    candidatos.extend(dividir_itens_multipla_universal(texto_total))
-
-    saida = []
-    vistos = set()
-    for c in candidatos:
-        c = limpar_linha(c)
-        c = re.sub(r"\b(multipla|múltipla|dupla|tripla)\b", " ", c, flags=re.I)
-        c = re.sub(r"\s+", " ", c).strip(" /-|")
-        if len(c) < 3:
-            continue
-        n = normalizar_nome(c)
-        if n in vistos:
-            continue
-        if len(c.split()) > 14 and len(saida) >= 2:
-            continue
-        vistos.add(n)
-        saida.append(c)
-
-    if len(saida) == 1:
-        div = dividir_itens_multipla_universal(saida[0])
-        if len(div) > 1:
-            saida = div
-    return saida
-
-
-def montar_item_aposta_para_validar(item_texto, aposta_base):
-    jogo_base = aposta_base.get("jogo", "")
-    item_limpo = limpar_linha(item_texto)
-    n = normalizar_nome(item_limpo)
-
-    if (not texto_tem(n, ["vence", "vencem", "vencer", "empate", "over", "under", "mais de", "menos de", "ambas", "btts", "escanteio", "corner", "chute", "marcador", "assistencia", "assistência", "dupla chance", "chance dupla"]) and len(item_limpo.split()) <= 4):
-        item_limpo = item_limpo + " vence"
-
-    cls = classificar_item_combinada_visual_v28(item_limpo, jogo_base) if "classificar_item_combinada_visual_v28" in globals() else classificar_aposta(item_limpo, jogo_base)
-    item = dict(aposta_base)
-    item["aposta"] = item_limpo
-    item["texto_interpretado"] = item_limpo
-    item["mercado"] = cls.get("mercado", "Outro")
-    item["direcao"] = cls.get("direcao", "")
-    item["linha"] = cls.get("linha", None)
-    item["periodo"] = cls.get("periodo", "jogo inteiro")
-    item["selecao"] = cls.get("selecao", "")
-    item["btts_resposta"] = cls.get("btts_resposta", "")
-
-    if item["mercado"] == "Moneyline":
-        sel = cls.get("selecao", "")
-        if not sel or normalizar_nome(sel) in ["resultado final", "resultado", "final"]:
-            sel = re.sub(r"\b(vence|vencem|vencer|vencerem|para vencer|ganha|ganham)\b", "", item_limpo, flags=re.I)
-            sel = re.sub(r"\s+", " ", sel).strip()
-        item["selecao"] = sel
-        if not jogo_base or " x " not in normalizar_nome(jogo_base):
-            item["jogo"] = sel
-    item = corrigir_item_quantitativo_v27(item)
-
-    return item
 
 
 
-def corrigir_item_quantitativo_v27(item):
-    mercado = str(item.get("mercado", ""))
-    texto = " ".join([
-        str(item.get("aposta", "")),
-        str(item.get("selecao", "")),
-        str(item.get("texto_interpretado", ""))
-    ])
-
-    if mercado in ["Escanteios", "Chutes", "Chutes no Gol", "Total", "Total de Gols", "Cartões"]:
-        direcao, linha = normalizar_direcao_linha_v27(texto)
-
-        if direcao:
-            item["direcao"] = direcao
-            item["selecao"] = direcao
-
-        if linha is not None:
-            item["linha"] = linha
-
-    return item
 
 
-def validar_item_multipla_universal(item_aposta):
-    if normalizar_nome(item_aposta.get("esporte", "Futebol")) != "futebol":
-        return None, "ignorado: não é futebol"
-
-    resultado = buscar_resultado_futebol(item_aposta)
-    if not resultado:
-        return None, "resultado não encontrado"
-    if resultado.get("status") not in ["FT", "AET", "PEN"]:
-        return None, "jogo ainda não finalizado"
-
-    if item_aposta.get("mercado") == "HT Vence sem sofrer":
-        status = validar_ht_vence_sem_sofrer_v28(item_aposta, resultado)
-    else:
-        status = validar_aposta_com_resultado(item_aposta, resultado)
-
-    if status:
-        return status, "validado"
-    return None, "mercado não validado"
 
 
-def validar_multipla_universal_api(aposta):
-    itens = extrair_itens_multipla_universal(aposta)
-    if len(itens) < 2:
-        return None, "múltipla sem itens suficientes"
 
-    detalhes = []
-    for item_texto in itens:
-        item_aposta = montar_item_aposta_para_validar(item_texto, aposta)
-        mercado = item_aposta.get("mercado", "Outro")
-        if mercado == "Outro":
-            detalhes.append(f"{item_texto}: mercado não identificado")
-            return None, " | ".join(detalhes)
 
-        status, msg = validar_item_multipla_universal(item_aposta)
-        detalhes.append(f"{item_texto} [{mercado}]: {status or msg}")
 
-        if status == "perdida":
-            return "perdida", " | ".join(detalhes)
-        if status != "ganha":
-            return None, " | ".join(detalhes)
 
-    return "ganha", " | ".join(detalhes)
 
 
 
@@ -3362,119 +2859,10 @@ def validar_multipla_universal_api(aposta):
 # V25 - FORMATAÇÃO INTELIGENTE DE MÚLTIPLAS COMBINADAS
 # ============================================================
 
-def dividir_itens_mercados_mesma_linha(texto):
-    bruto = limpar_linha(texto)
-    bruto = re.sub(r"\b(resultado final|futebol)\b", " ", bruto, flags=re.I)
-    bruto = re.sub(r"\s+", " ", bruto).strip(" /-|")
-    partes = re.split(r"\s*(?:/|,|\+|;|\s+e\s+|\s+and\s+)\s*", bruto, flags=re.I)
-
-    saida = []
-    for p in partes:
-        p = limpar_linha(p).strip(" /-|")
-        if not p:
-            continue
-        n = normalizar_nome(p)
-
-        if re.search(r"\d+[,.]\d+", p) and texto_tem(n, ["cantos", "canto", "escanteios", "escanteio", "corners", "corner"]):
-            if not detectar_direcao(p):
-                p = "Over " + p
-
-        if re.search(r"\d+[,.]\d+", p) and texto_tem(n, ["gols", "gol", "goals"]):
-            if not detectar_direcao(p) and texto_tem(normalizar_nome(bruto), ["over", "mais de"]):
-                p = "Over " + p
-
-        saida.append(p)
-
-    if len(saida) == 1:
-        s = saida[0]
-        tokens = []
-
-        m_gols = re.search(r"(over|mais de|under|menos de)?\s*(\d+[,.]\d+)\s*(gols?|goals?)", s, flags=re.I)
-        if m_gols:
-            dire = m_gols.group(1) or "over"
-            tokens.append(f"{dire} {m_gols.group(2)} gols")
-
-        if eh_texto_btts(s):
-            tokens.append("BTTS")
-
-        m_cantos = re.search(r"(over|mais de|under|menos de)?\s*(\d+[,.]\d+)\s*(cantos?|escanteios?|corners?)", s, flags=re.I)
-        if m_cantos:
-            dire = m_cantos.group(1) or "over"
-            tokens.append(f"{dire} {m_cantos.group(2)} cantos")
-
-        if len(tokens) > 1:
-            return tokens
-
-    return saida
 
 
-def classificar_item_combinada_visual(item, jogo=""):
-    item = limpar_linha(item)
-    t = normalizar_nome(item)
-
-    out = {"texto": item, "mercado": "Outro", "selecao": "", "direcao": "", "linha": None}
-
-    if not item:
-        return out
-
-    if eh_texto_btts(item):
-        out["mercado"] = "Ambas Marcam"
-        out["selecao"] = detectar_btts_resposta(item) or "sim"
-        return out
-
-    direcao = detectar_direcao(item)
-    linha = extrair_linha(item)
-
-    if texto_tem(t, ["cantos", "canto", "escanteios", "escanteio", "corner", "corners"]):
-        out["mercado"] = "Escanteios"
-        out["direcao"] = direcao or "over"
-        out["selecao"] = out["direcao"]
-        out["linha"] = linha
-        return out
-
-    if texto_tem(t, ["chutes a gol", "chutes no gol", "shot on target", "shots on target"]):
-        out["mercado"] = "Chutes no Gol"
-        out["direcao"] = direcao or ("over" if linha is not None else "")
-        out["selecao"] = out["direcao"]
-        out["linha"] = linha
-        return out
-
-    if texto_tem(t, ["chutes", "shots", "finalizacoes", "finalizações"]):
-        out["mercado"] = "Chutes"
-        out["direcao"] = direcao or ("over" if linha is not None else "")
-        out["selecao"] = out["direcao"]
-        out["linha"] = linha
-        return out
-
-    if texto_tem(t, ["gols", "gol", "goals"]) or direcao:
-        out["mercado"] = "Total"
-        out["direcao"] = direcao or ("over" if linha is not None else "")
-        out["selecao"] = out["direcao"]
-        out["linha"] = linha
-        return out
-
-    cls = classificar_aposta(item, jogo)
-    out["mercado"] = cls.get("mercado", "Outro")
-    out["selecao"] = cls.get("selecao", "")
-    out["direcao"] = cls.get("direcao", "")
-    out["linha"] = cls.get("linha", None)
-    return out
 
 
-def resumir_multiplas_para_campos(itens):
-    mercados, selecoes, linhas = [], [], []
-    for it in itens:
-        mercados.append(it.get("mercado", "Outro") or "Outro")
-        sel = it.get("selecao", "") or it.get("direcao", "")
-        selecoes.append(sel if sel else "-")
-        linha = it.get("linha", None)
-        if isinstance(linha, float):
-            linhas.append(str(linha).rstrip("0").rstrip("."))
-        elif linha is None:
-            linhas.append("-")
-        else:
-            linhas.append(str(linha))
-    return {"mercado": " / ".join(mercados), "selecao": " / ".join(selecoes), "linha": " / ".join(linhas)}
 
 
 
@@ -3486,147 +2874,12 @@ def resumir_multiplas_para_campos(itens):
 # linha: - / 10.5
 # ============================================================
 
-def extrair_linha_mercado_v27(texto):
-    s = str(texto or "").replace(",", ".")
-
-    # Prioriza decimal.
-    m = re.search(r"\b(\d{1,3}\.\d+)\b", s)
-    if m:
-        try:
-            return float(m.group(1))
-        except:
-            pass
-
-    # Depois inteiro, mas evita odds/valores grandes demais.
-    m = re.search(r"\b(\d{1,3})\b", s)
-    if m:
-        try:
-            v = float(m.group(1))
-            if 0 <= v <= 99:
-                return v
-        except:
-            pass
-
-    return None
 
 
-def normalizar_direcao_linha_v27(texto):
-    direcao = detectar_direcao(texto)
-    linha = extrair_linha_mercado_v27(texto)
-
-    # Se tem linha e mercado quantitativo sem direção explícita, assume over.
-    t = normalizar_nome(texto)
-    if linha is not None and not direcao and texto_tem(t, [
-        "gols", "gol", "goals", "escanteios", "escanteio", "cantos", "canto",
-        "corner", "corners", "chutes", "shots", "cartoes", "cartões", "cards"
-    ]):
-        direcao = "over"
-
-    return direcao, linha
 
 
-def classificar_item_combinada_visual_v27(item, jogo=""):
-    item = limpar_linha(item)
-    t = normalizar_nome(item)
-
-    out = {
-        "texto": item,
-        "mercado": "Outro",
-        "selecao": "",
-        "direcao": "",
-        "linha": None,
-        "periodo": detectar_periodo(item)
-    }
-
-    if not item:
-        return out
-
-    if eh_texto_btts(item):
-        out["mercado"] = "Ambas Marcam"
-        out["selecao"] = detectar_btts_resposta(item) or "sim"
-        out["linha"] = None
-        return out
-
-    if texto_tem(t, [
-        "algum time vence ht", "algum time vence o ht",
-        "algum time vence 1 tempo", "algum time vence o 1 tempo",
-        "algum time vence primeiro tempo", "algum time vence o primeiro tempo"
-    ]):
-        out["mercado"] = "HT Resultado"
-        out["selecao"] = "sim"
-        out["linha"] = None
-        out["periodo"] = "1º tempo"
-        return out
-
-    direcao, linha = normalizar_direcao_linha_v27(item)
-
-    if texto_tem(t, ["escanteio", "escanteios", "canto", "cantos", "corner", "corners"]):
-        out["mercado"] = "Escanteios"
-        out["direcao"] = direcao or "over"
-        out["selecao"] = out["direcao"]
-        out["linha"] = linha
-        return out
-
-    if texto_tem(t, ["chutes a gol", "chutes no gol", "shot on target", "shots on target"]):
-        out["mercado"] = "Chutes no Gol"
-        out["direcao"] = direcao or ("over" if linha is not None else "")
-        out["selecao"] = out["direcao"]
-        out["linha"] = linha
-        return out
-
-    if texto_tem(t, ["chutes", "shots", "finalizacoes", "finalizações"]):
-        out["mercado"] = "Chutes"
-        out["direcao"] = direcao or ("over" if linha is not None else "")
-        out["selecao"] = out["direcao"]
-        out["linha"] = linha
-        return out
-
-    if texto_tem(t, ["gols", "gol", "goals"]) or direcao:
-        out["mercado"] = "Total de Gols" if texto_tem(t, ["gols", "gol", "goals"]) else "Total"
-        out["direcao"] = direcao or ("over" if linha is not None else "")
-        out["selecao"] = out["direcao"]
-        out["linha"] = linha
-        return out
-
-    cls = classificar_aposta(item, jogo)
-    out["mercado"] = cls.get("mercado", "Outro")
-    out["selecao"] = cls.get("selecao", "")
-    out["direcao"] = cls.get("direcao", "")
-    out["linha"] = cls.get("linha", None)
-    out["periodo"] = cls.get("periodo", detectar_periodo(item))
-    return out
 
 
-def aplicar_formatacao_multiplas_combinadas(resultado):
-    aposta_txt = str(resultado.get("aposta", ""))
-    jogo = resultado.get("jogo", "")
-    mercados_txt = aposta_txt.split(" - ", 1)[1] if " - " in aposta_txt else aposta_txt
-
-    itens_txt = dividir_itens_mercados_mesma_linha(mercados_txt)
-    if len(itens_txt) < 2:
-        return resultado
-
-    itens = [classificar_item_combinada_visual_v27(x, jogo) for x in itens_txt]
-    itens_validos = [i for i in itens if i.get("mercado") != "Outro"]
-
-    if len(itens_validos) < 2:
-        return resultado
-
-    resumo = resumir_multiplas_para_campos(itens_validos)
-
-    resultado["mercado"] = resumo["mercado"]
-    resultado["selecao"] = resumo["selecao"]
-    resultado["linha"] = resumo["linha"]
-    resultado["direcao"] = ""
-    resultado["mercado_api"] = "Múltipla - Combinada"
-    resultado["itens_multipla_detalhados"] = itens_validos
-    resultado["itens_multipla"] = {
-        "jogos": [jogo] if jogo else [],
-        "selecoes": [i.get("texto", "") for i in itens_validos],
-        "qtd_jogos": 1 if jogo else 0,
-        "qtd_selecoes": len(itens_validos)
-    }
-    return resultado
 
 
 
@@ -3635,236 +2888,16 @@ def aplicar_formatacao_multiplas_combinadas(resultado):
 # V26 - MULTIPLAS COM DESCRIÇÃO DE MERCADO NO FINAL
 # ============================================================
 
-def item_tem_selecao_clara_v26(item):
-    t = normalizar_nome(item)
-
-    if detectar_direcao(item):
-        return True
-
-    if eh_texto_btts(item):
-        return True
-
-    if texto_tem(t, [
-        "vence", "vencem", "vencer", "vencerem", "ml", "moneyline",
-        "ou empate", "dupla chance", "chance dupla",
-        "marcador", "assistencia", "assistência",
-        "tem 1 ou mais", "chutes", "chutes a gol",
-        "algum time vence"
-    ]):
-        return True
-
-    if re.search(r"\d+[,.]\d+", str(item)) and texto_tem(t, [
-        "gols", "gol", "escanteios", "escanteio", "cantos", "canto",
-        "chutes", "cartoes", "cartões", "cards"
-    ]):
-        return True
-
-    return False
 
 
-def item_e_descricao_mercado_v26(item):
-    t = normalizar_nome(item)
-
-    if item_tem_selecao_clara_v26(item):
-        return False
-
-    descricoes = [
-        "total de gols", "total gols", "total de gol",
-        "total de escanteios", "total escanteios", "total de cantos", "total cantos",
-        "resultado final", "mercado final",
-        "total de chutes", "total chutes",
-        "total de cartoes", "total de cartões"
-    ]
-
-    return any(d in t for d in descricoes)
 
 
-def juntar_descricoes_de_mercado_v26(partes):
-    partes = [limpar_linha(p).strip(" /-|") for p in partes if limpar_linha(p).strip(" /-|")]
-
-    if len(partes) < 3:
-        return partes
-
-    selecoes = [p for p in partes if item_tem_selecao_clara_v26(p)]
-    descricoes = [p for p in partes if item_e_descricao_mercado_v26(p)]
-
-    if len(selecoes) >= 1 and len(descricoes) >= 1 and len(selecoes) + len(descricoes) == len(partes):
-        saida = []
-        for i, sel in enumerate(selecoes):
-            desc = descricoes[i] if i < len(descricoes) else ""
-            saida.append(sel + (" | " + desc if desc else ""))
-        return saida
-
-    return partes
 
 
-def classificar_item_combinada_visual_v26(item, jogo=""):
-    item_original = limpar_linha(item)
-    selecao_txt = item_original
-    descricao_txt = ""
-
-    if " | " in item_original:
-        selecao_txt, descricao_txt = [x.strip() for x in item_original.split(" | ", 1)]
-
-    texto_analise = (selecao_txt + " " + descricao_txt).strip()
-    t = normalizar_nome(texto_analise)
-
-    out = {
-        "texto": selecao_txt,
-        "descricao_mercado": descricao_txt,
-        "mercado": "Outro",
-        "selecao": "",
-        "direcao": "",
-        "linha": None,
-        "periodo": detectar_periodo(texto_analise)
-    }
-
-    if not selecao_txt:
-        return out
-
-    if texto_tem(t, [
-        "algum time vence ht", "algum time vence o ht",
-        "algum time vence 1 tempo", "algum time vence o 1 tempo",
-        "algum time vence primeiro tempo", "algum time vence o primeiro tempo"
-    ]):
-        out["mercado"] = "HT Resultado"
-        out["selecao"] = "sim"
-        out["linha"] = None
-        out["periodo"] = "1º tempo"
-        return out
-
-    if eh_texto_btts(texto_analise):
-        out["mercado"] = "Ambas Marcam"
-        out["selecao"] = detectar_btts_resposta(texto_analise) or "sim"
-        out["linha"] = None
-        return out
-
-    # ML / time vence
-    if texto_tem(t, [" ml", "ml ", "vence", "vencem", "para vencer", "moneyline"]):
-        cls = classificar_aposta(selecao_txt, jogo)
-        if cls.get("mercado") == "Moneyline" or texto_tem(t, ["ml", "vence", "vencem", "para vencer"]):
-            out["mercado"] = "Moneyline"
-            selecao = cls.get("selecao", "")
-            if not selecao or normalizar_nome(selecao) in ["resultado final", "resultado", "final"]:
-                selecao = re.sub(r"\b(ml|vence|vencem|vencer|vencerem|para vencer|ganha|ganham)\b", "", selecao_txt, flags=re.I)
-                selecao = re.sub(r"\s+", " ", selecao).strip()
-            out["selecao"] = selecao
-            return out
-
-    direcao = detectar_direcao(selecao_txt) or detectar_direcao(texto_analise)
-    linha = extrair_linha(selecao_txt)
-
-    if linha is not None and not direcao and texto_tem(t, [
-        "gols", "gol", "escanteios", "escanteio", "cantos", "canto",
-        "chutes", "cartoes", "cartões"
-    ]):
-        direcao = "over"
-
-    if texto_tem(t, ["escanteio", "escanteios", "canto", "cantos", "corner", "corners"]):
-        out["mercado"] = "Escanteios"
-        out["direcao"] = direcao or "over"
-        out["selecao"] = out["direcao"]
-        out["linha"] = linha
-        return out
-
-    if texto_tem(t, ["chutes a gol", "chutes no gol", "shot on target", "shots on target"]):
-        out["mercado"] = "Chutes no Gol"
-        out["direcao"] = direcao or ("over" if linha is not None else "")
-        out["selecao"] = out["direcao"]
-        out["linha"] = linha
-        return out
-
-    if texto_tem(t, ["chutes", "shots", "finalizacoes", "finalizações"]):
-        out["mercado"] = "Chutes"
-        out["direcao"] = direcao or ("over" if linha is not None else "")
-        out["selecao"] = out["direcao"]
-        out["linha"] = linha
-        return out
-
-    if texto_tem(t, ["gols", "gol", "goals"]) or direcao:
-        out["mercado"] = "Total de Gols" if texto_tem(t, ["gols", "gol", "goals"]) else "Total"
-        out["direcao"] = direcao or ("over" if linha is not None else "")
-        out["selecao"] = out["direcao"]
-        out["linha"] = linha
-        return out
-
-    cls = classificar_aposta(selecao_txt, jogo)
-    out["mercado"] = cls.get("mercado", "Outro")
-    out["selecao"] = cls.get("selecao", "")
-    out["direcao"] = cls.get("direcao", "")
-    out["linha"] = cls.get("linha", None)
-    out["periodo"] = cls.get("periodo", detectar_periodo(texto_analise))
-    return out
 
 
-def dividir_itens_mercados_mesma_linha(texto):
-    bruto = limpar_linha(texto)
-    bruto = re.sub(r"\b(futebol)\b", " ", bruto, flags=re.I)
-    bruto = re.sub(r"\s+", " ", bruto).strip(" /-|")
-
-    partes = re.split(r"\s*(?:/|,|\+|;|\s+e\s+|\s+and\s+)\s*", bruto, flags=re.I)
-    partes = [limpar_linha(p).strip(" /-|") for p in partes if limpar_linha(p).strip(" /-|")]
-
-    partes = juntar_descricoes_de_mercado_v26(partes)
-
-    saida = []
-    for p in partes:
-        n = normalizar_nome(p)
-
-        if re.search(r"\d+[,.]\d+", p) and texto_tem(n, ["cantos", "canto", "escanteios", "escanteio", "corners", "corner"]):
-            if not detectar_direcao(p):
-                p = "Over " + p
-
-        if re.search(r"\d+[,.]\d+", p) and texto_tem(n, ["gols", "gol", "goals"]):
-            if not detectar_direcao(p) and texto_tem(normalizar_nome(bruto), ["over", "mais de"]):
-                p = "Over " + p
-
-        saida.append(p)
-
-    if len(saida) == 1:
-        s = saida[0]
-        tokens = []
-
-        m_gols = re.search(r"(over|mais de|under|menos de)?\s*(\d+[,.]\d+)\s*(gols?|goals?)(?:\s*no\s*1[ºo]?\s*tempo)?", s, flags=re.I)
-        if m_gols:
-            dire = m_gols.group(1) or "over"
-            extra = " no 1º tempo" if re.search(r"1[ºo]?\s*tempo", s, flags=re.I) else ""
-            tokens.append(f"{dire} {m_gols.group(2)} gols{extra}")
-
-        if eh_texto_btts(s):
-            tokens.append("BTTS")
-
-        m_cantos = re.search(r"(over|mais de|under|menos de)?\s*(\d+[,.]\d+)\s*(cantos?|escanteios?|corners?)", s, flags=re.I)
-        if m_cantos:
-            dire = m_cantos.group(1) or "over"
-            tokens.append(f"{dire} {m_cantos.group(2)} cantos")
-
-        if len(tokens) > 1:
-            return tokens
-
-    return saida
 
 
-def resumir_multiplas_para_campos(itens):
-    mercados, selecoes, linhas, periodos = [], [], [], []
-
-    for it in itens:
-        mercado = it.get("mercado", "Outro") or "Outro"
-        selecao = it.get("selecao", "") or it.get("direcao", "")
-        linha = it.get("linha", None)
-        periodo = it.get("periodo", "jogo inteiro") or "jogo inteiro"
-
-        mercados.append(mercado)
-        selecoes.append(selecao if selecao else "-")
-        linhas.append(str(linha).rstrip("0").rstrip(".") if isinstance(linha, float) else (str(linha) if linha is not None else "-"))
-        periodos.append(periodo)
-
-    return {
-        "mercado": " / ".join(mercados),
-        "selecao": " / ".join(selecoes),
-        "linha": " / ".join(linhas),
-        "periodo": " / ".join(periodos)
-    }
 
 
 
@@ -3876,150 +2909,12 @@ def resumir_multiplas_para_campos(itens):
 # linha: - / 10.5
 # ============================================================
 
-def extrair_linha_mercado_v27(texto):
-    s = str(texto or "").replace(",", ".")
-
-    # Prioriza decimal.
-    m = re.search(r"\b(\d{1,3}\.\d+)\b", s)
-    if m:
-        try:
-            return float(m.group(1))
-        except:
-            pass
-
-    # Depois inteiro, mas evita odds/valores grandes demais.
-    m = re.search(r"\b(\d{1,3})\b", s)
-    if m:
-        try:
-            v = float(m.group(1))
-            if 0 <= v <= 99:
-                return v
-        except:
-            pass
-
-    return None
 
 
-def normalizar_direcao_linha_v27(texto):
-    direcao = detectar_direcao(texto)
-    linha = extrair_linha_mercado_v27(texto)
-
-    # Se tem linha e mercado quantitativo sem direção explícita, assume over.
-    t = normalizar_nome(texto)
-    if linha is not None and not direcao and texto_tem(t, [
-        "gols", "gol", "goals", "escanteios", "escanteio", "cantos", "canto",
-        "corner", "corners", "chutes", "shots", "cartoes", "cartões", "cards"
-    ]):
-        direcao = "over"
-
-    return direcao, linha
 
 
-def classificar_item_combinada_visual_v27(item, jogo=""):
-    item = limpar_linha(item)
-    t = normalizar_nome(item)
-
-    out = {
-        "texto": item,
-        "mercado": "Outro",
-        "selecao": "",
-        "direcao": "",
-        "linha": None,
-        "periodo": detectar_periodo(item)
-    }
-
-    if not item:
-        return out
-
-    if eh_texto_btts(item):
-        out["mercado"] = "Ambas Marcam"
-        out["selecao"] = detectar_btts_resposta(item) or "sim"
-        out["linha"] = None
-        return out
-
-    if texto_tem(t, [
-        "algum time vence ht", "algum time vence o ht",
-        "algum time vence 1 tempo", "algum time vence o 1 tempo",
-        "algum time vence primeiro tempo", "algum time vence o primeiro tempo"
-    ]):
-        out["mercado"] = "HT Resultado"
-        out["selecao"] = "sim"
-        out["linha"] = None
-        out["periodo"] = "1º tempo"
-        return out
-
-    direcao, linha = normalizar_direcao_linha_v27(item)
-
-    if texto_tem(t, ["escanteio", "escanteios", "canto", "cantos", "corner", "corners"]):
-        out["mercado"] = "Escanteios"
-        out["direcao"] = direcao or "over"
-        out["selecao"] = out["direcao"]
-        out["linha"] = linha
-        return out
-
-    if texto_tem(t, ["chutes a gol", "chutes no gol", "shot on target", "shots on target"]):
-        out["mercado"] = "Chutes no Gol"
-        out["direcao"] = direcao or ("over" if linha is not None else "")
-        out["selecao"] = out["direcao"]
-        out["linha"] = linha
-        return out
-
-    if texto_tem(t, ["chutes", "shots", "finalizacoes", "finalizações"]):
-        out["mercado"] = "Chutes"
-        out["direcao"] = direcao or ("over" if linha is not None else "")
-        out["selecao"] = out["direcao"]
-        out["linha"] = linha
-        return out
-
-    if texto_tem(t, ["gols", "gol", "goals"]) or direcao:
-        out["mercado"] = "Total de Gols" if texto_tem(t, ["gols", "gol", "goals"]) else "Total"
-        out["direcao"] = direcao or ("over" if linha is not None else "")
-        out["selecao"] = out["direcao"]
-        out["linha"] = linha
-        return out
-
-    cls = classificar_aposta(item, jogo)
-    out["mercado"] = cls.get("mercado", "Outro")
-    out["selecao"] = cls.get("selecao", "")
-    out["direcao"] = cls.get("direcao", "")
-    out["linha"] = cls.get("linha", None)
-    out["periodo"] = cls.get("periodo", detectar_periodo(item))
-    return out
 
 
-def aplicar_formatacao_multiplas_combinadas(resultado):
-    aposta_txt = str(resultado.get("aposta", ""))
-    jogo = resultado.get("jogo", "")
-
-    mercados_txt = aposta_txt.split(" - ", 1)[1] if " - " in aposta_txt else aposta_txt
-    itens_txt = dividir_itens_mercados_mesma_linha(mercados_txt)
-
-    if len(itens_txt) < 2:
-        return resultado
-
-    itens = [classificar_item_combinada_visual_v27(x, jogo) for x in itens_txt]
-    itens_validos = [i for i in itens if i.get("mercado") != "Outro"]
-
-    if len(itens_validos) < 2:
-        return resultado
-
-    resumo = resumir_multiplas_para_campos(itens_validos)
-
-    resultado["mercado"] = resumo["mercado"]
-    resultado["selecao"] = resumo["selecao"]
-    resultado["linha"] = resumo["linha"]
-    resultado["periodo"] = resumo["periodo"]
-    resultado["direcao"] = ""
-    resultado["mercado_api"] = "Múltipla - Combinada"
-    resultado["itens_multipla_detalhados"] = itens_validos
-    resultado["itens_multipla"] = {
-        "jogos": [jogo] if jogo else [],
-        "selecoes": [i.get("texto", "") for i in itens_validos],
-        "qtd_jogos": 1 if jogo else 0,
-        "qtd_selecoes": len(itens_validos)
-    }
-
-    return resultado
 
 
 
@@ -4028,291 +2923,30 @@ def aplicar_formatacao_multiplas_combinadas(resultado):
 # V28 - MOTOR COMPLETO DE COMBINAÇÕES
 # ============================================================
 
-def extrair_linha_mercado_v28(texto):
-    s = str(texto or "").replace(",", ".")
-    m = re.search(r"\b(\d{1,3}(?:\.\d+)?)\s*\+", s)
-    if m:
-        return float(m.group(1))
-    m = re.search(r"\b(\d{1,3}\.\d+)\b", s)
-    if m:
-        return float(m.group(1))
-    m = re.search(r"\b(\d{1,3})\b", s)
-    if m:
-        v = float(m.group(1))
-        if 0 <= v <= 99:
-            return v
-    return None
 
 
-def detectar_direcao_v28(texto):
-    s = str(texto or "")
-    t = normalizar_nome(s)
-    d = detectar_direcao(s)
-    if d:
-        return d
-    if re.search(r"\b\d+(?:[,.]\d+)?\s*\+", s):
-        return "over"
-    if texto_tem(t, ["ou mais", "pelo menos", "no minimo", "no mínimo"]):
-        return "over"
-    return ""
 
 
-def expandir_abreviacoes_v28(texto):
-    s = str(texto or "")
-    trocas = [
-        (r"\besc\b", "escanteios"),
-        (r"\bescs\b", "escanteios"),
-        (r"\bcantos?\b", "escanteios"),
-        (r"\bcards?\b", "cartoes"),
-        (r"\bcart(ao|ão|oes|ões)\b", "cartoes"),
-        (r"\bdc\b", "dupla chance"),
-    ]
-    for rgx, rep in trocas:
-        s = re.sub(rgx, rep, s, flags=re.I)
-    return re.sub(r"\s+", " ", s).strip()
 
 
-def split_inteligente_combinacao_v28(texto):
-    s = expandir_abreviacoes_v28(limpar_linha(texto))
-    s = re.sub(r"\b(futebol)\b", " ", s, flags=re.I)
-    s = re.sub(r"R\$\s*\d+[,.]?\d*", " ", s, flags=re.I)
-    s = re.sub(r"\s+", " ", s).strip(" /-|")
-
-    direcao_global = detectar_direcao_v28(s)
-    partes = re.split(r"\s*(?:/|,|;|\+|\s+e\s+|\s+and\s+)\s*", s, flags=re.I)
-    partes = [expandir_abreviacoes_v28(p).strip(" /-|") for p in partes if p.strip(" /-|")]
-
-    saida = []
-    for p in partes:
-        n = normalizar_nome(p)
-        if re.search(r"\d+(?:[,.]\d+)?", p) and not detectar_direcao_v28(p):
-            if texto_tem(n, ["gols", "gol", "escanteios", "cartoes", "chutes"]):
-                p = (direcao_global or "over") + " " + p
-        saida.append(p)
-
-    if len(saida) <= 1:
-        tokens = []
-        patterns = [
-            r"(?:over|under|mais de|menos de)?\s*\d+(?:[,.]\d+)?\+?\s*(?:gols?|goals?)",
-            r"(?:over|under|mais de|menos de)?\s*\d+(?:[,.]\d+)?\+?\s*(?:escanteios?|corners?)",
-            r"(?:over|under|mais de|menos de)?\s*\d+(?:[,.]\d+)?\+?\s*(?:cartoes|cartões|cards?)",
-            r"(?:over|under|mais de|menos de)?\s*\d+(?:[,.]\d+)?\+?\s*(?:chutes(?: a gol| no gol)?|shots(?: on target)?)",
-        ]
-        for pat in patterns:
-            for m in re.finditer(pat, s, flags=re.I):
-                tok = m.group(0).strip()
-                if tok and tok not in tokens:
-                    if not detectar_direcao_v28(tok):
-                        tok = (direcao_global or "over") + " " + tok
-                    tokens.append(tok)
-
-        if eh_texto_btts(s):
-            tokens.append("BTTS")
-
-        m_dc = re.search(r"(dupla chance\s+.+?)(?:$|\s+HT|\s+1[ºo]?\s*tempo)", s, flags=re.I)
-        if m_dc:
-            tok = m_dc.group(1).strip()
-            if re.search(r"\b(HT|1[ºo]?\s*tempo|primeiro tempo)\b", s, flags=re.I):
-                tok += " HT"
-            tokens.append(tok)
-
-        for m in re.finditer(r"([A-Za-zÀ-ÿ'.\- ]{3,})\s+anytime\b", s, flags=re.I):
-            tok = m.group(0).strip()
-            if tok not in tokens:
-                tokens.append(tok)
-
-        if len(tokens) > 1:
-            saida = tokens
-
-    final = []
-    vistos = set()
-    for p in saida:
-        p = re.sub(r"\s+", " ", p).strip(" /-|")
-        n = normalizar_nome(p)
-        if p and n not in vistos:
-            vistos.add(n)
-            final.append(p)
-    return final
 
 
-def item_tem_selecao_clara_v28(item):
-    t = normalizar_nome(item)
-    return (
-        bool(detectar_direcao_v28(item)) or
-        eh_texto_btts(item) or
-        bool(re.search(r"\d+(?:[,.]\d+)?\+", str(item))) or
-        texto_tem(t, [
-            "vence", "vencem", "vencer", "vencerem", "ml", "moneyline",
-            "ou empate", "dupla chance", "chance dupla",
-            "marcador", "assistencia", "assistência", "anytime",
-            "tem 1 ou mais", "chutes", "algum time vence"
-        ]) or
-        (bool(re.search(r"\d+[,.]\d+", str(item))) and texto_tem(t, ["gols", "gol", "escanteios", "cartoes", "chutes"]))
-    )
 
 
-def item_e_descricao_mercado_v28(item):
-    t = normalizar_nome(item)
-    if item_tem_selecao_clara_v28(item):
-        return False
-    return texto_tem(t, [
-        "total de gols", "total gols", "total de escanteios", "total escanteios",
-        "total de cartoes", "total de cartões", "total cartoes", "total cards",
-        "total de chutes", "resultado final", "mercado final"
-    ])
 
 
-def juntar_descricoes_de_mercado_v28(partes):
-    partes = [limpar_linha(p).strip(" /-|") for p in partes if limpar_linha(p).strip(" /-|")]
-    if len(partes) < 3:
-        return partes
-    selecoes = [p for p in partes if item_tem_selecao_clara_v28(p)]
-    descricoes = [p for p in partes if item_e_descricao_mercado_v28(p)]
-    if len(selecoes) >= 1 and len(descricoes) >= 1 and len(selecoes) + len(descricoes) == len(partes):
-        return [sel + (" | " + descricoes[i] if i < len(descricoes) else "") for i, sel in enumerate(selecoes)]
-    return partes
 
 
-def limpar_nome_marcador_anytime_v28(texto):
-    s = limpar_linha(texto)
-    s = re.sub(r"\b(anytime|a qualquer momento|para marcar|marcador|gol do jogador|to score)\b", " ", s, flags=re.I)
-    s = re.sub(r"\d+(?:[,.]\d+)?\+?", " ", s)
-    s = re.sub(r"[:/|()\[\]{}+\-]", " ", s)
-    return re.sub(r"\s+", " ", s).strip()
 
 
-def classificar_item_combinada_visual_v28(item, jogo=""):
-    item_original = expandir_abreviacoes_v28(limpar_linha(item))
-    selecao_txt = item_original
-    descricao_txt = ""
-    if " | " in item_original:
-        selecao_txt, descricao_txt = [x.strip() for x in item_original.split(" | ", 1)]
-
-    texto_analise = (selecao_txt + " " + descricao_txt).strip()
-    t = normalizar_nome(texto_analise)
-    out = {"texto": selecao_txt, "descricao_mercado": descricao_txt, "mercado": "Outro", "selecao": "", "direcao": "", "linha": None, "periodo": detectar_periodo(texto_analise)}
-
-    if texto_tem(t, ["vence de 0 o ht", "vence de zero o ht", "vence sem sofrer o ht", "vence de 0 no ht"]):
-        out["mercado"] = "HT Vence sem sofrer"
-        out["periodo"] = "1º tempo"
-        out["selecao"] = re.sub(r"\b(vence de 0 o ht|vence de zero o ht|vence sem sofrer o ht|vence de 0 no ht|ht)\b", "", selecao_txt, flags=re.I).strip()
-        return out
-
-    if texto_tem(t, ["algum time vence ht", "algum time vence o ht", "algum time vence 1 tempo", "algum time vence primeiro tempo"]):
-        out["mercado"] = "HT Resultado"
-        out["selecao"] = "sim"
-        out["periodo"] = "1º tempo"
-        return out
-
-    if eh_texto_btts(texto_analise):
-        out["mercado"] = "Ambas Marcam"
-        out["selecao"] = detectar_btts_resposta(texto_analise) or "sim"
-        return out
-
-    if texto_tem(t, ["anytime", "a qualquer momento", "to score"]):
-        out["mercado"] = "Marcador"
-        out["selecao"] = limpar_nome_marcador_anytime_v28(selecao_txt)
-        return out
-
-    if texto_tem(t, ["dupla chance"]):
-        out["mercado"] = "Dupla Chance"
-        out["periodo"] = "1º tempo" if texto_tem(t, ["ht", "1 tempo", "primeiro tempo"]) else "jogo inteiro"
-        txt = re.sub(r"\b(dupla chance|dc|ht|1[ºo]?\s*tempo|primeiro tempo)\b", " ", selecao_txt, flags=re.I)
-        txt = re.sub(r"\s+", " ", txt).strip()
-        out["selecao"] = detectar_dupla_chance_selecao(txt) or txt
-        return out
-
-    if re.search(r"\bML\b", selecao_txt, flags=re.I) or texto_tem(t, ["moneyline", "vence", "vencem", "para vencer"]):
-        out["mercado"] = "Moneyline"
-        selecao = re.sub(r"\b(ML|moneyline|vence|vencem|vencer|vencerem|para vencer|ganha|ganham)\b", " ", selecao_txt, flags=re.I)
-        out["selecao"] = re.sub(r"\s+", " ", selecao).strip()
-        return out
-
-    direcao = detectar_direcao_v28(selecao_txt) or detectar_direcao_v28(texto_analise)
-    linha = extrair_linha_mercado_v28(selecao_txt)
-    if linha is not None and not direcao and texto_tem(t, ["gols", "gol", "escanteios", "cartoes", "chutes"]):
-        direcao = "over"
-
-    if texto_tem(t, ["escanteio", "escanteios", "corner", "corners"]):
-        out.update({"mercado": "Escanteios", "direcao": direcao or "over", "selecao": direcao or "over", "linha": linha})
-        return out
-    if texto_tem(t, ["cartoes", "cartões", "cards", "yellow cards", "red cards"]):
-        out.update({"mercado": "Cartões", "direcao": direcao or "over", "selecao": direcao or "over", "linha": linha})
-        return out
-    if texto_tem(t, ["chutes a gol", "chutes no gol", "shot on target", "shots on target"]):
-        out.update({"mercado": "Chutes no Gol", "direcao": direcao or ("over" if linha is not None else ""), "selecao": direcao or ("over" if linha is not None else ""), "linha": linha})
-        return out
-    if texto_tem(t, ["chutes", "shots", "finalizacoes", "finalizações"]):
-        out.update({"mercado": "Chutes", "direcao": direcao or ("over" if linha is not None else ""), "selecao": direcao or ("over" if linha is not None else ""), "linha": linha})
-        return out
-    if texto_tem(t, ["gols", "gol", "goals"]) or direcao:
-        out.update({"mercado": "Total de Gols" if texto_tem(t, ["gols", "gol", "goals"]) else "Total", "direcao": direcao or ("over" if linha is not None else ""), "selecao": direcao or ("over" if linha is not None else ""), "linha": linha})
-        return out
-
-    cls = classificar_aposta(selecao_txt, jogo)
-    out.update({"mercado": cls.get("mercado", "Outro"), "selecao": cls.get("selecao", ""), "direcao": cls.get("direcao", ""), "linha": cls.get("linha", None), "periodo": cls.get("periodo", detectar_periodo(texto_analise))})
-    return out
 
 
-def dividir_itens_mercados_mesma_linha(texto):
-    return juntar_descricoes_de_mercado_v28(split_inteligente_combinacao_v28(texto))
 
 
-def resumir_multiplas_para_campos(itens):
-    mercados, selecoes, linhas, periodos = [], [], [], []
-    for it in itens:
-        mercados.append(it.get("mercado", "Outro") or "Outro")
-        selecoes.append(it.get("selecao", "") or it.get("direcao", "") or "-")
-        linha = it.get("linha", None)
-        linhas.append(str(linha).rstrip("0").rstrip(".") if isinstance(linha, float) else (str(linha) if linha is not None else "-"))
-        periodos.append(it.get("periodo", "jogo inteiro") or "jogo inteiro")
-    return {"mercado": " / ".join(mercados), "selecao": " / ".join(selecoes), "linha": " / ".join(linhas), "periodo": " / ".join(periodos)}
 
 
-def aplicar_formatacao_multiplas_combinadas(resultado):
-    aposta_txt = str(resultado.get("aposta", ""))
-    jogo = resultado.get("jogo", "")
-    mercados_txt = aposta_txt.split(" - ", 1)[1] if " - " in aposta_txt else aposta_txt
-    itens_txt = dividir_itens_mercados_mesma_linha(mercados_txt)
-
-    if len(itens_txt) < 2:
-        item = classificar_item_combinada_visual_v28(mercados_txt, jogo)
-        if item.get("mercado") != "Outro":
-            resultado["mercado"] = item["mercado"]
-            resultado["selecao"] = item["selecao"]
-            resultado["linha"] = item["linha"]
-            resultado["periodo"] = item["periodo"]
-        return resultado
-
-    itens = [classificar_item_combinada_visual_v28(x, jogo) for x in itens_txt]
-    itens_validos = [i for i in itens if i.get("mercado") != "Outro"]
-    if len(itens_validos) < 2:
-        return resultado
-
-    resumo = resumir_multiplas_para_campos(itens_validos)
-    resultado.update({"mercado": resumo["mercado"], "selecao": resumo["selecao"], "linha": resumo["linha"], "periodo": resumo["periodo"], "direcao": "", "mercado_api": "Múltipla - Combinada"})
-    resultado["itens_multipla_detalhados"] = itens_validos
-    resultado["itens_multipla"] = {"jogos": [jogo] if jogo else [], "selecoes": [i.get("texto", "") for i in itens_validos], "qtd_jogos": 1 if jogo else 0, "qtd_selecoes": len(itens_validos)}
-    return resultado
 
 
-def validar_ht_vence_sem_sofrer_v28(aposta, resultado):
-    home = resultado.get("home_team", "")
-    away = resultado.get("away_team", "")
-    selecao = aposta.get("selecao", "")
-    ht_home = resultado.get("home_score_ht", resultado.get("home_ht_score"))
-    ht_away = resultado.get("away_score_ht", resultado.get("away_ht_score"))
-    if ht_home is None or ht_away is None:
-        return None
-    try:
-        ht_home, ht_away = int(ht_home), int(ht_away)
-    except:
-        return None
-    if nome_bate(selecao, home):
-        return "ganha" if ht_home > ht_away and ht_away == 0 else "perdida"
-    if nome_bate(selecao, away):
-        return "ganha" if ht_away > ht_home and ht_home == 0 else "perdida"
-    return None
 
 
 
@@ -4323,159 +2957,18 @@ def validar_ht_vence_sem_sofrer_v28(aposta, resultado):
 # Corrige NameError quando versões anteriores perderam a função.
 # ============================================================
 
-def api_headers():
-    headers = {}
-
-    if API_KEY:
-        headers["x-apisports-key"] = API_KEY
-
-    return headers
 
 
-def api_get(url, params=None):
-    try:
-        r = requests.get(url, headers=api_headers(), params=params or {}, timeout=20)
-
-        if r.status_code != 200:
-            print("ERRO API:", r.status_code, r.text[:300])
-            return None
-
-        return r.json()
-
-    except Exception as e:
-        print("ERRO REQUEST API:", e)
-        return None
 
 
-def extrair_data_para_api(aposta):
-    dt = parse_data(aposta.get("data", ""))
-
-    if not dt:
-        dt = datetime.now()
-
-    return dt.strftime("%Y-%m-%d")
 
 
-def normalizar_nome_api(txt):
-    return normalizar_nome(txt)
 
 
-def score_match_time_api(nome, team):
-    nome_n = normalizar_nome_api(nome)
-    team_n = normalizar_nome_api(team)
-
-    if not nome_n or not team_n:
-        return 0
-
-    if nome_n == team_n:
-        return 100
-
-    if nome_n in team_n or team_n in nome_n:
-        return 85
-
-    ratio = difflib.SequenceMatcher(None, nome_n, team_n).ratio()
-    return int(ratio * 100)
 
 
-def escolher_melhor_fixture_futebol(fixtures, aposta):
-    jogo = aposta.get("jogo", "")
-    selecao = aposta.get("selecao", "")
-
-    casa, fora = extrair_times_jogo(jogo)
-
-    alvo1 = casa or selecao or jogo
-    alvo2 = fora
-
-    melhor = None
-    melhor_score = -1
-
-    for item in fixtures:
-        fixture = item.get("fixture", {})
-        teams = item.get("teams", {})
-        goals = item.get("goals", {})
-        score = item.get("score", {})
-
-        home = teams.get("home", {}).get("name", "")
-        away = teams.get("away", {}).get("name", "")
-
-        if alvo2:
-            s1 = max(score_match_time_api(alvo1, home), score_match_time_api(alvo1, away))
-            s2 = max(score_match_time_api(alvo2, home), score_match_time_api(alvo2, away))
-            total = s1 + s2
-        else:
-            total = max(
-                score_match_time_api(alvo1, home),
-                score_match_time_api(alvo1, away),
-                score_match_time_api(selecao, home),
-                score_match_time_api(selecao, away),
-            )
-
-        if total > melhor_score:
-            melhor_score = total
-            melhor = item
-
-    if not melhor or melhor_score < 55:
-        return None
-
-    fixture = melhor.get("fixture", {})
-    teams = melhor.get("teams", {})
-    goals = melhor.get("goals", {})
-    score = melhor.get("score", {})
-
-    halftime = score.get("halftime", {}) or {}
-
-    return {
-        "fixture_id": fixture.get("id"),
-        "status": (fixture.get("status", {}) or {}).get("short", ""),
-        "home_team": (teams.get("home", {}) or {}).get("name", ""),
-        "away_team": (teams.get("away", {}) or {}).get("name", ""),
-        "home_score": goals.get("home"),
-        "away_score": goals.get("away"),
-        "home_score_ht": halftime.get("home"),
-        "away_score_ht": halftime.get("away"),
-        "raw": melhor
-    }
 
 
-def buscar_resultado_futebol(aposta):
-    """
-    Busca resultado de futebol na API-Football.
-    Usa endpoint /fixtures e tenta bater pelo nome do jogo/time.
-    """
-    if not API_KEY:
-        print("API_KEY vazia em config.json")
-        return None
-
-    data_jogo = extrair_data_para_api(aposta)
-
-    cache_key = json.dumps({
-        "data": data_jogo,
-        "jogo": normalizar_nome(aposta.get("jogo", "")),
-        "selecao": normalizar_nome(aposta.get("selecao", ""))
-    }, ensure_ascii=False)
-
-    if cache_key in CACHE_RESULTADOS:
-        return CACHE_RESULTADOS[cache_key]
-
-    url = "https://v3.football.api-sports.io/fixtures"
-    params = {"date": data_jogo}
-
-    js = api_get(url, params)
-
-    if not js:
-        return None
-
-    fixtures = js.get("response", [])
-
-    if not fixtures:
-        return None
-
-    resultado = escolher_melhor_fixture_futebol(fixtures, aposta)
-
-    if resultado:
-        CACHE_RESULTADOS[cache_key] = resultado
-
-    return resultado
 
 
 
@@ -4485,178 +2978,16 @@ def buscar_resultado_futebol(aposta):
 # V31 - FIX API: validar_aposta_com_resultado
 # ============================================================
 
-def validar_moneyline_resultado(aposta, resultado):
-    selecao = aposta.get("selecao", "") or aposta.get("aposta", "")
-    home = resultado.get("home_team", "")
-    away = resultado.get("away_team", "")
-    hs = resultado.get("home_score")
-    aw = resultado.get("away_score")
-
-    if hs is None or aw is None:
-        return None
-
-    if normalizar_nome(selecao) in ["empate", "draw", "x"]:
-        return "ganha" if hs == aw else "perdida"
-
-    if nome_bate(selecao, home):
-        return "ganha" if hs > aw else "perdida"
-
-    if nome_bate(selecao, away):
-        return "ganha" if aw > hs else "perdida"
-
-    return None
 
 
-def validar_total_gols_resultado(aposta, resultado):
-    direcao = aposta.get("direcao", "") or aposta.get("selecao", "")
-    linha = aposta.get("linha", None)
-
-    if linha in ["", "-", None]:
-        linha = extrair_linha(aposta.get("aposta", ""))
-
-    try:
-        linha = float(linha)
-    except:
-        return None
-
-    hs = resultado.get("home_score")
-    aw = resultado.get("away_score")
-
-    if hs is None or aw is None:
-        return None
-
-    total = float(hs) + float(aw)
-
-    if direcao == "over":
-        if total > linha:
-            return "ganha"
-        if total < linha:
-            return "perdida"
-        return "anulada"
-
-    if direcao == "under":
-        if total < linha:
-            return "ganha"
-        if total > linha:
-            return "perdida"
-        return "anulada"
-
-    return None
 
 
-def validar_btts_resultado(aposta, resultado):
-    resposta = aposta.get("btts_resposta", "") or aposta.get("selecao", "") or detectar_btts_resposta_aposta(aposta)
-    hs = resultado.get("home_score")
-    aw = resultado.get("away_score")
-
-    if hs is None or aw is None:
-        return None
-
-    ambos = int(hs) > 0 and int(aw) > 0
-
-    if resposta == "sim":
-        return "ganha" if ambos else "perdida"
-
-    if resposta == "nao":
-        return "ganha" if not ambos else "perdida"
-
-    return None
 
 
-def validar_dupla_chance_resultado(aposta, resultado):
-    selecao = aposta.get("selecao", "")
-    hs = resultado.get("home_score")
-    aw = resultado.get("away_score")
-
-    if hs is None or aw is None:
-        return None
-
-    casa_ganha = hs > aw
-    fora_ganha = aw > hs
-    empate = hs == aw
-    s = normalizar_nome(selecao)
-
-    if s == "1x":
-        return "ganha" if casa_ganha or empate else "perdida"
-
-    if s == "x2":
-        return "ganha" if fora_ganha or empate else "perdida"
-
-    if s == "12":
-        return "ganha" if casa_ganha or fora_ganha else "perdida"
-
-    return None
 
 
-def validar_ht_resultado(aposta, resultado):
-    mercado = aposta.get("mercado", "")
-    selecao = aposta.get("selecao", "")
-    home = resultado.get("home_team", "")
-    away = resultado.get("away_team", "")
-
-    ht_home = resultado.get("home_score_ht", resultado.get("home_ht_score"))
-    ht_away = resultado.get("away_score_ht", resultado.get("away_ht_score"))
-
-    if ht_home is None or ht_away is None:
-        return None
-
-    try:
-        ht_home = int(ht_home)
-        ht_away = int(ht_away)
-    except:
-        return None
-
-    if mercado == "HT Resultado":
-        if normalizar_nome(selecao) in ["sim", "yes"]:
-            return "ganha" if ht_home != ht_away else "perdida"
-
-        if nome_bate(selecao, home):
-            return "ganha" if ht_home > ht_away else "perdida"
-
-        if nome_bate(selecao, away):
-            return "ganha" if ht_away > ht_home else "perdida"
-
-    if mercado == "HT Vence sem sofrer":
-        if nome_bate(selecao, home):
-            return "ganha" if ht_home > ht_away and ht_away == 0 else "perdida"
-
-        if nome_bate(selecao, away):
-            return "ganha" if ht_away > ht_home and ht_home == 0 else "perdida"
-
-    return None
 
 
-def validar_aposta_com_resultado(aposta, resultado):
-    mercado = aposta.get("mercado", "")
-    texto = " ".join([
-        str(aposta.get("aposta", "")),
-        str(aposta.get("mercado", "")),
-        str(aposta.get("selecao", "")),
-    ])
-    t = normalizar_nome(texto)
-
-    # Sem estatísticas no endpoint básico: não marca errado.
-    if mercado in ["Escanteios", "Cartões", "Chutes", "Chutes no Gol", "Marcador", "Assistência"]:
-        return None
-
-    if mercado in ["HT Resultado", "HT Vence sem sofrer"]:
-        return validar_ht_resultado(aposta, resultado)
-
-    if mercado == "Ambas Marcam" or eh_texto_btts(texto):
-        return validar_btts_resultado(aposta, resultado)
-
-    if mercado == "Dupla Chance":
-        return validar_dupla_chance_resultado(aposta, resultado)
-
-    if mercado in ["Total", "Total de Gols", "Pontos"] or (
-        aposta.get("direcao") in ["over", "under"] and texto_tem(t, ["gols", "gol", "goals"])
-    ):
-        return validar_total_gols_resultado(aposta, resultado)
-
-    if mercado == "Moneyline" or texto_tem(t, ["moneyline", "resultado final", "vence", "vencem", "ml"]):
-        return validar_moneyline_resultado(aposta, resultado)
-
-    return None
 
 
 
@@ -4676,284 +3007,26 @@ def validar_aposta_com_resultado(aposta, resultado):
 # - HT Resultado / HT vence sem sofrer
 # ============================================================
 
-def api_get_fixture_statistics_v32(fixture_id):
-    if not fixture_id or not API_KEY:
-        return None
 
-    cache_key = f"stats_{fixture_id}"
 
-    if cache_key in CACHE_ESTATISTICAS:
-        return CACHE_ESTATISTICAS[cache_key]
 
-    url = "https://v3.football.api-sports.io/fixtures/statistics"
-    js = api_get(url, {"fixture": fixture_id})
 
-    if not js:
-        return None
 
-    stats = js.get("response", [])
 
-    CACHE_ESTATISTICAS[cache_key] = stats
-    return stats
 
 
-def normalizar_stat_value_v32(valor):
-    if valor is None:
-        return 0
 
-    if isinstance(valor, (int, float)):
-        return float(valor)
 
-    s = str(valor).strip()
 
-    if s.endswith("%"):
-        s = s[:-1]
 
-    s = s.replace(",", ".")
 
-    m = re.search(r"-?\d+(?:\.\d+)?", s)
 
-    if not m:
-        return 0
 
-    try:
-        return float(m.group(0))
-    except:
-        return 0
 
 
-def pegar_stat_total_v32(resultado, nomes):
-    stats = resultado.get("statistics")
 
-    if stats is None:
-        stats = api_get_fixture_statistics_v32(resultado.get("fixture_id"))
-        resultado["statistics"] = stats
 
-    if not stats:
-        return None
 
-    total = 0
-    achou = False
-
-    nomes_norm = [normalizar_nome(n) for n in nomes]
-
-    for team_block in stats:
-        for st in team_block.get("statistics", []) or []:
-            tipo = normalizar_nome(st.get("type", ""))
-
-            if any(n in tipo or tipo in n for n in nomes_norm):
-                total += normalizar_stat_value_v32(st.get("value"))
-                achou = True
-
-    return total if achou else None
-
-
-def validar_over_under_valor_v32(valor, linha, direcao):
-    if valor is None or linha in [None, "", "-"] or not direcao:
-        return None
-
-    try:
-        valor = float(valor)
-        linha = float(linha)
-    except:
-        return None
-
-    if direcao == "over":
-        if valor > linha:
-            return "ganha"
-        if valor < linha:
-            return "perdida"
-        return "anulada"
-
-    if direcao == "under":
-        if valor < linha:
-            return "ganha"
-        if valor > linha:
-            return "perdida"
-        return "anulada"
-
-    return None
-
-
-def validar_escanteios_resultado_v32(aposta, resultado):
-    direcao = aposta.get("direcao", "") or aposta.get("selecao", "")
-    linha = aposta.get("linha", None)
-
-    if linha in [None, "", "-"]:
-        linha = extrair_linha(aposta.get("aposta", ""))
-
-    total = pegar_stat_total_v32(resultado, [
-        "Corner Kicks", "Corners", "Escanteios", "Total Corners"
-    ])
-
-    return validar_over_under_valor_v32(total, linha, direcao)
-
-
-def validar_cartoes_resultado_v32(aposta, resultado):
-    direcao = aposta.get("direcao", "") or aposta.get("selecao", "")
-    linha = aposta.get("linha", None)
-
-    if linha in [None, "", "-"]:
-        linha = extrair_linha(aposta.get("aposta", ""))
-
-    amarelos = pegar_stat_total_v32(resultado, ["Yellow Cards"])
-    vermelhos = pegar_stat_total_v32(resultado, ["Red Cards"])
-
-    if amarelos is None and vermelhos is None:
-        total = pegar_stat_total_v32(resultado, ["Cards", "Cartões", "Cartoes"])
-    else:
-        total = (amarelos or 0) + (vermelhos or 0)
-
-    return validar_over_under_valor_v32(total, linha, direcao)
-
-
-def validar_chutes_resultado_v32(aposta, resultado):
-    direcao = aposta.get("direcao", "") or aposta.get("selecao", "")
-    linha = aposta.get("linha", None)
-
-    if linha in [None, "", "-"]:
-        linha = extrair_linha(aposta.get("aposta", ""))
-
-    total = pegar_stat_total_v32(resultado, [
-        "Total Shots", "Shots", "Chutes", "Finalizações", "Finalizacoes"
-    ])
-
-    return validar_over_under_valor_v32(total, linha, direcao)
-
-
-def validar_chutes_gol_resultado_v32(aposta, resultado):
-    direcao = aposta.get("direcao", "") or aposta.get("selecao", "")
-    linha = aposta.get("linha", None)
-
-    if linha in [None, "", "-"]:
-        linha = extrair_linha(aposta.get("aposta", ""))
-
-    total = pegar_stat_total_v32(resultado, [
-        "Shots on Goal", "Shots on Target", "Chutes no Gol", "Chutes a Gol"
-    ])
-
-    return validar_over_under_valor_v32(total, linha, direcao)
-
-
-def validar_aposta_com_resultado(aposta, resultado):
-    mercado = aposta.get("mercado", "")
-    texto = " ".join([
-        str(aposta.get("aposta", "")),
-        str(aposta.get("mercado", "")),
-        str(aposta.get("selecao", "")),
-    ])
-    t = normalizar_nome(texto)
-
-    if mercado == "Escanteios":
-        return validar_escanteios_resultado_v32(aposta, resultado)
-
-    if mercado == "Cartões":
-        return validar_cartoes_resultado_v32(aposta, resultado)
-
-    if mercado == "Chutes":
-        return validar_chutes_resultado_v32(aposta, resultado)
-
-    if mercado == "Chutes no Gol":
-        return validar_chutes_gol_resultado_v32(aposta, resultado)
-
-    # Jogador/marcador/assistência precisam de endpoint de eventos/estatísticas de jogador.
-    # Para não marcar errado, ficam pendentes quando não houver função específica.
-    if mercado in ["Marcador", "Assistência", "Jogador Chutes", "Jogador Chutes no Gol"]:
-        return None
-
-    if mercado in ["HT Resultado", "HT Vence sem sofrer"]:
-        return validar_ht_resultado(aposta, resultado)
-
-    if mercado == "Ambas Marcam" or eh_texto_btts(texto):
-        return validar_btts_resultado(aposta, resultado)
-
-    if mercado == "Dupla Chance":
-        return validar_dupla_chance_resultado(aposta, resultado)
-
-    if mercado in ["Total", "Total de Gols", "Pontos"] or (
-        aposta.get("direcao") in ["over", "under"] and texto_tem(t, ["gols", "gol", "goals"])
-    ):
-        return validar_total_gols_resultado(aposta, resultado)
-
-    if mercado == "Moneyline" or texto_tem(t, ["moneyline", "resultado final", "vence", "vencem", "ml"]):
-        return validar_moneyline_resultado(aposta, resultado)
-
-    return None
-
-
-def validar_item_multipla_universal(item_aposta):
-    if normalizar_nome(item_aposta.get("esporte", "Futebol")) != "futebol":
-        return None, "ignorado: não é futebol"
-
-    resultado = buscar_resultado_futebol(item_aposta)
-
-    if not resultado:
-        return None, "resultado não encontrado"
-
-    if resultado.get("status") not in ["FT", "AET", "PEN"]:
-        return None, "jogo ainda não finalizado"
-
-    status = validar_aposta_com_resultado(item_aposta, resultado)
-
-    if status:
-        return status, "validado"
-
-    return None, "mercado não validado ou estatística indisponível"
-
-
-def atualizar_resultados_api():
-    atualizadas = 0
-    ignoradas = 0
-
-    for b in bets_do_usuario():
-        if b.get("estado") != "":
-            continue
-
-        aposta_validacao = preparar_aposta_para_validacao(b)
-        mercado = str(aposta_validacao.get("mercado", ""))
-
-        if mercado.startswith("Múltipla") or "/" in mercado or aposta_validacao.get("mercado_api", "").startswith("Múltipla"):
-            status_multi, detalhe_multi = validar_multipla_universal_api(aposta_validacao)
-
-            if status_multi:
-                atualizar_resultado_saldo(b, status_multi)
-                b["api_status"] = "múltipla atualizada pela API: " + detalhe_multi
-                atualizadas += 1
-                continue
-
-            b["api_status"] = "múltipla não validada automaticamente: " + str(detalhe_multi)
-            ignoradas += 1
-            continue
-
-        if normalizar_nome(aposta_validacao.get("esporte", "")) != "futebol":
-            b["api_status"] = "ignorado: não é futebol"
-            ignoradas += 1
-            continue
-
-        resultado = buscar_resultado_futebol(aposta_validacao)
-
-        if not resultado:
-            b["api_status"] = "resultado não encontrado"
-            ignoradas += 1
-            continue
-
-        if resultado.get("status") not in ["FT", "AET", "PEN"]:
-            b["api_status"] = "jogo ainda não finalizado"
-            ignoradas += 1
-            continue
-
-        status = validar_aposta_com_resultado(aposta_validacao, resultado)
-
-        if status:
-            atualizar_resultado_saldo(b, status)
-            b["api_status"] = "atualizado pela API"
-            atualizadas += 1
-        else:
-            b["api_status"] = "mercado não validado"
-            ignoradas += 1
-
-    salvar()
-    return atualizadas, ignoradas
 
 
 
@@ -6679,24 +4752,6 @@ def corrigir_item_quantitativo_v27(item):
     return item
 
 
-def validar_item_multipla_universal(item_aposta):
-    if normalizar_nome(item_aposta.get("esporte", "Futebol")) != "futebol":
-        return None, "ignorado: não é futebol"
-
-    resultado = buscar_resultado_futebol(item_aposta)
-    if not resultado:
-        return None, "resultado não encontrado"
-    if resultado.get("status") not in ["FT", "AET", "PEN"]:
-        return None, "jogo ainda não finalizado"
-
-    if item_aposta.get("mercado") == "HT Vence sem sofrer":
-        status = validar_ht_vence_sem_sofrer_v28(item_aposta, resultado)
-    else:
-        status = validar_aposta_com_resultado(item_aposta, resultado)
-
-    if status:
-        return status, "validado"
-    return None, "mercado não validado"
 
 
 def validar_multipla_universal_api(aposta):
@@ -6731,50 +4786,6 @@ def validar_multipla_universal_api(aposta):
 # V25 - FORMATAÇÃO INTELIGENTE DE MÚLTIPLAS COMBINADAS
 # ============================================================
 
-def dividir_itens_mercados_mesma_linha(texto):
-    bruto = limpar_linha(texto)
-    bruto = re.sub(r"\b(resultado final|futebol)\b", " ", bruto, flags=re.I)
-    bruto = re.sub(r"\s+", " ", bruto).strip(" /-|")
-    partes = re.split(r"\s*(?:/|,|\+|;|\s+e\s+|\s+and\s+)\s*", bruto, flags=re.I)
-
-    saida = []
-    for p in partes:
-        p = limpar_linha(p).strip(" /-|")
-        if not p:
-            continue
-        n = normalizar_nome(p)
-
-        if re.search(r"\d+[,.]\d+", p) and texto_tem(n, ["cantos", "canto", "escanteios", "escanteio", "corners", "corner"]):
-            if not detectar_direcao(p):
-                p = "Over " + p
-
-        if re.search(r"\d+[,.]\d+", p) and texto_tem(n, ["gols", "gol", "goals"]):
-            if not detectar_direcao(p) and texto_tem(normalizar_nome(bruto), ["over", "mais de"]):
-                p = "Over " + p
-
-        saida.append(p)
-
-    if len(saida) == 1:
-        s = saida[0]
-        tokens = []
-
-        m_gols = re.search(r"(over|mais de|under|menos de)?\s*(\d+[,.]\d+)\s*(gols?|goals?)", s, flags=re.I)
-        if m_gols:
-            dire = m_gols.group(1) or "over"
-            tokens.append(f"{dire} {m_gols.group(2)} gols")
-
-        if eh_texto_btts(s):
-            tokens.append("BTTS")
-
-        m_cantos = re.search(r"(over|mais de|under|menos de)?\s*(\d+[,.]\d+)\s*(cantos?|escanteios?|corners?)", s, flags=re.I)
-        if m_cantos:
-            dire = m_cantos.group(1) or "over"
-            tokens.append(f"{dire} {m_cantos.group(2)} cantos")
-
-        if len(tokens) > 1:
-            return tokens
-
-    return saida
 
 
 def classificar_item_combinada_visual(item, jogo=""):
@@ -6830,20 +4841,6 @@ def classificar_item_combinada_visual(item, jogo=""):
     return out
 
 
-def resumir_multiplas_para_campos(itens):
-    mercados, selecoes, linhas = [], [], []
-    for it in itens:
-        mercados.append(it.get("mercado", "Outro") or "Outro")
-        sel = it.get("selecao", "") or it.get("direcao", "")
-        selecoes.append(sel if sel else "-")
-        linha = it.get("linha", None)
-        if isinstance(linha, float):
-            linhas.append(str(linha).rstrip("0").rstrip("."))
-        elif linha is None:
-            linhas.append("-")
-        else:
-            linhas.append(str(linha))
-    return {"mercado": " / ".join(mercados), "selecao": " / ".join(selecoes), "linha": " / ".join(linhas)}
 
 
 
@@ -6855,147 +4852,12 @@ def resumir_multiplas_para_campos(itens):
 # linha: - / 10.5
 # ============================================================
 
-def extrair_linha_mercado_v27(texto):
-    s = str(texto or "").replace(",", ".")
-
-    # Prioriza decimal.
-    m = re.search(r"\b(\d{1,3}\.\d+)\b", s)
-    if m:
-        try:
-            return float(m.group(1))
-        except:
-            pass
-
-    # Depois inteiro, mas evita odds/valores grandes demais.
-    m = re.search(r"\b(\d{1,3})\b", s)
-    if m:
-        try:
-            v = float(m.group(1))
-            if 0 <= v <= 99:
-                return v
-        except:
-            pass
-
-    return None
 
 
-def normalizar_direcao_linha_v27(texto):
-    direcao = detectar_direcao(texto)
-    linha = extrair_linha_mercado_v27(texto)
-
-    # Se tem linha e mercado quantitativo sem direção explícita, assume over.
-    t = normalizar_nome(texto)
-    if linha is not None and not direcao and texto_tem(t, [
-        "gols", "gol", "goals", "escanteios", "escanteio", "cantos", "canto",
-        "corner", "corners", "chutes", "shots", "cartoes", "cartões", "cards"
-    ]):
-        direcao = "over"
-
-    return direcao, linha
 
 
-def classificar_item_combinada_visual_v27(item, jogo=""):
-    item = limpar_linha(item)
-    t = normalizar_nome(item)
-
-    out = {
-        "texto": item,
-        "mercado": "Outro",
-        "selecao": "",
-        "direcao": "",
-        "linha": None,
-        "periodo": detectar_periodo(item)
-    }
-
-    if not item:
-        return out
-
-    if eh_texto_btts(item):
-        out["mercado"] = "Ambas Marcam"
-        out["selecao"] = detectar_btts_resposta(item) or "sim"
-        out["linha"] = None
-        return out
-
-    if texto_tem(t, [
-        "algum time vence ht", "algum time vence o ht",
-        "algum time vence 1 tempo", "algum time vence o 1 tempo",
-        "algum time vence primeiro tempo", "algum time vence o primeiro tempo"
-    ]):
-        out["mercado"] = "HT Resultado"
-        out["selecao"] = "sim"
-        out["linha"] = None
-        out["periodo"] = "1º tempo"
-        return out
-
-    direcao, linha = normalizar_direcao_linha_v27(item)
-
-    if texto_tem(t, ["escanteio", "escanteios", "canto", "cantos", "corner", "corners"]):
-        out["mercado"] = "Escanteios"
-        out["direcao"] = direcao or "over"
-        out["selecao"] = out["direcao"]
-        out["linha"] = linha
-        return out
-
-    if texto_tem(t, ["chutes a gol", "chutes no gol", "shot on target", "shots on target"]):
-        out["mercado"] = "Chutes no Gol"
-        out["direcao"] = direcao or ("over" if linha is not None else "")
-        out["selecao"] = out["direcao"]
-        out["linha"] = linha
-        return out
-
-    if texto_tem(t, ["chutes", "shots", "finalizacoes", "finalizações"]):
-        out["mercado"] = "Chutes"
-        out["direcao"] = direcao or ("over" if linha is not None else "")
-        out["selecao"] = out["direcao"]
-        out["linha"] = linha
-        return out
-
-    if texto_tem(t, ["gols", "gol", "goals"]) or direcao:
-        out["mercado"] = "Total de Gols" if texto_tem(t, ["gols", "gol", "goals"]) else "Total"
-        out["direcao"] = direcao or ("over" if linha is not None else "")
-        out["selecao"] = out["direcao"]
-        out["linha"] = linha
-        return out
-
-    cls = classificar_aposta(item, jogo)
-    out["mercado"] = cls.get("mercado", "Outro")
-    out["selecao"] = cls.get("selecao", "")
-    out["direcao"] = cls.get("direcao", "")
-    out["linha"] = cls.get("linha", None)
-    out["periodo"] = cls.get("periodo", detectar_periodo(item))
-    return out
 
 
-def aplicar_formatacao_multiplas_combinadas(resultado):
-    aposta_txt = str(resultado.get("aposta", ""))
-    jogo = resultado.get("jogo", "")
-    mercados_txt = aposta_txt.split(" - ", 1)[1] if " - " in aposta_txt else aposta_txt
-
-    itens_txt = dividir_itens_mercados_mesma_linha(mercados_txt)
-    if len(itens_txt) < 2:
-        return resultado
-
-    itens = [classificar_item_combinada_visual_v27(x, jogo) for x in itens_txt]
-    itens_validos = [i for i in itens if i.get("mercado") != "Outro"]
-
-    if len(itens_validos) < 2:
-        return resultado
-
-    resumo = resumir_multiplas_para_campos(itens_validos)
-
-    resultado["mercado"] = resumo["mercado"]
-    resultado["selecao"] = resumo["selecao"]
-    resultado["linha"] = resumo["linha"]
-    resultado["direcao"] = ""
-    resultado["mercado_api"] = "Múltipla - Combinada"
-    resultado["itens_multipla_detalhados"] = itens_validos
-    resultado["itens_multipla"] = {
-        "jogos": [jogo] if jogo else [],
-        "selecoes": [i.get("texto", "") for i in itens_validos],
-        "qtd_jogos": 1 if jogo else 0,
-        "qtd_selecoes": len(itens_validos)
-    }
-    return resultado
 
 
 
@@ -7166,74 +5028,8 @@ def classificar_item_combinada_visual_v26(item, jogo=""):
     return out
 
 
-def dividir_itens_mercados_mesma_linha(texto):
-    bruto = limpar_linha(texto)
-    bruto = re.sub(r"\b(futebol)\b", " ", bruto, flags=re.I)
-    bruto = re.sub(r"\s+", " ", bruto).strip(" /-|")
-
-    partes = re.split(r"\s*(?:/|,|\+|;|\s+e\s+|\s+and\s+)\s*", bruto, flags=re.I)
-    partes = [limpar_linha(p).strip(" /-|") for p in partes if limpar_linha(p).strip(" /-|")]
-
-    partes = juntar_descricoes_de_mercado_v26(partes)
-
-    saida = []
-    for p in partes:
-        n = normalizar_nome(p)
-
-        if re.search(r"\d+[,.]\d+", p) and texto_tem(n, ["cantos", "canto", "escanteios", "escanteio", "corners", "corner"]):
-            if not detectar_direcao(p):
-                p = "Over " + p
-
-        if re.search(r"\d+[,.]\d+", p) and texto_tem(n, ["gols", "gol", "goals"]):
-            if not detectar_direcao(p) and texto_tem(normalizar_nome(bruto), ["over", "mais de"]):
-                p = "Over " + p
-
-        saida.append(p)
-
-    if len(saida) == 1:
-        s = saida[0]
-        tokens = []
-
-        m_gols = re.search(r"(over|mais de|under|menos de)?\s*(\d+[,.]\d+)\s*(gols?|goals?)(?:\s*no\s*1[ºo]?\s*tempo)?", s, flags=re.I)
-        if m_gols:
-            dire = m_gols.group(1) or "over"
-            extra = " no 1º tempo" if re.search(r"1[ºo]?\s*tempo", s, flags=re.I) else ""
-            tokens.append(f"{dire} {m_gols.group(2)} gols{extra}")
-
-        if eh_texto_btts(s):
-            tokens.append("BTTS")
-
-        m_cantos = re.search(r"(over|mais de|under|menos de)?\s*(\d+[,.]\d+)\s*(cantos?|escanteios?|corners?)", s, flags=re.I)
-        if m_cantos:
-            dire = m_cantos.group(1) or "over"
-            tokens.append(f"{dire} {m_cantos.group(2)} cantos")
-
-        if len(tokens) > 1:
-            return tokens
-
-    return saida
 
 
-def resumir_multiplas_para_campos(itens):
-    mercados, selecoes, linhas, periodos = [], [], [], []
-
-    for it in itens:
-        mercado = it.get("mercado", "Outro") or "Outro"
-        selecao = it.get("selecao", "") or it.get("direcao", "")
-        linha = it.get("linha", None)
-        periodo = it.get("periodo", "jogo inteiro") or "jogo inteiro"
-
-        mercados.append(mercado)
-        selecoes.append(selecao if selecao else "-")
-        linhas.append(str(linha).rstrip("0").rstrip(".") if isinstance(linha, float) else (str(linha) if linha is not None else "-"))
-        periodos.append(periodo)
-
-    return {
-        "mercado": " / ".join(mercados),
-        "selecao": " / ".join(selecoes),
-        "linha": " / ".join(linhas),
-        "periodo": " / ".join(periodos)
-    }
 
 
 
@@ -7356,39 +5152,6 @@ def classificar_item_combinada_visual_v27(item, jogo=""):
     return out
 
 
-def aplicar_formatacao_multiplas_combinadas(resultado):
-    aposta_txt = str(resultado.get("aposta", ""))
-    jogo = resultado.get("jogo", "")
-
-    mercados_txt = aposta_txt.split(" - ", 1)[1] if " - " in aposta_txt else aposta_txt
-    itens_txt = dividir_itens_mercados_mesma_linha(mercados_txt)
-
-    if len(itens_txt) < 2:
-        return resultado
-
-    itens = [classificar_item_combinada_visual_v27(x, jogo) for x in itens_txt]
-    itens_validos = [i for i in itens if i.get("mercado") != "Outro"]
-
-    if len(itens_validos) < 2:
-        return resultado
-
-    resumo = resumir_multiplas_para_campos(itens_validos)
-
-    resultado["mercado"] = resumo["mercado"]
-    resultado["selecao"] = resumo["selecao"]
-    resultado["linha"] = resumo["linha"]
-    resultado["periodo"] = resumo["periodo"]
-    resultado["direcao"] = ""
-    resultado["mercado_api"] = "Múltipla - Combinada"
-    resultado["itens_multipla_detalhados"] = itens_validos
-    resultado["itens_multipla"] = {
-        "jogos": [jogo] if jogo else [],
-        "selecoes": [i.get("texto", "") for i in itens_validos],
-        "qtd_jogos": 1 if jogo else 0,
-        "qtd_selecoes": len(itens_validos)
-    }
-
-    return resultado
 
 
 
@@ -7426,82 +5189,8 @@ def detectar_direcao_v28(texto):
     return ""
 
 
-def expandir_abreviacoes_v28(texto):
-    s = str(texto or "")
-    trocas = [
-        (r"\besc\b", "escanteios"),
-        (r"\bescs\b", "escanteios"),
-        (r"\bcantos?\b", "escanteios"),
-        (r"\bcards?\b", "cartoes"),
-        (r"\bcart(ao|ão|oes|ões)\b", "cartoes"),
-        (r"\bdc\b", "dupla chance"),
-    ]
-    for rgx, rep in trocas:
-        s = re.sub(rgx, rep, s, flags=re.I)
-    return re.sub(r"\s+", " ", s).strip()
 
 
-def split_inteligente_combinacao_v28(texto):
-    s = expandir_abreviacoes_v28(limpar_linha(texto))
-    s = re.sub(r"\b(futebol)\b", " ", s, flags=re.I)
-    s = re.sub(r"R\$\s*\d+[,.]?\d*", " ", s, flags=re.I)
-    s = re.sub(r"\s+", " ", s).strip(" /-|")
-
-    direcao_global = detectar_direcao_v28(s)
-    partes = re.split(r"\s*(?:/|,|;|\+|\s+e\s+|\s+and\s+)\s*", s, flags=re.I)
-    partes = [expandir_abreviacoes_v28(p).strip(" /-|") for p in partes if p.strip(" /-|")]
-
-    saida = []
-    for p in partes:
-        n = normalizar_nome(p)
-        if re.search(r"\d+(?:[,.]\d+)?", p) and not detectar_direcao_v28(p):
-            if texto_tem(n, ["gols", "gol", "escanteios", "cartoes", "chutes"]):
-                p = (direcao_global or "over") + " " + p
-        saida.append(p)
-
-    if len(saida) <= 1:
-        tokens = []
-        patterns = [
-            r"(?:over|under|mais de|menos de)?\s*\d+(?:[,.]\d+)?\+?\s*(?:gols?|goals?)",
-            r"(?:over|under|mais de|menos de)?\s*\d+(?:[,.]\d+)?\+?\s*(?:escanteios?|corners?)",
-            r"(?:over|under|mais de|menos de)?\s*\d+(?:[,.]\d+)?\+?\s*(?:cartoes|cartões|cards?)",
-            r"(?:over|under|mais de|menos de)?\s*\d+(?:[,.]\d+)?\+?\s*(?:chutes(?: a gol| no gol)?|shots(?: on target)?)",
-        ]
-        for pat in patterns:
-            for m in re.finditer(pat, s, flags=re.I):
-                tok = m.group(0).strip()
-                if tok and tok not in tokens:
-                    if not detectar_direcao_v28(tok):
-                        tok = (direcao_global or "over") + " " + tok
-                    tokens.append(tok)
-
-        if eh_texto_btts(s):
-            tokens.append("BTTS")
-
-        m_dc = re.search(r"(dupla chance\s+.+?)(?:$|\s+HT|\s+1[ºo]?\s*tempo)", s, flags=re.I)
-        if m_dc:
-            tok = m_dc.group(1).strip()
-            if re.search(r"\b(HT|1[ºo]?\s*tempo|primeiro tempo)\b", s, flags=re.I):
-                tok += " HT"
-            tokens.append(tok)
-
-        for m in re.finditer(r"([A-Za-zÀ-ÿ'.\- ]{3,})\s+anytime\b", s, flags=re.I):
-            tok = m.group(0).strip()
-            if tok not in tokens:
-                tokens.append(tok)
-
-        if len(tokens) > 1:
-            saida = tokens
-
-    final = []
-    vistos = set()
-    for p in saida:
-        p = re.sub(r"\s+", " ", p).strip(" /-|")
-        n = normalizar_nome(p)
-        if p and n not in vistos:
-            vistos.add(n)
-            final.append(p)
-    return final
 
 
 def item_tem_selecao_clara_v28(item):
@@ -7550,77 +5239,6 @@ def limpar_nome_marcador_anytime_v28(texto):
     return re.sub(r"\s+", " ", s).strip()
 
 
-def classificar_item_combinada_visual_v28(item, jogo=""):
-    item_original = expandir_abreviacoes_v28(limpar_linha(item))
-    selecao_txt = item_original
-    descricao_txt = ""
-    if " | " in item_original:
-        selecao_txt, descricao_txt = [x.strip() for x in item_original.split(" | ", 1)]
-
-    texto_analise = (selecao_txt + " " + descricao_txt).strip()
-    t = normalizar_nome(texto_analise)
-    out = {"texto": selecao_txt, "descricao_mercado": descricao_txt, "mercado": "Outro", "selecao": "", "direcao": "", "linha": None, "periodo": detectar_periodo(texto_analise)}
-
-    if texto_tem(t, ["vence de 0 o ht", "vence de zero o ht", "vence sem sofrer o ht", "vence de 0 no ht"]):
-        out["mercado"] = "HT Vence sem sofrer"
-        out["periodo"] = "1º tempo"
-        out["selecao"] = re.sub(r"\b(vence de 0 o ht|vence de zero o ht|vence sem sofrer o ht|vence de 0 no ht|ht)\b", "", selecao_txt, flags=re.I).strip()
-        return out
-
-    if texto_tem(t, ["algum time vence ht", "algum time vence o ht", "algum time vence 1 tempo", "algum time vence primeiro tempo"]):
-        out["mercado"] = "HT Resultado"
-        out["selecao"] = "sim"
-        out["periodo"] = "1º tempo"
-        return out
-
-    if eh_texto_btts(texto_analise):
-        out["mercado"] = "Ambas Marcam"
-        out["selecao"] = detectar_btts_resposta(texto_analise) or "sim"
-        return out
-
-    if texto_tem(t, ["anytime", "a qualquer momento", "to score"]):
-        out["mercado"] = "Marcador"
-        out["selecao"] = limpar_nome_marcador_anytime_v28(selecao_txt)
-        return out
-
-    if texto_tem(t, ["dupla chance"]):
-        out["mercado"] = "Dupla Chance"
-        out["periodo"] = "1º tempo" if texto_tem(t, ["ht", "1 tempo", "primeiro tempo"]) else "jogo inteiro"
-        txt = re.sub(r"\b(dupla chance|dc|ht|1[ºo]?\s*tempo|primeiro tempo)\b", " ", selecao_txt, flags=re.I)
-        txt = re.sub(r"\s+", " ", txt).strip()
-        out["selecao"] = detectar_dupla_chance_selecao(txt) or txt
-        return out
-
-    if re.search(r"\bML\b", selecao_txt, flags=re.I) or texto_tem(t, ["moneyline", "vence", "vencem", "para vencer"]):
-        out["mercado"] = "Moneyline"
-        selecao = re.sub(r"\b(ML|moneyline|vence|vencem|vencer|vencerem|para vencer|ganha|ganham)\b", " ", selecao_txt, flags=re.I)
-        out["selecao"] = re.sub(r"\s+", " ", selecao).strip()
-        return out
-
-    direcao = detectar_direcao_v28(selecao_txt) or detectar_direcao_v28(texto_analise)
-    linha = extrair_linha_mercado_v28(selecao_txt)
-    if linha is not None and not direcao and texto_tem(t, ["gols", "gol", "escanteios", "cartoes", "chutes"]):
-        direcao = "over"
-
-    if texto_tem(t, ["escanteio", "escanteios", "corner", "corners"]):
-        out.update({"mercado": "Escanteios", "direcao": direcao or "over", "selecao": direcao or "over", "linha": linha})
-        return out
-    if texto_tem(t, ["cartoes", "cartões", "cards", "yellow cards", "red cards"]):
-        out.update({"mercado": "Cartões", "direcao": direcao or "over", "selecao": direcao or "over", "linha": linha})
-        return out
-    if texto_tem(t, ["chutes a gol", "chutes no gol", "shot on target", "shots on target"]):
-        out.update({"mercado": "Chutes no Gol", "direcao": direcao or ("over" if linha is not None else ""), "selecao": direcao or ("over" if linha is not None else ""), "linha": linha})
-        return out
-    if texto_tem(t, ["chutes", "shots", "finalizacoes", "finalizações"]):
-        out.update({"mercado": "Chutes", "direcao": direcao or ("over" if linha is not None else ""), "selecao": direcao or ("over" if linha is not None else ""), "linha": linha})
-        return out
-    if texto_tem(t, ["gols", "gol", "goals"]) or direcao:
-        out.update({"mercado": "Total de Gols" if texto_tem(t, ["gols", "gol", "goals"]) else "Total", "direcao": direcao or ("over" if linha is not None else ""), "selecao": direcao or ("over" if linha is not None else ""), "linha": linha})
-        return out
-
-    cls = classificar_aposta(selecao_txt, jogo)
-    out.update({"mercado": cls.get("mercado", "Outro"), "selecao": cls.get("selecao", ""), "direcao": cls.get("direcao", ""), "linha": cls.get("linha", None), "periodo": cls.get("periodo", detectar_periodo(texto_analise))})
-    return out
 
 
 def dividir_itens_mercados_mesma_linha(texto):
@@ -7995,37 +5613,6 @@ def validar_ht_resultado(aposta, resultado):
     return None
 
 
-def validar_aposta_com_resultado(aposta, resultado):
-    mercado = aposta.get("mercado", "")
-    texto = " ".join([
-        str(aposta.get("aposta", "")),
-        str(aposta.get("mercado", "")),
-        str(aposta.get("selecao", "")),
-    ])
-    t = normalizar_nome(texto)
-
-    # Sem estatísticas no endpoint básico: não marca errado.
-    if mercado in ["Escanteios", "Cartões", "Chutes", "Chutes no Gol", "Marcador", "Assistência"]:
-        return None
-
-    if mercado in ["HT Resultado", "HT Vence sem sofrer"]:
-        return validar_ht_resultado(aposta, resultado)
-
-    if mercado == "Ambas Marcam" or eh_texto_btts(texto):
-        return validar_btts_resultado(aposta, resultado)
-
-    if mercado == "Dupla Chance":
-        return validar_dupla_chance_resultado(aposta, resultado)
-
-    if mercado in ["Total", "Total de Gols", "Pontos"] or (
-        aposta.get("direcao") in ["over", "under"] and texto_tem(t, ["gols", "gol", "goals"])
-    ):
-        return validar_total_gols_resultado(aposta, resultado)
-
-    if mercado == "Moneyline" or texto_tem(t, ["moneyline", "resultado final", "vence", "vencem", "ml"]):
-        return validar_moneyline_resultado(aposta, resultado)
-
-    return None
 
 
 
@@ -8205,49 +5792,35 @@ def validar_chutes_gol_resultado_v32(aposta, resultado):
 
 
 def validar_aposta_com_resultado(aposta, resultado):
+    """Delega para o modulo resultados.py (logica unica, limpa e testavel).
+    Para mercados de estatistica, popula resultado['stats'] a partir da API."""
     mercado = aposta.get("mercado", "")
-    texto = " ".join([
-        str(aposta.get("aposta", "")),
-        str(aposta.get("mercado", "")),
-        str(aposta.get("selecao", "")),
-    ])
-    t = normalizar_nome(texto)
-
-    if mercado == "Escanteios":
-        return validar_escanteios_resultado_v32(aposta, resultado)
-
-    if mercado == "Cartões":
-        return validar_cartoes_resultado_v32(aposta, resultado)
-
-    if mercado == "Chutes":
-        return validar_chutes_resultado_v32(aposta, resultado)
-
-    if mercado == "Chutes no Gol":
-        return validar_chutes_gol_resultado_v32(aposta, resultado)
-
-    # Jogador/marcador/assistência precisam de endpoint de eventos/estatísticas de jogador.
-    # Para não marcar errado, ficam pendentes quando não houver função específica.
-    if mercado in ["Marcador", "Assistência", "Jogador Chutes", "Jogador Chutes no Gol"]:
-        return None
-
-    if mercado in ["HT Resultado", "HT Vence sem sofrer"]:
-        return validar_ht_resultado(aposta, resultado)
-
-    if mercado == "Ambas Marcam" or eh_texto_btts(texto):
-        return validar_btts_resultado(aposta, resultado)
-
-    if mercado == "Dupla Chance":
-        return validar_dupla_chance_resultado(aposta, resultado)
-
-    if mercado in ["Total", "Total de Gols", "Pontos"] or (
-        aposta.get("direcao") in ["over", "under"] and texto_tem(t, ["gols", "gol", "goals"])
-    ):
-        return validar_total_gols_resultado(aposta, resultado)
-
-    if mercado == "Moneyline" or texto_tem(t, ["moneyline", "resultado final", "vence", "vencem", "ml"]):
-        return validar_moneyline_resultado(aposta, resultado)
-
-    return None
+    if mercado in ("Escanteios", "Cartões", "Chutes", "Chutes no Gol") and not resultado.get("stats"):
+        stats = {}
+        raw = api_get_fixture_statistics_v32(resultado.get("fixture_id"))
+        if raw:
+            home_n = normalizar_nome(resultado.get("home_team", ""))
+            for i, block in enumerate(raw):
+                nome = normalizar_nome((block.get("team") or {}).get("name", ""))
+                if home_n and (nome in home_n or home_n in nome):
+                    lado = "home"
+                elif i == 0 and not home_n:
+                    lado = "home"
+                else:
+                    lado = "away"
+                for st in block.get("statistics", []) or []:
+                    tipo = normalizar_nome(st.get("type", ""))
+                    val = normalizar_stat_value_v32(st.get("value"))
+                    if "corner" in tipo:
+                        stats[lado + "_corners"] = stats.get(lado + "_corners", 0) + val
+                    elif "yellow card" in tipo or "red card" in tipo:
+                        stats[lado + "_cards"] = stats.get(lado + "_cards", 0) + val
+                    elif "shots on goal" in tipo or "shots on target" in tipo:
+                        stats[lado + "_shots_on"] = stats.get(lado + "_shots_on", 0) + val
+                    elif "total shots" in tipo or tipo == "shots":
+                        stats[lado + "_shots"] = stats.get(lado + "_shots", 0) + val
+        resultado["stats"] = stats
+    return Res.validar(aposta, resultado)
 
 
 def validar_item_multipla_universal(item_aposta):
@@ -8961,6 +6534,414 @@ def admin_ledger_recuperar(uid):
         return jsonify({"status": "erro", "msg": str(e)}), 500
 
 
+# ============================================================
+# TIPS DO GRUPO — fila de apostas interpretadas pela IA p/ aprovar -> planilha
+# ============================================================
+
+def _fila_tips():
+    return dados.setdefault("tips_pendentes", [])
+
+
+def _tip_para_bet(tip, uid):
+    """Converte uma tip interpretada em uma aposta (bet) do usuario, com os MESMOS
+    campos de uma aposta manual (pra exibir, debitar saldo e resolver igualzinho).
+    Simples = 1 perna; multipla = mercado 'Múltipla' com itens detalhados."""
+    pernas = tip.get("pernas", []) or []
+    jogos = tip.get("jogos", []) or []
+    eh_multi = bool(tip.get("eh_multipla")) or len(pernas) > 1
+    jogo_str = " / ".join(jogos) if jogos else ""
+    # horario de envio da tip serve de referencia de data p/ o auto-resolver
+    hiso = ""
+    try:
+        if tip.get("data_envio"):
+            _d = datetime.fromisoformat(str(tip["data_envio"]).replace("Z", "+00:00"))
+            if _d.tzinfo is not None:
+                _d = _d.astimezone(ZoneInfo("America/Sao_Paulo")).replace(tzinfo=None)
+            hiso = _d.strftime("%Y-%m-%dT%H:%M:%S")
+    except Exception:
+        hiso = ""
+
+    base = {
+        "id": str(uuid.uuid4()),
+        "user_id": uid,
+        "data": datetime.now().strftime("%d/%m/%Y %H:%M"),
+        "aposta": jogo_str,
+        "casa": tip.get("casa", "") or "",
+        "esporte": tip.get("esporte", "Futebol") or "Futebol",
+        "jogo": jogo_str,
+        "odd": float(tip.get("odd") or 0) or 1.0,
+        "valor": float(tip.get("valor_reais") or 0) or 0.0,
+        "estado": "",
+        "lucro": 0,
+        "origem": "tip_grupo",
+        "fora_escopo": bool(tip.get("fora_escopo")),
+        "horario_jogo": "",
+        "horario_jogo_iso": hiso,
+        "api_status": "",
+        "texto_bruto": "",
+        "texto_interpretado": jogo_str,
+        "itens_multipla": {},
+        "itens_multipla_detalhados": [],
+        "btts_resposta": "",
+        "saldo_debitado": False,
+        "saldo_creditado_estado": "",
+        "saldo_creditado_valor": 0.0,
+        "publica": aposta_publica_padrao_usuario() if "aposta_publica_padrao_usuario" in globals() else False,
+    }
+    # Jogo(s) escolhido(s) a mao no card (dropdown ESPN) — alinhado por indice
+    sel = tip.get("espn_sel") or []
+
+    def _aplicar_sel(dest, s):
+        if not s or not s.get("id"):
+            return
+        dest["espn_event_id"] = str(s.get("id"))
+        dest["espn_sport"] = s.get("sport", "")
+        dest["espn_league"] = s.get("league", "")
+        dest["horario_jogo"] = s.get("horario_jogo", "") or dest.get("horario_jogo", "")
+        dest["horario_jogo_iso"] = s.get("horario_jogo_iso", "") or dest.get("horario_jogo_iso", "")
+        dest["status_jogo"] = s.get("status_jogo", "")
+        dest["ao_vivo"] = bool(s.get("ao_vivo"))
+
+    if eh_multi:
+        base["mercado"] = "Múltipla"
+        base["selecao"] = ""
+        base["linha"] = None
+        base["direcao"] = ""
+        base["periodo"] = "jogo inteiro"
+        legs = []
+        for i, p in enumerate(pernas):
+            leg = {
+                "jogo": jogos[i] if i < len(jogos) else (jogos[0] if jogos else ""),
+                "mercado": p.get("mercado", ""), "selecao": p.get("selecao", ""),
+                "linha": p.get("linha"), "direcao": p.get("direcao", ""),
+                "periodo": p.get("periodo", "jogo"), "alvo": p.get("alvo", "jogo"),
+                "esporte": base["esporte"],
+            }
+            _aplicar_sel(leg, sel[i] if i < len(sel) else None)
+            legs.append(leg)
+        base["itens_multipla_detalhados"] = legs
+    else:
+        p = pernas[0] if pernas else {}
+        base["mercado"] = p.get("mercado", "Outro")
+        base["selecao"] = p.get("selecao", "")
+        base["linha"] = p.get("linha")
+        base["direcao"] = p.get("direcao", "")
+        base["periodo"] = p.get("periodo", "jogo") or "jogo"
+        if base["mercado"] == "Ambas Marcam":
+            base["btts_resposta"] = "sim" if "sim" in str(p.get("selecao", "")).lower() else "nao"
+        _aplicar_sel(base, sel[0] if sel else None)
+
+    if "aplicar_formatacao_multiplas_combinadas" in globals():
+        try:
+            base = aplicar_formatacao_multiplas_combinadas(base)
+        except Exception as e:
+            print("ERRO formatando múltipla da tip:", e)
+    return base
+
+
+def _match_jogo_no_cache_espn(jogo, esporte, selecao=None):
+    """Casa contra a lista de jogos JA cacheada da ESPN (em memoria, SEM HTTP;
+    nomes ja' em PT). 1o tenta o confronto 'A x B'; se nao achar (ex: pareamento
+    inventado pela IA, ou 'Time x ?'), cai pro TIME ESCOLHIDO (selecao) e acha o
+    jogo REAL desse time. Retorna o dict do jogo ou None."""
+    try:
+        itens = v94_cache_jogos_espn()
+    except Exception:
+        return None
+    if not itens:
+        return None
+    alvo_esp = espn_normalizar_nome(esporte or "")
+
+    def _mesmo_esporte(g):
+        return (not alvo_esp) or espn_normalizar_nome(g.get("esporte", "")) == alvo_esp
+
+    # 1) confronto completo "A x B"
+    a, b = espn_dividir_times(jogo)
+    if a and b and "?" not in a and "?" not in b:
+        melhor, melhor_score = None, 0
+        for g in itens:
+            if not _mesmo_esporte(g):
+                continue
+            na, nb = espn_dividir_times(g.get("jogo", ""))
+            if not (na and nb):
+                continue
+            a1, b1 = espn_similaridade(a, na), espn_similaridade(b, nb)
+            a2, b2 = espn_similaridade(a, nb), espn_similaridade(b, na)
+            if a1 + b1 >= a2 + b2:
+                score, lado = a1 + b1, min(a1, b1)
+            else:
+                score, lado = a2 + b2, min(a2, b2)
+            if lado < 58 or score < 142:
+                continue
+            if score > melhor_score:
+                melhor_score, melhor = score, g
+        if melhor:
+            return melhor
+
+    # 2) fallback pelo TIME escolhido (mata pareamentos inventados e "Time x ?")
+    nome_time = (selecao or "").strip()
+    if not nome_time and a and ("?" in b):
+        nome_time = a
+    if nome_time and len(espn_normalizar_nome(nome_time)) >= 3:
+        cands = []
+        for g in itens:
+            if not _mesmo_esporte(g):
+                continue
+            na, nb = espn_dividir_times(g.get("jogo", ""))
+            if not (na and nb):
+                continue
+            s = max(espn_similaridade(nome_time, na), espn_similaridade(nome_time, nb))
+            if s >= 85:
+                cands.append((s, g))
+        if cands:
+            # prefere nao-finalizado, maior similaridade, e o mais cedo
+            cands.sort(key=lambda it: (
+                str(it[1].get("status_jogo", "")).lower().startswith("final"),
+                -it[0], it[1].get("horario_jogo_iso", "")))
+            return cands[0][1]
+    return None
+
+
+def _conectar_um(dest, jogo, esporte, permitir_fallback):
+    """Conecta UM jogo (aposta simples ou perna): grava espn_event_id + horario
+    oficial + status. Tenta o cache (instantaneo); se faltar e permitido, faz a
+    busca completa na ESPN. Retorna True se conectou."""
+    if dest.get("espn_event_id"):     # ja' conectado (ex: escolhido a mao na tip)
+        return True
+    g = _match_jogo_no_cache_espn(jogo, esporte, dest.get("selecao"))
+    if not g and permitir_fallback:
+        try:
+            g = espn_buscar_jogo(jogo, esporte or "Futebol")
+        except Exception:
+            g = None
+    if not g:
+        return False
+    dest["espn_event_id"] = g.get("id") or g.get("espn_event_id", "")
+    dest["espn_sport"] = g.get("sport") or g.get("espn_sport", "")
+    dest["espn_league"] = g.get("league") or g.get("espn_league", "")
+    dest["horario_jogo"] = g.get("horario_jogo", "") or dest.get("horario_jogo", "")
+    dest["horario_jogo_iso"] = g.get("horario_jogo_iso", "") or dest.get("horario_jogo_iso", "")
+    dest["status_jogo"] = g.get("status_jogo", "")
+    dest["ao_vivo"] = bool(g.get("ao_vivo"))
+    return True
+
+
+def _conectar_bet_espn(bet, permitir_fallback=True):
+    """Conecta a aposta ao jogo da ESPN. Multipla -> conecta cada perna."""
+    itens = bet.get("itens_multipla_detalhados") or []
+    if str(bet.get("mercado", "")).startswith("Múltipla") and itens:
+        ok = False
+        for leg in itens:
+            if _conectar_um(leg, leg.get("jogo", ""),
+                            leg.get("esporte", bet.get("esporte", "")), permitir_fallback):
+                ok = True
+        return ok
+    return _conectar_um(bet, bet.get("jogo", ""), bet.get("esporte", ""), permitir_fallback)
+
+
+def _bet_tem_espn(bet):
+    if bet.get("espn_event_id"):
+        return True
+    return any(l.get("espn_event_id") for l in (bet.get("itens_multipla_detalhados") or []))
+
+
+def _conectar_bets_async(bets):
+    """Em background: pros que NAO acharam no cache, faz a busca completa e salva."""
+    def _run():
+        mudou = False
+        for b in bets:
+            try:
+                if not _bet_tem_espn(b) and _conectar_bet_espn(b, permitir_fallback=True):
+                    mudou = True
+            except Exception as e:
+                print("[tips] conectar ESPN (bg) erro:", e)
+        if mudou:
+            try:
+                salvar()
+            except Exception:
+                pass
+    threading.Thread(target=_run, daemon=True).start()
+
+
+def _aprovar_tips(ids, uid):
+    """Cria as apostas das tips cujo id esta em `ids` e conecta cada uma ao jogo
+    da ESPN pelo cache (instantaneo). NAO salva nem dispara fallback — quem chama
+    decide (assim varias aprovacoes viram 1 save + 1 fallback em background).
+    Retorna a lista de apostas criadas."""
+    fila = _fila_tips()
+    ids = {str(i) for i in ids}
+    criadas = []
+    for tip in [t for t in fila if str(t.get("id")) in ids]:
+        bet = _tip_para_bet(tip, uid)
+        try:
+            _conectar_bet_espn(bet, permitir_fallback=False)   # cache-only: instantaneo
+        except Exception as e:
+            print("[tips] conectar ESPN (cache) erro:", e)
+        dados.setdefault("bets", []).append(bet)
+        registrar_nova_aposta_saldo(bet)
+        criadas.append(bet)
+    fila[:] = [t for t in fila if str(t.get("id")) not in ids]
+    return criadas
+
+
+@app.template_filter("hora_tip")
+def _hora_tip(iso):
+    """ISO -> 'dd/mm HH:MM' no horario de Sao Paulo (pro card da tip)."""
+    if not iso:
+        return ""
+    try:
+        dt = datetime.fromisoformat(str(iso).replace("Z", "+00:00"))
+        if dt.tzinfo is not None:
+            dt = dt.astimezone(ZoneInfo("America/Sao_Paulo"))
+        return dt.strftime("%d/%m %H:%M")
+    except Exception:
+        return ""
+
+
+@app.route("/admin/tips")
+@admin_required
+def admin_tips():
+    u = usuario_logado() or {}
+    return render_template("tips.html", tips=_fila_tips(),
+                           com_imagem=bool(u.get("tips_com_imagem")))
+
+
+@app.route("/admin/tips/ids")
+@admin_required
+def admin_tips_ids():
+    """Lista leve dos ids da fila — usada pelo polling da aba pra avisar de tips
+    novas sem recarregar a pagina."""
+    return jsonify({"ids": [str(t.get("id")) for t in _fila_tips()], "total": len(_fila_tips())})
+
+
+@app.route("/admin/tips/aprovar/<tid>", methods=["POST"])
+@admin_required
+def admin_tips_aprovar(tid):
+    """Aprova UMA tip. Via AJAX (fetch) responde JSON sem recarregar a pagina."""
+    uid = session.get("user_id", "")
+    criadas = _aprovar_tips([tid], uid)
+    if criadas:
+        salvar()
+        _conectar_bets_async(criadas)   # fallback ESPN p/ quem nao achou no cache
+    if request.headers.get("X-Requested-With") == "fetch":
+        return jsonify({"ok": bool(criadas), "restantes": len(_fila_tips())})
+    return redirect("/admin/tips")
+
+
+@app.route("/admin/tips/aprovar-lote", methods=["POST"])
+@admin_required
+def admin_tips_aprovar_lote():
+    """Aprova VARIAS tips de uma vez -> 1 unico save (rapido mesmo com muitas).
+    Body JSON: {"ids": [...]} ou {"todas": true}."""
+    uid = session.get("user_id", "")
+    body = request.get_json(silent=True) or {}
+    if body.get("todas"):
+        ids = [t.get("id") for t in _fila_tips()]
+    else:
+        ids = body.get("ids", [])
+    criadas = _aprovar_tips(ids, uid)
+    if criadas:
+        salvar()
+        _conectar_bets_async(criadas)   # fallback ESPN p/ quem nao achou no cache
+    return jsonify({"ok": True, "criadas": len(criadas), "restantes": len(_fila_tips())})
+
+
+@app.route("/admin/tips/editar/<tid>", methods=["POST"])
+@admin_required
+def admin_tips_editar(tid):
+    """Edita uma tip na fila (correcao manual quando a IA leu errado).
+    Body JSON: campos da tip (casa, esporte, odd, valor_reais, jogos, eh_multipla, pernas...)."""
+    fila = _fila_tips()
+    tip = next((t for t in fila if str(t.get("id")) == str(tid)), None)
+    if not tip:
+        return jsonify({"ok": False, "erro": "tip nao encontrada"}), 404
+    body = request.get_json(silent=True) or {}
+    for campo in ("casa", "esporte", "jogos", "eh_multipla", "fora_escopo", "pernas"):
+        if campo in body:
+            tip[campo] = body[campo]
+    if "odd" in body:
+        try: tip["odd"] = float(body["odd"])
+        except Exception: pass
+    if "valor_reais" in body:
+        try: tip["valor_reais"] = float(body["valor_reais"])
+        except Exception: pass
+    tip["editada"] = True
+    salvar()
+    return jsonify({"ok": True, "tip": tip})
+
+
+@app.route("/admin/tips/descartar/<tid>", methods=["POST"])
+@admin_required
+def admin_tips_descartar(tid):
+    fila = _fila_tips()
+    fila[:] = [t for t in fila if str(t.get("id")) != str(tid)]
+    salvar()
+    if request.headers.get("X-Requested-With") == "fetch":
+        return jsonify({"ok": True, "restantes": len(fila)})
+    return redirect("/admin/tips")
+
+
+@app.route("/admin/tips/definir-jogo/<tid>", methods=["POST"])
+@admin_required
+def admin_tips_definir_jogo(tid):
+    """Corrige o jogo de uma tip pelo dropdown ESPN (igual ao do dashboard).
+    Fica salvo na fila compartilhada -> corrige o card pra todos. Guarda tambem
+    a conexao ESPN escolhida (event_id+horario), alinhada por indice do jogo."""
+    fila = _fila_tips()
+    tip = next((t for t in fila if str(t.get("id")) == str(tid)), None)
+    if not tip:
+        return jsonify({"ok": False, "erro": "tip nao encontrada"}), 404
+    body = request.get_json(silent=True) or {}
+    try:
+        idx = max(0, int(body.get("idx", 0) or 0))
+    except Exception:
+        idx = 0
+    nome = str(body.get("jogo", "")).strip()
+    if not nome:
+        return jsonify({"ok": False, "erro": "jogo vazio"}), 400
+
+    jogos = tip.setdefault("jogos", [])
+    while len(jogos) <= idx:
+        jogos.append("")
+    jogos[idx] = nome
+
+    sel = tip.setdefault("espn_sel", [])
+    while len(sel) <= idx:
+        sel.append(None)
+    sel[idx] = {
+        "id": str(body.get("espn_event_id", "") or ""),
+        "sport": body.get("sport", ""),
+        "league": body.get("league", ""),
+        "horario_jogo": body.get("horario_jogo", ""),
+        "horario_jogo_iso": body.get("horario_jogo_iso", ""),
+        "status_jogo": body.get("status_jogo", ""),
+        "ao_vivo": bool(body.get("ao_vivo")),
+    }
+    if body.get("esporte"):
+        tip["esporte"] = body["esporte"]
+    tip["editada"] = True
+    salvar()
+    return jsonify({"ok": True, "jogo": nome, "jogos": jogos})
+
+
+@app.route("/admin/tips/reportar/<tid>", methods=["POST"])
+@admin_required
+def admin_tips_reportar(tid):
+    """Marca uma tip como 'puxada errado' (feedback). Guarda quem reportou,
+    o motivo e quando — pra revisar/melhorar a interpretacao."""
+    fila = _fila_tips()
+    tip = next((t for t in fila if str(t.get("id")) == str(tid)), None)
+    if not tip:
+        return jsonify({"ok": False, "erro": "tip nao encontrada"}), 404
+    body = request.get_json(silent=True) or {}
+    tip["reportada"] = True
+    tip["report_motivo"] = str(body.get("motivo", "")).strip()[:300]
+    tip["report_por"] = session.get("user_id", "")
+    tip["report_em"] = datetime.now().strftime("%d/%m/%Y %H:%M")
+    salvar()
+    return jsonify({"ok": True})
+
+
 @app.route("/admin/durabilidade/status")
 @admin_required
 def admin_durabilidade_status():
@@ -9132,6 +7113,7 @@ def configuracoes():
 
         else:
             user["apostas_publicas_padrao"] = request.form.get("apostas_publicas_padrao") == "on"
+            user["tips_com_imagem"] = request.form.get("tips_com_imagem") == "on"
             salvar_usuarios(usuarios)
             ok = "Configurações salvas."
 
@@ -9583,7 +7565,13 @@ def espn_normalizar_nome(s):
         "spfc": "sao paulo",
         "atletico mg": "atletico mineiro",
         "atletico pr": "athletico paranaense",
-        "athletico pr": "athletico paranaense"
+        "athletico pr": "athletico paranaense",
+        # Variantes PT-PT de selecoes usadas no grupo de tips
+        "paises baixos": "holanda",
+        "republica checa": "tchequia",
+        "chequia": "tchequia",
+        "costa do marfim": "costa do marfim",
+        "eua": "estados unidos",
     }
     return aliases.get(s, s)
 
@@ -11257,9 +9245,273 @@ def api_salvar_placar_jogo():
 
 
 
+# ============================================================
+# RESOLUCAO AUTOMATICA: resolve apostas sozinho quando o jogo termina
+# ============================================================
+
+def _jogo_provavelmente_terminou(b, folga_horas=2.0, janela_dias=10):
+    """So' tenta resolver jogos que JA terminaram (folga) e ha' no maximo
+    `janela_dias` (evita gastar API re-tentando apostas antigas que a API nao
+    acha). Usa horario_jogo_iso; se nao houver, a data da aposta."""
+    ref = None
+    iso = b.get("horario_jogo_iso") or ""
+    if iso:
+        try:
+            ref = datetime.fromisoformat(str(iso).replace("Z", ""))
+        except Exception:
+            ref = None
+    if ref is None:
+        d = str(b.get("data") or "")[:10]
+        for fmt in ("%d/%m/%Y", "%Y-%m-%d"):
+            try:
+                ref = datetime.strptime(d, fmt)
+                break
+            except Exception:
+                pass
+    if ref is None:
+        return True  # sem referencia de data: tenta (casos raros)
+    agora = datetime.now()
+    return (ref + timedelta(hours=folga_horas)) <= agora <= (ref + timedelta(days=janela_dias))
+
+
+# ============================================================
+# RESULTADO via ESPN (gratis, sem cota; placar + HT + stats + estado do jogo)
+# ============================================================
+
+ESPN_RESULTADO_CACHE = {}
+
+
+def _espn_stat_num(v):
+    if v is None:
+        return None
+    s = str(v).strip().replace("%", "").replace(",", ".")
+    m = re.search(r"-?\d+(\.\d+)?", s)
+    return float(m.group(0)) if m else None
+
+
+def espn_parse_resultado(data):
+    """JSON do summary da ESPN -> dict 'resultado' no formato do resultados.py.
+    status='FT' SO' quando o jogo terminou (state 'post'); senao status=''."""
+    try:
+        comp = (data.get("header", {}).get("competitions") or [{}])[0]
+    except Exception:
+        return None
+    competidores = comp.get("competitors", []) or []
+    if len(competidores) < 2:
+        return None
+    home = next((c for c in competidores if c.get("homeAway") == "home"), competidores[0])
+    away = next((c for c in competidores if c.get("homeAway") == "away"), competidores[1])
+    state = ((comp.get("status") or {}).get("type", {}) or {}).get("state", "")
+
+    def _i(v):
+        try:
+            return int(float(v))
+        except (TypeError, ValueError):
+            return None
+
+    def _ls(c, idx):
+        # ESPN usa 'displayValue' (alguns endpoints 'value'); linescores[0] = 1o tempo
+        ls = c.get("linescores", []) or []
+        try:
+            return int(float(ls[idx].get("displayValue", ls[idx].get("value"))))
+        except Exception:
+            return None
+
+    home_nome = (home.get("team") or {}).get("displayName", "") or (home.get("team") or {}).get("name", "")
+    away_nome = (away.get("team") or {}).get("displayName", "") or (away.get("team") or {}).get("name", "")
+    home_n = normalizar_nome(home_nome)
+
+    stats = {}
+    for t in (data.get("boxscore", {}) or {}).get("teams", []) or []:
+        team = t.get("team", {}) or {}
+        nome = normalizar_nome(team.get("displayName") or team.get("name") or "")
+        lado = "home" if (nome and home_n and (nome in home_n or home_n in nome)) else "away"
+        for s in t.get("statistics", []) or []:
+            label = normalizar_nome(s.get("label", "") or s.get("name", ""))
+            val = _espn_stat_num(s.get("displayValue", s.get("value")))
+            if val is None or not label:
+                continue
+            if "corner" in label:
+                stats[lado + "_corners"] = val
+            elif "yellow" in label or ("red" in label and "card" in label):
+                stats[lado + "_cards"] = stats.get(lado + "_cards", 0) + val
+            elif "shots on" in label or "on target" in label or "on goal" in label:
+                stats[lado + "_shots_on"] = val
+            elif "total shots" in label or label == "shots":
+                stats[lado + "_shots"] = val
+
+    return {
+        "status": "FT" if state == "post" else "",
+        "espn_state": state,
+        "home_team": home_nome, "away_team": away_nome,
+        "home_score": _i(home.get("score")), "away_score": _i(away.get("score")),
+        "home_score_ht": _ls(home, 0), "away_score_ht": _ls(away, 0),
+        "stats": stats, "fonte": "espn",
+    }
+
+
+def espn_resultado_evento(sport, league, event_id, _requests=None):
+    """Busca o resultado de UM evento ESPN. Cacheia quando ja' terminou (final
+    nao muda mais) -> cada jogo e' buscado no maximo 1x apos terminar."""
+    if not (sport and event_id):
+        return None
+    chave = f"{sport}/{league}/{event_id}"
+    cache = ESPN_RESULTADO_CACHE.get(chave)
+    if cache and cache.get("status") in ("FT", "AET", "PEN"):
+        return cache
+    req = _requests or requests
+    url = f"https://site.api.espn.com/apis/site/v2/sports/{sport}/{league or ''}/summary?event={event_id}"
+    try:
+        r = req.get(url, timeout=8)
+        if r.status_code != 200:
+            return None
+        res = espn_parse_resultado(r.json())
+    except Exception:
+        return None
+    if res and res.get("status") in ("FT", "AET", "PEN"):
+        ESPN_RESULTADO_CACHE[chave] = res
+    return res
+
+
+def buscar_resultado_espn(aposta):
+    eid = aposta.get("espn_event_id")
+    if not eid:
+        return None
+    return espn_resultado_evento(aposta.get("espn_sport") or "soccer",
+                                 aposta.get("espn_league") or "", eid)
+
+
+def _resolver_uma_aposta(b):
+    """Tenta resolver UMA aposta pendente. ESPN-FIRST (gratis): se a aposta esta'
+    conectada a um evento ESPN, resolve pelo placar/stats da ESPN; senao (ou se a
+    ESPN nao tiver a stat) cai pra API-Football. Retorna True se resolveu."""
+    aposta_validacao = preparar_aposta_para_validacao(b)
+    mercado = str(aposta_validacao.get("mercado", ""))
+
+    if mercado.startswith("Múltipla") or "/" in mercado or aposta_validacao.get("mercado_api", "").startswith("Múltipla"):
+        status_multi, _ = validar_multipla_universal_api(aposta_validacao)
+        if status_multi:
+            atualizar_resultado_saldo(b, status_multi)
+            b["api_status"] = "múltipla resolvida automaticamente"
+            return True
+        return False
+
+    if normalizar_nome(aposta_validacao.get("esporte", "")) != "futebol":
+        return False
+
+    # ESPN-FIRST
+    if aposta_validacao.get("espn_event_id"):
+        resultado = buscar_resultado_espn(aposta_validacao)
+        if resultado and resultado.get("status") in ("FT", "AET", "PEN"):
+            status = Res.validar(aposta_validacao, resultado)
+            if status:
+                atualizar_resultado_saldo(b, status)
+                b["api_status"] = "resolvido automaticamente (ESPN)"
+                return True
+            # ESPN sem a stat (ex: escanteios em liga menor) -> tenta API-Football
+
+    # FALLBACK API-Football (e p/ apostas sem evento ESPN)
+    resultado = buscar_resultado_futebol(aposta_validacao)
+    if not resultado or resultado.get("status") not in ["FT", "AET", "PEN"]:
+        return False
+    status = validar_aposta_com_resultado(aposta_validacao, resultado)
+    if status:
+        atualizar_resultado_saldo(b, status)
+        b["api_status"] = "resolvido automaticamente (API-Football)"
+        return True
+    return False
+
+
+def resolver_apostas_pendentes_auto():
+    """Resolve apostas pendentes de jogos JA terminados, para TODOS os usuarios.
+    Roda sem sessao: agrupa por usuario e usa test_request_context para que o saldo
+    seja creditado no usuario correto (as funcoes de saldo leem session['user_id'])."""
+    from collections import defaultdict
+    pendentes = [b for b in dados.get("bets", [])
+                 if not b.get("estado") and _jogo_provavelmente_terminou(b)]
+    if not pendentes:
+        return 0
+
+    por_user = defaultdict(list)
+    for b in pendentes:
+        por_user[b.get("user_id", "")].append(b)
+
+    total = 0
+    for uid, lista in por_user.items():
+        with app.test_request_context("/"):
+            session["user_id"] = uid
+            for b in lista:
+                try:
+                    if _resolver_uma_aposta(b):
+                        total += 1
+                except Exception as e:
+                    print("[auto-resolver] erro numa aposta:", e)
+    if total:
+        salvar()
+    return total
+
+
+def _loop_resolver_auto():
+    import time
+    time.sleep(90)  # aguarda o app subir completamente
+    while True:
+        try:
+            n = resolver_apostas_pendentes_auto()
+            if n:
+                print(f"[auto-resolver] {n} aposta(s) resolvida(s) automaticamente")
+        except Exception as e:
+            print("[auto-resolver] erro no loop:", e)
+        time.sleep(3 * 60)  # a cada 3 min (ESPN e' gratis -> resolve logo que o jogo acaba)
+
+
+def _iniciar_listener_telegram():
+    """Sobe o listener do grupo de tips numa thread daemon. SO' liga se
+    TELEGRAM_LISTENER_ON=1 e todas as credenciais existirem. Qualquer falha
+    aqui e' isolada (try/except) e NUNCA derruba o app."""
+    try:
+        if os.environ.get("TELEGRAM_LISTENER_ON") != "1":
+            return
+        api_id = os.environ.get("TELEGRAM_API_ID")
+        api_hash = os.environ.get("TELEGRAM_API_HASH")
+        session_str = os.environ.get("TELEGRAM_SESSION")
+        grupo = os.environ.get("TELEGRAM_GRUPO", "")
+        key = os.environ.get("ANTHROPIC_API_KEY", "")
+        if not all([api_id, api_hash, session_str, grupo, key]):
+            print("[telegram] credenciais incompletas — listener desligado")
+            return
+        import interpretacao as _Itp
+        import telegram_listener as _TL
+
+        def _interpretar(texto, k):
+            return _Itp.interpretar_mensagem_grupo(texto, api_key=k)
+
+        def _interpretar_img(texto, b64):
+            return _Itp.interpretar_mensagem_grupo(texto, api_key=key, imagem_b64=b64)
+
+        threading.Thread(
+            target=_TL.iniciar,
+            kwargs=dict(api_id=int(api_id), api_hash=api_hash, session_str=session_str,
+                        grupo=grupo, anthropic_key=key, dados=dados, salvar_fn=salvar,
+                        interpretar_fn=_interpretar, interpretar_img_fn=_interpretar_img),
+            daemon=True,
+        ).start()
+        print("[telegram] listener iniciado (thread)")
+    except Exception as e:
+        print("[telegram] falha ao iniciar listener (app segue normal):", e)
+
+
 def _iniciar_backup_thread():
     t = threading.Thread(target=_backup_diario_loop, daemon=True)
     t.start()
+    # Auto-resolver fica DESLIGADO por padrao (so' liga com AUTO_RESOLVER_ON=1).
+    # Evita modificar apostas / gastar a cota da API-Football antes da versao ESPN-first.
+    if os.environ.get("AUTO_RESOLVER_ON") == "1":
+        tr = threading.Thread(target=_loop_resolver_auto, daemon=True)
+        tr.start()
+        print("[auto-resolver] LIGADO (AUTO_RESOLVER_ON=1)")
+    else:
+        print("[auto-resolver] desligado (defina AUTO_RESOLVER_ON=1 para ativar)")
+    _iniciar_listener_telegram()
 
 
 @app.route("/favicon.ico")

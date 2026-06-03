@@ -74,6 +74,16 @@
                     </div>
                 </label>
 
+                {% if user.is_admin %}
+                <label class="config-toggle">
+                    <input type="checkbox" name="tips_com_imagem" {% if user.tips_com_imagem %}checked{% endif %}>
+                    <div>
+                        <strong>Mostrar a imagem (print) nas Tips do grupo</strong>
+                        <span>Ligado, cada tip exibe o print enviado no grupo. Desligado, os cards ficam mais enxutos.</span>
+                    </div>
+                </label>
+                {% endif %}
+
                 <button type="submit">Salvar Privacidade</button>
             </form>
         </div>
