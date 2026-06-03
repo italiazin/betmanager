@@ -9253,11 +9253,12 @@ def _jogo_provavelmente_terminou(b, folga_horas=2.0, janela_dias=10):
     """So' tenta resolver jogos que JA terminaram (folga) e ha' no maximo
     `janela_dias` (evita gastar API re-tentando apostas antigas que a API nao
     acha). Usa horario_jogo_iso; se nao houver, a data da aposta."""
+    from datetime import timezone
     ref = None
     iso = b.get("horario_jogo_iso") or ""
     if iso:
         try:
-            ref = datetime.fromisoformat(str(iso).replace("Z", ""))
+            ref = datetime.fromisoformat(str(iso).replace("Z", "+00:00"))
         except Exception:
             ref = None
     if ref is None:
@@ -9270,7 +9271,13 @@ def _jogo_provavelmente_terminou(b, folga_horas=2.0, janela_dias=10):
                 pass
     if ref is None:
         return True  # sem referencia de data: tenta (casos raros)
-    agora = datetime.now()
+    # Normaliza tudo p/ UTC-aware (ESPN manda com fuso -03:00; data-only vem naive).
+    # Sem isso, comparar aware vs naive lanca TypeError e o auto-resolver falha.
+    if ref.tzinfo is None:
+        ref = ref.replace(tzinfo=timezone.utc)
+    else:
+        ref = ref.astimezone(timezone.utc)
+    agora = datetime.now(timezone.utc)
     return (ref + timedelta(hours=folga_horas)) <= agora <= (ref + timedelta(days=janela_dias))
 
 
