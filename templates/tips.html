@@ -17,6 +17,8 @@
   .tip-card{display:flex;gap:12px;background:#161922;border:1px solid #232838;border-radius:14px;padding:14px 16px;margin-bottom:14px;position:relative}
   .tip-card.editada{border-color:#caa23a}
   .tip-card.reportada{border-color:#e0843a}
+  @keyframes tipIn { from { opacity:0; transform: translateY(-14px) scale(.98); } to { opacity:1; transform:none; } }
+  .tip-card.tip-nova{ animation: tipIn .5s ease; box-shadow:0 0 0 2px rgba(55,214,122,.5); }
   .tip-report{position:absolute;right:12px;bottom:12px;border:1px solid #2a2f3a;background:#1a1e27;
     color:#8a93a6;border-radius:8px;padding:5px 10px;cursor:pointer;font-size:12px}
   .tip-report:hover{border-color:#e0843a;color:#e0843a}
@@ -99,52 +101,7 @@
         padding:10px 14px;font-weight:600">🔔 <span id="nNovas">0</span> nova(s) tip(s) chegaram — clique para atualizar</div>
     <div id="vazio" class="vazio" style="{{ '' if not tips else 'display:none' }}">Nenhuma tip pendente no momento.</div>
     <div id="lista">
-    {% for t in tips %}
-    <div class="tip-card {{ 'editada' if t.editada }} {{ 'reportada' if t.reportada }}" data-id="{{ t.id }}">
-        <div class="tip-chk"><input type="checkbox" class="chk" onchange="atualizarSel()"></div>
-        {% if com_imagem and t.img %}
-        <div class="tip-img"><img src="{{ t.img }}" loading="lazy" onclick="verImagem(this.src)"></div>
-        {% endif %}
-        <div class="tip-body">
-            <div class="tip-head">
-                <span class="casa">{{ t.casa or '—' }}</span>
-                <span class="odd">@ {{ t.odd }}</span>
-                {% if t.valor_reais %}<span class="val">R$ {{ t.valor_reais }}</span>{% endif %}
-                {% if t.eh_multipla %}<span class="multi">MÚLTIPLA</span>{% endif %}
-                {% if t.fora_escopo %}<span class="fora">fora de escopo</span>{% endif %}
-                {% if t.editada %}<span class="edit-tag">✎ editada</span>{% endif %}
-                {% if t.reportada %}<span class="fora" style="background:rgba(224,132,58,.16);color:#e0843a">⚠ reportada</span>{% endif %}
-                {% if t.data_envio %}<span class="hora">🕒 {{ t.data_envio|hora_tip }}</span>{% endif %}
-            </div>
-            <div class="tip-jogo" data-id="{{ t.id }}" data-esporte="{{ t.esporte }}">
-                {% if t.jogos %}
-                    {% for jg in t.jogos %}
-                    <span class="jogo-chip" data-idx="{{ loop.index0 }}" onclick="editarJogo(this)" title="clique para corrigir o jogo">{{ jg }} <span class="ed-ic">✎</span></span>{% if not loop.last %}<span class="jogo-sep">|</span>{% endif %}
-                    {% endfor %}
-                {% else %}
-                    <span class="jogo-chip" data-idx="0" onclick="editarJogo(this)" title="definir o jogo">+ definir jogo <span class="ed-ic">✎</span></span>
-                {% endif %}
-                <span class="jogo-esp">· {{ t.esporte }}</span>
-            </div>
-            <div class="pernas">
-                {% for p in t.pernas %}
-                <div class="perna"><b>{{ p.mercado }}</b> — {{ p.selecao }}
-                    {% if p.linha is not none %}<span class="ln">linha {{ p.linha }}</span>{% endif %}
-                    {% if p.direcao %}<span class="dir">{{ p.direcao }}</span>{% endif %}
-                    {% if p.periodo and p.periodo != 'jogo' %}<span class="per">{{ p.periodo }}</span>{% endif %}
-                    {% if p.alvo and p.alvo != 'jogo' %}<span class="alvo">🎯 {{ p.alvo }}</span>{% endif %}
-                </div>
-                {% endfor %}
-            </div>
-            <div class="tip-acoes">
-                <button type="button" class="ap" onclick="aprovar('{{ t.id }}', this)">✓ Aprovar (planilhar)</button>
-                <button type="button" class="ed" onclick="abrirEditor('{{ t.id }}')">✎ Editar</button>
-                <button type="button" class="dc" onclick="descartar('{{ t.id }}', this)">✕ Descartar</button>
-            </div>
-        </div>
-        <button type="button" class="tip-report {{ 'feito' if t.reportada }}" onclick="reportar('{{ t.id }}', this)">⚠ {{ 'reportada' if t.reportada else 'reportar erro' }}</button>
-    </div>
-    {% endfor %}
+    {% for t in tips %}{% include "_tip_card.html" %}{% endfor %}
     </div>
 </section>
 </main>
@@ -237,19 +194,31 @@ function aprovarLote(ids){
 function aprovarSelecionadas(){ var ids = selecionados().map(c => c.dataset.id); if(ids.length) aprovarLote(ids); }
 function aprovarTodas(){ var ids = cards().map(c => c.dataset.id); if(ids.length && confirm('Aprovar todas as '+ids.length+' tips?')) aprovarLote(ids); }
 
-// ---------- polling: avisa de tips novas sem recarregar (nao atrapalha edicao) ----------
+// ---------- auto-load: tips novas aparecem sozinhas (sem F5), com animacao ----------
 (function(){
+    function maxId(){
+        var m = 0;
+        cards().forEach(c => { var i = parseInt(c.dataset.id); if(!isNaN(i) && i > m) m = i; });
+        return m;
+    }
     function checar(){
-        fetch('/admin/tips/ids').then(r => r.json()).then(d => {
-            var naPagina = new Set(cards().map(c => String(c.dataset.id)));
-            var novas = (d.ids || []).filter(id => !naPagina.has(String(id)));
-            if(novas.length){
-                document.getElementById('nNovas').innerText = novas.length;
-                document.getElementById('novasTips').style.display = 'block';
+        fetch('/admin/tips/novas?desde=' + maxId()).then(r => r.json()).then(d => {
+            if(d.html){
+                Object.assign(TIPS, d.tips || {});   // pro editor funcionar nos novos cards
+                var lista = document.getElementById('lista');
+                var tmp = document.createElement('div');
+                tmp.innerHTML = d.html;
+                // insere do mais antigo do lote pro mais novo -> o mais novo fica no topo
+                Array.from(tmp.children).reverse().forEach(card => {
+                    card.classList.add('tip-nova');
+                    lista.insertBefore(card, lista.firstChild);
+                    setTimeout(() => card.classList.remove('tip-nova'), 1500);
+                });
+                setContador();
             }
         }).catch(function(){});
     }
-    setInterval(checar, 25000);   // a cada 25s
+    setInterval(checar, 12000);   // a cada 12s
 })();
 
 // ---------- corrigir jogo (dropdown ESPN inline) ----------

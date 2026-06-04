@@ -32,6 +32,25 @@ def parece_aposta(texto):
     return tem_confronto and tem_sinal
 
 
+_RE_BETLINK = re.compile(r"https?://[^\s]*(?:share|/bet/|\.bet\.|sportsbook|aposta)", re.IGNORECASE)
+
+
+def parece_aposta_ampla(texto, tem_foto=False):
+    """Mais abrangente (p/ encaminhar ao Discord): pega tambem apostas que estao
+    SO' NA IMAGEM, onde o texto e' so' uma legenda com link/percentual."""
+    if parece_aposta(texto):
+        return True
+    if tem_foto:
+        t = (texto or "").lower()
+        if _RE_BETLINK.search(texto or ""):
+            return True
+        if any(p in t for p in ("aposta", "valendo", "vale ", " odd", "stake", "unidade")):
+            return True
+        if "%" in t and any(p in t for p in ("banca", "entrada", "lucro", "green")):
+            return True
+    return False
+
+
 # ============================================================
 # Fila + dedupe (PURO — testavel sem rede)
 # ============================================================
@@ -79,12 +98,96 @@ def processar_texto(texto, msg_id, dados, anthropic_key, interpretar_fn, data_is
     return tip
 
 
+def _prune_tips(dados, horas=48):
+    """Remove da fila as tips com mais de `horas` (some da aba depois de 48h).
+    O dedupe (tips_processadas_ids) impede que voltem."""
+    from datetime import datetime, timezone, timedelta
+    fila = dados.get("tips_pendentes")
+    if not fila:
+        return
+    limite = datetime.now(timezone.utc) - timedelta(hours=horas)
+    mantidas = []
+    for t in fila:
+        de = t.get("data_envio")
+        if de:
+            try:
+                dt = datetime.fromisoformat(str(de).replace("Z", "+00:00"))
+                if dt.tzinfo is None:
+                    dt = dt.replace(tzinfo=timezone.utc)
+                if dt < limite:
+                    continue
+            except Exception:
+                pass
+        mantidas.append(t)
+    if len(mantidas) != len(fila):
+        fila[:] = mantidas
+
+
+def _links_da_mensagem(msg):
+    """Pega URLs que estao escondidas em hyperlinks (MessageEntityTextUrl) —
+    garante o link de share mesmo se o Telegram formatar como 'clique aqui'."""
+    urls = []
+    try:
+        for e in (getattr(msg, "entities", None) or []):
+            u = getattr(e, "url", None)
+            if u:
+                urls.append(u)
+    except Exception:
+        pass
+    return urls
+
+
+def _casa_do_texto(texto):
+    """Tenta achar o nome da casa/site da aposta (pro titulo do embed)."""
+    import re as _re
+    m = _re.search(r"🏠\s*([^\n]+)", texto or "")
+    if m:
+        return m.group(1).strip()[:80]
+    m = _re.search(r"https?://(?:www\.)?([a-z0-9-]+)\.bet", texto or "", _re.I)
+    if m:
+        return m.group(1).capitalize()
+    return None
+
+
+def _discord_enviar(webhook, content, img_bytes=None, quote=None, titulo=None):
+    """Posta no webhook do Discord como EMBED bonito: barra colorida, titulo,
+    texto completo do tipster, contexto da resposta (se houver) e a imagem."""
+    if not webhook:
+        return
+    try:
+        import requests as _rq
+        import json as _json
+        embed = {
+            "title": ("🎯 " + titulo if titulo else "🎯 Nova aposta")[:256],
+            "description": (content or "")[:4000],
+            "color": 0x2ECC71,                       # verde aposta
+            "footer": {"text": "Bet Manager • Tips"},
+        }
+        if quote:
+            # cita a mensagem respondida (blockquote dentro do campo)
+            q = (quote or "")[:900]
+            embed["fields"] = [{
+                "name": "↪️ Em resposta a",
+                "value": "> " + q.replace("\n", "\n> "),
+                "inline": False,
+            }]
+        if img_bytes:
+            embed["image"] = {"url": "attachment://aposta.jpg"}
+            _rq.post(webhook, data={"payload_json": _json.dumps({"embeds": [embed]})},
+                     files={"file": ("aposta.jpg", img_bytes, "image/jpeg")}, timeout=20)
+        else:
+            _rq.post(webhook, json={"embeds": [embed]}, timeout=20)
+    except Exception as e:
+        print("[discord] erro:", e)
+
+
 # ============================================================
 # Parte de REDE (Telethon) — isolada; so' roda quando `iniciar` e' chamado
 # ============================================================
 
 def iniciar(api_id, api_hash, session_str, grupo, anthropic_key,
-            dados, salvar_fn, interpretar_fn, horas_catchup=8, interpretar_img_fn=None):
+            dados, salvar_fn, interpretar_fn, horas_catchup=8, interpretar_img_fn=None,
+            discord_webhook=None):
     """Loop do listener — BLOQUEIA, entao chame numa thread daemon.
     Reconecta sozinho com backoff. Telethon e' importado AQUI (lazy).
     `interpretar_img_fn(texto, b64) -> dict` (opcional): visao hibrida — quando a
@@ -150,6 +253,52 @@ def iniciar(api_id, api_hash, session_str, grupo, anthropic_key,
         except Exception as e:
             print("[telegram] upgrade com imagem falhou:", e)
 
+    async def _tip_de_imagem(client, m):
+        """Cria tip a partir de aposta que esta' SO' NA IMAGEM (texto e' so' legenda):
+        le o print com visao da IA. Best-effort — erro de rede NAO marca processada
+        (pra tentar de novo no proximo catch-up)."""
+        if ja_processada(dados, m.id):
+            return None
+        if not (interpretar_img_fn and getattr(m, "photo", None)):
+            return None
+        try:
+            import base64
+            b = await client.download_media(m, file=bytes)
+            if not b:
+                return None
+            interp = interpretar_img_fn(m.message or "", base64.b64encode(b).decode())
+        except Exception as e:
+            print("[telegram] interp imagem falhou:", e)
+            return None
+        _marcar_processada(dados, m.id)
+        if not (interp and interp.get("eh_aposta")):
+            return None
+        tip = dict(interp)
+        tip["id"] = m.id
+        if m.date:
+            tip["data_envio"] = m.date.isoformat()
+        tip["_usou_imagem"] = True
+        dados.setdefault("tips_pendentes", []).append(tip)
+        return tip
+
+    async def _processar_msg(client, m):
+        """Decide: aposta de TEXTO interpretavel -> processar_texto; aposta SO'-IMAGEM
+        -> _tip_de_imagem (visao). Baixa o print e devolve a tip (ou None)."""
+        texto_msg = m.message or ""
+        d_iso = m.date.isoformat() if m.date else None
+        if parece_aposta(texto_msg):
+            tip = processar_texto(texto_msg, m.id, dados, anthropic_key, interpretar_fn, d_iso)
+            if tip:
+                await _baixar_img(client, m, tip)
+                await _upgrade_com_imagem(client, m, tip)
+            return tip
+        if getattr(m, "photo", None) and parece_aposta_ampla(texto_msg, True):
+            tip = await _tip_de_imagem(client, m)
+            if tip:
+                await _baixar_img(client, m, tip)
+            return tip
+        return None
+
     async def _catchup(client, ent):
         from datetime import datetime, timezone, timedelta
         limite = datetime.now(timezone.utc) - timedelta(hours=horas_catchup)
@@ -157,12 +306,9 @@ def iniciar(api_id, api_hash, session_str, grupo, anthropic_key,
         async for m in client.iter_messages(ent, limit=300):
             if m.date and m.date < limite:
                 break
-            d_iso = m.date.isoformat() if m.date else None
-            tip = processar_texto(m.message or "", m.id, dados, anthropic_key, interpretar_fn, d_iso)
-            if tip:
-                await _baixar_img(client, m, tip)
-                await _upgrade_com_imagem(client, m, tip)
+            if await _processar_msg(client, m):
                 novas += 1
+        _prune_tips(dados)
         if novas:
             salvar_fn()
         print(f"[telegram] catch-up: {novas} tip(s) recuperada(s)")
@@ -187,12 +333,35 @@ def iniciar(api_id, api_hash, session_str, grupo, anthropic_key,
         @client.on(events.NewMessage(chats=ent))
         async def _handler(ev):
             try:
-                d_iso = ev.message.date.isoformat() if ev.message.date else None
-                tip = processar_texto(ev.message.message or "", ev.message.id,
-                                      dados, anthropic_key, interpretar_fn, d_iso)
+                m = ev.message
+                # 1) DISCORD: encaminha QUALQUER aposta nova (inclui as que estao
+                #    so' na imagem). Texto cru + links de hyperlink + a imagem.
+                if discord_webhook and parece_aposta_ampla(m.message or "", bool(m.photo)):
+                    try:
+                        img_bytes = await client.download_media(m, file=bytes) if m.photo else None
+                        txt = (m.message or "").strip()
+                        for u in _links_da_mensagem(m):
+                            if u not in txt:
+                                txt += "\n" + u
+                        # Se for resposta a outra msg, guarda o contexto pra citar no embed
+                        quote = None
+                        try:
+                            if getattr(m, "reply_to", None):
+                                rep = await m.get_reply_message()
+                                if rep:
+                                    rtxt = (rep.message or "").strip() or ("[imagem]" if rep.photo else "")
+                                    if rtxt:
+                                        quote = rtxt[:900]
+                        except Exception:
+                            pass
+                        _discord_enviar(discord_webhook, txt, img_bytes,
+                                        quote=quote, titulo=_casa_do_texto(txt))
+                    except Exception as e:
+                        print("[discord] falha:", e)
+                # 2) FILA DE TIPS (IA): apostas de texto E apostas so'-imagem (visao)
+                tip = await _processar_msg(client, m)
                 if tip:
-                    await _baixar_img(client, ev.message, tip)
-                    await _upgrade_com_imagem(client, ev.message, tip)
+                    _prune_tips(dados)
                     salvar_fn()
                     print(f"[telegram] tip nova: {tip.get('casa')} | {tip.get('jogos')}")
             except Exception as e:

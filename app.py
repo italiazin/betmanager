@@ -6542,6 +6542,35 @@ def _fila_tips():
     return dados.setdefault("tips_pendentes", [])
 
 
+def _tips_visiveis():
+    """Tips da fila com menos de 48h, ordenadas da MAIS NOVA pra mais velha."""
+    from datetime import timezone
+    limite = datetime.now(timezone.utc) - timedelta(hours=48)
+    vis = []
+    for t in _fila_tips():
+        de = t.get("data_envio")
+        if de:
+            try:
+                dt = datetime.fromisoformat(str(de).replace("Z", "+00:00"))
+                if dt.tzinfo is None:
+                    dt = dt.replace(tzinfo=timezone.utc)
+                if dt < limite:
+                    continue
+            except Exception:
+                pass
+        vis.append(t)
+
+    def _chave(t):
+        try:
+            i = int(t.get("id") or 0)
+        except Exception:
+            i = 0
+        return (str(t.get("data_envio") or ""), i)
+
+    vis.sort(key=_chave, reverse=True)
+    return vis
+
+
 def _tip_para_bet(tip, uid):
     """Converte uma tip interpretada em uma aposta (bet) do usuario, com os MESMOS
     campos de uma aposta manual (pra exibir, debitar saldo e resolver igualzinho).
@@ -6802,16 +6831,38 @@ def _hora_tip(iso):
 @admin_required
 def admin_tips():
     u = usuario_logado() or {}
-    return render_template("tips.html", tips=_fila_tips(),
+    return render_template("tips.html", tips=_tips_visiveis(),
                            com_imagem=bool(u.get("tips_com_imagem")))
 
 
 @app.route("/admin/tips/ids")
 @admin_required
 def admin_tips_ids():
-    """Lista leve dos ids da fila — usada pelo polling da aba pra avisar de tips
-    novas sem recarregar a pagina."""
-    return jsonify({"ids": [str(t.get("id")) for t in _fila_tips()], "total": len(_fila_tips())})
+    vis = _tips_visiveis()
+    return jsonify({"ids": [str(t.get("id")) for t in vis], "total": len(vis)})
+
+
+@app.route("/admin/tips/novas")
+@admin_required
+def admin_tips_novas():
+    """Cards (HTML) das tips com id MAIOR que `desde` — pro auto-load sem F5."""
+    try:
+        desde = int(request.args.get("desde", "0") or 0)
+    except Exception:
+        desde = 0
+    com_imagem = bool((usuario_logado() or {}).get("tips_com_imagem"))
+    novas = []
+    for t in _tips_visiveis():   # ja' ordenado (nova -> velha)
+        try:
+            tid = int(t.get("id") or 0)
+        except Exception:
+            tid = 0
+        if tid > desde:
+            novas.append(t)
+    html = "".join(render_template("_tip_card.html", t=t, com_imagem=com_imagem) for t in novas)
+    return jsonify({"html": html,
+                    "tips": {str(t.get("id")): t for t in novas},
+                    "total": len(_tips_visiveis())})
 
 
 @app.route("/admin/tips/aprovar/<tid>", methods=["POST"])
@@ -9499,7 +9550,8 @@ def _iniciar_listener_telegram():
             target=_TL.iniciar,
             kwargs=dict(api_id=int(api_id), api_hash=api_hash, session_str=session_str,
                         grupo=grupo, anthropic_key=key, dados=dados, salvar_fn=salvar,
-                        interpretar_fn=_interpretar, interpretar_img_fn=_interpretar_img),
+                        interpretar_fn=_interpretar, interpretar_img_fn=_interpretar_img,
+                        discord_webhook=os.environ.get("DISCORD_WEBHOOK", "")),
             daemon=True,
         ).start()
         print("[telegram] listener iniciado (thread)")

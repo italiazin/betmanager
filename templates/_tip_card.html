@@ -1,0 +1,44 @@
+<div class="tip-card {{ 'editada' if t.editada }} {{ 'reportada' if t.reportada }}" data-id="{{ t.id }}">
+    <div class="tip-chk"><input type="checkbox" class="chk" onchange="atualizarSel()"></div>
+    {% if com_imagem and t.img %}
+    <div class="tip-img"><img src="{{ t.img }}" loading="lazy" onclick="verImagem(this.src)"></div>
+    {% endif %}
+    <div class="tip-body">
+        <div class="tip-head">
+            <span class="casa">{{ t.casa or '—' }}</span>
+            <span class="odd">@ {{ t.odd }}</span>
+            {% if t.valor_reais %}<span class="val">R$ {{ t.valor_reais }}</span>{% endif %}
+            {% if t.eh_multipla %}<span class="multi">MÚLTIPLA</span>{% endif %}
+            {% if t.fora_escopo %}<span class="fora">fora de escopo</span>{% endif %}
+            {% if t.editada %}<span class="edit-tag">✎ editada</span>{% endif %}
+            {% if t.reportada %}<span class="fora" style="background:rgba(224,132,58,.16);color:#e0843a">⚠ reportada</span>{% endif %}
+            {% if t.data_envio %}<span class="hora">🕒 {{ t.data_envio|hora_tip }}</span>{% endif %}
+        </div>
+        <div class="tip-jogo" data-id="{{ t.id }}" data-esporte="{{ t.esporte }}">
+            {% if t.jogos %}
+                {% for jg in t.jogos %}
+                <span class="jogo-chip" data-idx="{{ loop.index0 }}" onclick="editarJogo(this)" title="clique para corrigir o jogo">{{ jg }} <span class="ed-ic">✎</span></span>{% if not loop.last %}<span class="jogo-sep">|</span>{% endif %}
+                {% endfor %}
+            {% else %}
+                <span class="jogo-chip" data-idx="0" onclick="editarJogo(this)" title="definir o jogo">+ definir jogo <span class="ed-ic">✎</span></span>
+            {% endif %}
+            <span class="jogo-esp">· {{ t.esporte }}</span>
+        </div>
+        <div class="pernas">
+            {% for p in t.pernas %}
+            <div class="perna"><b>{{ p.mercado }}</b> — {{ p.selecao }}
+                {% if p.linha is not none %}<span class="ln">linha {{ p.linha }}</span>{% endif %}
+                {% if p.direcao %}<span class="dir">{{ p.direcao }}</span>{% endif %}
+                {% if p.periodo and p.periodo != 'jogo' %}<span class="per">{{ p.periodo }}</span>{% endif %}
+                {% if p.alvo and p.alvo != 'jogo' %}<span class="alvo">🎯 {{ p.alvo }}</span>{% endif %}
+            </div>
+            {% endfor %}
+        </div>
+        <div class="tip-acoes">
+            <button type="button" class="ap" onclick="aprovar('{{ t.id }}', this)">✓ Aprovar (planilhar)</button>
+            <button type="button" class="ed" onclick="abrirEditor('{{ t.id }}')">✎ Editar</button>
+            <button type="button" class="dc" onclick="descartar('{{ t.id }}', this)">✕ Descartar</button>
+        </div>
+    </div>
+    <button type="button" class="tip-report {{ 'feito' if t.reportada }}" onclick="reportar('{{ t.id }}', this)">⚠ {{ 'reportada' if t.reportada else 'reportar erro' }}</button>
+</div>
