@@ -397,12 +397,8 @@ def iniciar(api_id, api_hash, session_str, grupo, anthropic_key,
         except Exception as e:
             print("[telegram] catch-up falhou (segue em tempo real):", e)
 
-        import time as _time
-        _ultimo_update = [_time.monotonic()]   # lista mutavel para acesso no closure
-
         @client.on(events.NewMessage(chats=ent))
         async def _handler(ev):
-            _ultimo_update[0] = _time.monotonic()
             try:
                 m = ev.message
                 ampla = parece_aposta_ampla(m.message or "", bool(m.photo))
@@ -417,23 +413,32 @@ def iniciar(api_id, api_hash, session_str, grupo, anthropic_key,
             except Exception as e:
                 print("[telegram] erro no handler:", e)
 
-        # Watchdog: a cada 3min verifica se chegou algum update.
-        # Se ficar WATCHDOG_SILENCIO_MAX (8min) sem nenhuma msg do grupo,
-        # forca reconexao pra evitar update-gap silencioso do MTProto.
-        WATCHDOG_SILENCIO_MAX = 8 * 60
-        WATCHDOG_INTERVALO    = 3 * 60
-
-        async def _watchdog():
+        async def _poll_loop():
+            """Polling ativo a cada 30s: busca as ultimas msgs do grupo e processa
+            qualquer uma que o handler ao vivo nao tenha recebido (update-gap MTProto).
+            O dedupe por id garante que nada e' enviado/processado duas vezes."""
+            from datetime import datetime, timezone, timedelta
+            JANELA = timedelta(minutes=10)
             while client.is_connected():
-                await asyncio.sleep(WATCHDOG_INTERVALO)
-                silencio = _time.monotonic() - _ultimo_update[0]
-                print(f"[telegram] watchdog: {int(silencio)}s sem update do grupo")
-                if silencio >= WATCHDOG_SILENCIO_MAX:
-                    print("[telegram] watchdog: silencio longo — forcando reconexao")
-                    await client.disconnect()
-                    return
+                await asyncio.sleep(30)
+                try:
+                    mudou = False
+                    async for m in client.iter_messages(ent, limit=20):
+                        if m.date and m.date < datetime.now(timezone.utc) - JANELA:
+                            break
+                        tip, m_flag = await _processar_msg(client, m)
+                        if m_flag:
+                            mudou = True
+                            if tip:
+                                print(f"[telegram] poll: tip nova: "
+                                      f"{tip.get('casa')} | {tip.get('jogos')}")
+                    if mudou:
+                        _prune_tips(dados)
+                        salvar_fn()
+                except Exception as e:
+                    print(f"[telegram] poll: erro: {e}")
 
-        asyncio.ensure_future(_watchdog())
+        asyncio.ensure_future(_poll_loop())
         await client.run_until_disconnected()
         print("[telegram] desconectado — reconectando...")
 
