@@ -71,6 +71,18 @@ def _marcar_processada(dados, msg_id):
         del lst[:len(lst) - 3000]
 
 
+def _ja_enviada_discord(dados, msg_id):
+    return str(msg_id) in {str(x) for x in dados.get("tips_discord_ids", [])}
+
+
+def _marcar_discord(dados, msg_id):
+    lst = dados.setdefault("tips_discord_ids", [])
+    if str(msg_id) not in {str(x) for x in lst}:
+        lst.append(msg_id)
+    if len(lst) > 3000:
+        del lst[:len(lst) - 3000]
+
+
 def processar_texto(texto, msg_id, dados, anthropic_key, interpretar_fn, data_iso=None):
     """Decide e (se for aposta nova) adiciona a` fila `tips_pendentes`.
     Retorna a tip adicionada ou None. NAO salva (quem chama agrupa o save).
@@ -281,35 +293,83 @@ def iniciar(api_id, api_hash, session_str, grupo, anthropic_key,
         dados.setdefault("tips_pendentes", []).append(tip)
         return tip
 
-    async def _processar_msg(client, m):
-        """Decide: aposta de TEXTO interpretavel -> processar_texto; aposta SO'-IMAGEM
-        -> _tip_de_imagem (visao). Baixa o print e devolve a tip (ou None)."""
+    async def _forward_discord(client, m):
+        """Encaminha a aposta pro Discord (embed) UMA vez so' (dedupe por id).
+        Marca como enviada SO' apos sucesso (erro de rede -> tenta no proximo
+        catch-up). Retorna True se enviou agora."""
+        if not discord_webhook or _ja_enviada_discord(dados, m.id):
+            return False
+        try:
+            img_bytes = await client.download_media(m, file=bytes) if m.photo else None
+            txt = (m.message or "").strip()
+            for u in _links_da_mensagem(m):
+                if u not in txt:
+                    txt += "\n" + u
+            quote = None
+            try:
+                if getattr(m, "reply_to", None):
+                    rep = await m.get_reply_message()
+                    if rep:
+                        rtxt = (rep.message or "").strip() or ("[imagem]" if rep.photo else "")
+                        if rtxt:
+                            quote = rtxt[:900]
+            except Exception:
+                pass
+            _discord_enviar(discord_webhook, txt, img_bytes,
+                            quote=quote, titulo=_casa_do_texto(txt))
+            _marcar_discord(dados, m.id)
+            print(f"[discord] aposta {m.id} encaminhada (foto={bool(img_bytes)})")
+            return True
+        except Exception as e:
+            print("[discord] falha:", e)
+            return False
+
+    async def _processar_msg(client, m, permitir_discord=True):
+        """Encaminha pro Discord (se aposta) E coloca na fila de Tips.
+        - Discord: qualquer aposta (texto OU so'-imagem), via parece_aposta_ampla.
+        - Tips: aposta de TEXTO -> processar_texto; aposta SO'-IMAGEM -> visao.
+        Retorna (tip, mudou) — `mudou` indica que ha' algo novo a salvar."""
         texto_msg = m.message or ""
         d_iso = m.date.isoformat() if m.date else None
+        mudou = False
+        if permitir_discord and discord_webhook and \
+                parece_aposta_ampla(texto_msg, bool(getattr(m, "photo", None))):
+            if await _forward_discord(client, m):
+                mudou = True
+        tip = None
         if parece_aposta(texto_msg):
             tip = processar_texto(texto_msg, m.id, dados, anthropic_key, interpretar_fn, d_iso)
             if tip:
                 await _baixar_img(client, m, tip)
                 await _upgrade_com_imagem(client, m, tip)
-            return tip
-        if getattr(m, "photo", None) and parece_aposta_ampla(texto_msg, True):
+        elif getattr(m, "photo", None) and parece_aposta_ampla(texto_msg, True):
             tip = await _tip_de_imagem(client, m)
             if tip:
                 await _baixar_img(client, m, tip)
-            return tip
-        return None
+        if tip:
+            mudou = True
+        return tip, mudou
 
     async def _catchup(client, ent):
         from datetime import datetime, timezone, timedelta
-        limite = datetime.now(timezone.utc) - timedelta(hours=horas_catchup)
+        agora = datetime.now(timezone.utc)
+        limite = agora - timedelta(hours=horas_catchup)
+        # Discord no catch-up: so' apostas dos ultimos 20min (cobre o gap de um
+        # restart/deploy sem despejar horas de historico). Dedupe evita repeticao.
+        disc_limite = agora - timedelta(minutes=20)
         novas = 0
+        mudou_alguma = False
         async for m in client.iter_messages(ent, limit=300):
             if m.date and m.date < limite:
                 break
-            if await _processar_msg(client, m):
+            perm = bool(m.date and m.date >= disc_limite)
+            tip, mudou = await _processar_msg(client, m, permitir_discord=perm)
+            if tip:
                 novas += 1
+            if mudou:
+                mudou_alguma = True
         _prune_tips(dados)
-        if novas:
+        if mudou_alguma:
             salvar_fn()
         print(f"[telegram] catch-up: {novas} tip(s) recuperada(s)")
 
@@ -334,35 +394,15 @@ def iniciar(api_id, api_hash, session_str, grupo, anthropic_key,
         async def _handler(ev):
             try:
                 m = ev.message
-                # 1) DISCORD: encaminha QUALQUER aposta nova (inclui as que estao
-                #    so' na imagem). Texto cru + links de hyperlink + a imagem.
-                if discord_webhook and parece_aposta_ampla(m.message or "", bool(m.photo)):
-                    try:
-                        img_bytes = await client.download_media(m, file=bytes) if m.photo else None
-                        txt = (m.message or "").strip()
-                        for u in _links_da_mensagem(m):
-                            if u not in txt:
-                                txt += "\n" + u
-                        # Se for resposta a outra msg, guarda o contexto pra citar no embed
-                        quote = None
-                        try:
-                            if getattr(m, "reply_to", None):
-                                rep = await m.get_reply_message()
-                                if rep:
-                                    rtxt = (rep.message or "").strip() or ("[imagem]" if rep.photo else "")
-                                    if rtxt:
-                                        quote = rtxt[:900]
-                        except Exception:
-                            pass
-                        _discord_enviar(discord_webhook, txt, img_bytes,
-                                        quote=quote, titulo=_casa_do_texto(txt))
-                    except Exception as e:
-                        print("[discord] falha:", e)
-                # 2) FILA DE TIPS (IA): apostas de texto E apostas so'-imagem (visao)
-                tip = await _processar_msg(client, m)
-                if tip:
+                ampla = parece_aposta_ampla(m.message or "", bool(m.photo))
+                print(f"[telegram] msg {m.id} recebida | foto={bool(m.photo)} | "
+                      f"aposta={ampla}")
+                # Encaminha pro Discord (se aposta) + coloca na fila de Tips.
+                tip, mudou = await _processar_msg(client, m)
+                if mudou:
                     _prune_tips(dados)
                     salvar_fn()
+                if tip:
                     print(f"[telegram] tip nova: {tip.get('casa')} | {tip.get('jogos')}")
             except Exception as e:
                 print("[telegram] erro no handler:", e)
