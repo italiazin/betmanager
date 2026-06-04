@@ -397,14 +397,17 @@ def iniciar(api_id, api_hash, session_str, grupo, anthropic_key,
         except Exception as e:
             print("[telegram] catch-up falhou (segue em tempo real):", e)
 
+        import time as _time
+        _ultimo_update = [_time.monotonic()]   # lista mutavel para acesso no closure
+
         @client.on(events.NewMessage(chats=ent))
         async def _handler(ev):
+            _ultimo_update[0] = _time.monotonic()
             try:
                 m = ev.message
                 ampla = parece_aposta_ampla(m.message or "", bool(m.photo))
                 print(f"[telegram] msg {m.id} recebida | foto={bool(m.photo)} | "
                       f"aposta={ampla}")
-                # Encaminha pro Discord (se aposta) + coloca na fila de Tips.
                 tip, mudou = await _processar_msg(client, m)
                 if mudou:
                     _prune_tips(dados)
@@ -414,7 +417,25 @@ def iniciar(api_id, api_hash, session_str, grupo, anthropic_key,
             except Exception as e:
                 print("[telegram] erro no handler:", e)
 
+        # Watchdog: a cada 3min verifica se chegou algum update.
+        # Se ficar WATCHDOG_SILENCIO_MAX (8min) sem nenhuma msg do grupo,
+        # forca reconexao pra evitar update-gap silencioso do MTProto.
+        WATCHDOG_SILENCIO_MAX = 8 * 60
+        WATCHDOG_INTERVALO    = 3 * 60
+
+        async def _watchdog():
+            while client.is_connected():
+                await asyncio.sleep(WATCHDOG_INTERVALO)
+                silencio = _time.monotonic() - _ultimo_update[0]
+                print(f"[telegram] watchdog: {int(silencio)}s sem update do grupo")
+                if silencio >= WATCHDOG_SILENCIO_MAX:
+                    print("[telegram] watchdog: silencio longo — forcando reconexao")
+                    await client.disconnect()
+                    return
+
+        asyncio.ensure_future(_watchdog())
         await client.run_until_disconnected()
+        print("[telegram] desconectado — reconectando...")
 
     espera = 30
     while True:
