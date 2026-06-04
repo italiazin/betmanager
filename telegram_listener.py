@@ -357,11 +357,18 @@ def iniciar(api_id, api_hash, session_str, grupo, anthropic_key,
         # Discord no catch-up: so' apostas dos ultimos 20min (cobre o gap de um
         # restart/deploy sem despejar horas de historico). Dedupe evita repeticao.
         disc_limite = agora - timedelta(minutes=20)
-        novas = 0
-        mudou_alguma = False
+        # iter_messages vem da mais NOVA -> mais velha; coletamos e invertemos
+        # pra processar/encaminhar na ordem CRONOLOGICA (mais antiga -> recente),
+        # igual a ordem em que o tipster postou no grupo.
+        msgs = []
         async for m in client.iter_messages(ent, limit=300):
             if m.date and m.date < limite:
                 break
+            msgs.append(m)
+        msgs.reverse()
+        novas = 0
+        mudou_alguma = False
+        for m in msgs:
             perm = bool(m.date and m.date >= disc_limite)
             tip, mudou = await _processar_msg(client, m, permitir_discord=perm)
             if tip:
