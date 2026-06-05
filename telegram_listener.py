@@ -19,15 +19,18 @@ _SINAIS_APOSTA = ("over", "under", "handicap", "escanteio", "cartã", "cartao",
                   "dupla chance", "mais de", "menos de", "intervalo", "marcador",
                   "@", "odd", "stake", "entrada", "unidade", "%")
 
-# ---- atualização de odd/valor em resposta a aposta existente ----
+# ---- atualização/comentário sobre aposta existente (em reply) ----
 _RE_ATUALIZACAO = re.compile(
-    r"agora\s+vale|agora\s+valendo|antes\s+[\d,\.]+\s*%|odd\s+atualiz",
+    r"agora\s+vale|agora\s+valendo|antes\s+[\d,\.]+\s*%|odd\s+atualiz"
+    r"|replanilhar|@\s*\d+[\.,]\d+"           # "@7.50" = referência a odd
+    r"|odd\s+(?:subiu|caiu|mudou|nova|atual)"
+    r"|limit[ea]|sobrecarreg",                # avisos de limite/sobrecarga de banca
     re.IGNORECASE
 )
 
 
 def _parece_atualizacao(texto):
-    """Detecta mensagem de atualização de valor/EV postada em resposta a uma aposta."""
+    """Detecta comentário/atualização sobre uma aposta postado em reply."""
     if not texto:
         return False
     return bool(_RE_ATUALIZACAO.search(texto))
