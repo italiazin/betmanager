@@ -19,6 +19,19 @@ _SINAIS_APOSTA = ("over", "under", "handicap", "escanteio", "cartã", "cartao",
                   "dupla chance", "mais de", "menos de", "intervalo", "marcador",
                   "@", "odd", "stake", "entrada", "unidade", "%")
 
+# ---- atualização de odd/valor em resposta a aposta existente ----
+_RE_ATUALIZACAO = re.compile(
+    r"agora\s+vale|agora\s+valendo|antes\s+[\d,\.]+\s*%|odd\s+atualiz",
+    re.IGNORECASE
+)
+
+
+def _parece_atualizacao(texto):
+    """Detecta mensagem de atualização de valor/EV postada em resposta a uma aposta."""
+    if not texto:
+        return False
+    return bool(_RE_ATUALIZACAO.search(texto))
+
 
 def parece_aposta(texto):
     """Heuristica BARATA: a mensagem parece uma aposta? (evita chamar IA a` toa)."""
@@ -327,17 +340,22 @@ def iniciar(api_id, api_hash, session_str, grupo, anthropic_key,
             return False
 
     async def _processar_msg(client, m, permitir_discord=True):
-        """Encaminha pro Discord (se aposta) E coloca na fila de Tips.
-        - Discord: qualquer aposta (texto OU so'-imagem), via parece_aposta_ampla.
+        """Encaminha pro Discord (se aposta ou atualização) E coloca na fila de Tips.
+        - Discord: aposta (texto OU so'-imagem) OU reply com atualizacao de valor/odd.
         - Tips: aposta de TEXTO -> processar_texto; aposta SO'-IMAGEM -> visao.
         Retorna (tip, mudou) — `mudou` indica que ha' algo novo a salvar."""
         texto_msg = m.message or ""
         d_iso = m.date.isoformat() if m.date else None
         mudou = False
-        if permitir_discord and discord_webhook and \
-                parece_aposta_ampla(texto_msg, bool(getattr(m, "photo", None))):
+
+        # Discord: aposta normal OU reply de atualização ("agora vale X%")
+        eh_reply = bool(getattr(m, "reply_to", None))
+        deve_discord = (parece_aposta_ampla(texto_msg, bool(getattr(m, "photo", None)))
+                        or (eh_reply and _parece_atualizacao(texto_msg)))
+        if permitir_discord and discord_webhook and deve_discord:
             if await _forward_discord(client, m):
                 mudou = True
+
         tip = None
         if parece_aposta(texto_msg):
             tip = processar_texto(texto_msg, m.id, dados, anthropic_key, interpretar_fn, d_iso)
