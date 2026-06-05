@@ -185,10 +185,12 @@ def _discord_enviar(webhook, content, img_bytes=None, quote=None, titulo=None):
             }]
         if img_bytes:
             embed["image"] = {"url": "attachment://aposta.jpg"}
-            _rq.post(webhook, data={"payload_json": _json.dumps({"embeds": [embed]})},
-                     files={"file": ("aposta.jpg", img_bytes, "image/jpeg")}, timeout=20)
+            r = _rq.post(webhook, data={"payload_json": _json.dumps({"embeds": [embed]})},
+                         files={"file": ("aposta.jpg", img_bytes, "image/jpeg")}, timeout=20)
         else:
-            _rq.post(webhook, json={"embeds": [embed]}, timeout=20)
+            r = _rq.post(webhook, json={"embeds": [embed]}, timeout=20)
+        if r.status_code not in (200, 204):
+            print(f"[discord] aviso HTTP {r.status_code}: {r.text[:200]}")
     except Exception as e:
         print("[discord] erro:", e)
 
