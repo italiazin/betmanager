@@ -416,13 +416,13 @@ def iniciar(api_id, api_hash, session_str, grupo, anthropic_key,
                 print("[telegram] erro no handler:", e)
 
         async def _poll_loop():
-            """Polling ativo a cada 30s: busca as ultimas msgs do grupo e processa
+            """Polling ativo a cada 10s: busca as ultimas msgs do grupo e processa
             qualquer uma que o handler ao vivo nao tenha recebido (update-gap MTProto).
             O dedupe por id garante que nada e' enviado/processado duas vezes."""
             from datetime import datetime, timezone, timedelta
             JANELA = timedelta(minutes=10)
             while client.is_connected():
-                await asyncio.sleep(30)
+                await asyncio.sleep(10)
                 try:
                     mudou = False
                     async for m in client.iter_messages(ent, limit=20):
