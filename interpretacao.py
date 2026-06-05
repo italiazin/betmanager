@@ -162,6 +162,16 @@ mercado é um de: Moneyline, Total de Gols, Ambas Marcam, Dupla Chance, Handicap
 
 FOCO: só FUTEBOL e BASQUETE. Se o esporte for outro (tênis, beisebol, vôlei...), preencha mas marque "fora_escopo": true.
 
+REGRA CRÍTICA — "E" entre times/atletas = JOGOS SEPARADOS:
+Quando a mensagem une dois times ou atletas com "e", "e também", "&" no contexto de "vencer", "ML", "Moneyline", ou cada um tem sua odd separada, são APOSTAS EM JOGOS DISTINTOS — NUNCA um jogo entre eles. Exemplos:
+- "Tailândia e Omã para vencer" → 2 jogos: "Tailândia x ?" e "Omã x ?", 2 pernas ML separadas. NÃO "Tailândia x Omã".
+- "ML Zverev e ML Mensik" → 2 jogos: "Zverev x ?" e "Mensik x ?". NÃO "Mensik x Zverev".
+- "Coventry e Middlesbrough vencendo" → 2 jogos separados.
+Exceção: só escreva "A x B" no jogos[] se a mensagem deixar EXPLÍCITO que é um confronto direto ("A enfrenta B", "A vs B hoje", placar "2-1").
+
+ESPORTES INDIVIDUAIS (tênis, MMA, boxe, atletismo):
+Em tênis/MMA, dois atletas listados com "e"/"&"/"|" = DOIS JOGOS DIFERENTES, não um confronto entre eles. Cada atleta tem seu próprio jogo. Use "Atleta x ?" no jogos[].
+
 Se vier uma IMAGEM (print do bilhete da aposta), ela é a fonte PRINCIPAL: leia dela os CONFRONTOS REAIS (quem joga contra quem), mercados, seleções, linhas e odds. Em múltiplas de vários jogos, cada perna tem o SEU confronto real — NUNCA pareie times de jogos diferentes (ex: se "Itália" e "Albânia" estão em jogos distintos, é ERRADO escrever "Itália x Albânia"; use o confronto verdadeiro de cada uma, ex: "Luxemburgo x Itália").
 
 Cada perna = uma seleção REAL e DISTINTA. NUNCA funda pernas nem omita nenhuma.

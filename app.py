@@ -6687,7 +6687,7 @@ def _match_jogo_no_cache_espn(jogo, esporte, selecao=None):
     # 1) confronto completo "A x B"
     a, b = espn_dividir_times(jogo)
     if a and b and "?" not in a and "?" not in b:
-        melhor, melhor_score = None, 0
+        cands1 = []
         for g in itens:
             if not _mesmo_esporte(g):
                 continue
@@ -6702,10 +6702,13 @@ def _match_jogo_no_cache_espn(jogo, esporte, selecao=None):
                 score, lado = a2 + b2, min(a2, b2)
             if lado < 58 or score < 142:
                 continue
-            if score > melhor_score:
-                melhor_score, melhor = score, g
-        if melhor:
-            return melhor
+            cands1.append((score, g))
+        if cands1:
+            # prefere nao-finalizado; entre empates escolhe maior score e mais cedo
+            cands1.sort(key=lambda it: (
+                str(it[1].get("status_jogo", "")).lower().startswith("final"),
+                -it[0], it[1].get("horario_jogo_iso", "")))
+            return cands1[0][1]
 
     # 2) fallback pelo TIME escolhido (mata pareamentos inventados e "Time x ?")
     nome_time = (selecao or "").strip()
