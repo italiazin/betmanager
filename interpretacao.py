@@ -19,9 +19,10 @@ import json
 import re
 
 MERCADOS_VALIDOS = [
-    "Moneyline", "Total de Gols", "Ambas Marcam", "Dupla Chance", "Handicap",
+    "Moneyline", "DNB", "Total de Gols", "Ambas Marcam", "Dupla Chance", "Handicap",
     "Escanteios", "Cartões", "Chutes", "Chutes no Gol", "HT Resultado",
-    "HT Vence sem sofrer", "Marcador", "Assistência", "Outro",
+    "HT Vence sem sofrer", "Intervalo/Final", "Vencer pelo menos um tempo",
+    "Marcador", "Assistência", "Outro",
 ]
 
 _cache_ia = {}
@@ -158,7 +159,7 @@ Responda SOMENTE com um JSON:
  "eh_multipla": true ou false,
  "pernas": [{"mercado": "...", "selecao": "...", "linha": número ou null, "direcao": "over"/"under"/"", "periodo": "jogo"/"1º tempo"/"2º tempo", "alvo": "jogo" ou nome do time}]
 }
-mercado é um de: Moneyline, Total de Gols, Ambas Marcam, Dupla Chance, Handicap, Intervalo/Final, Escanteios, Cartões, Chutes, Chutes no Gol, HT Resultado, Marcador, Assistência, Outro.
+mercado é um de: Moneyline, DNB, Total de Gols, Ambas Marcam, Dupla Chance, Handicap, Intervalo/Final, Escanteios, Cartões, Chutes, Chutes no Gol, HT Resultado, Vencer pelo menos um tempo, Marcador, Assistência, Outro.
 
 FOCO: só FUTEBOL e BASQUETE. Se o esporte for outro (tênis, beisebol, vôlei...), preencha mas marque "fora_escopo": true.
 
@@ -177,10 +178,13 @@ Se vier uma IMAGEM (print do bilhete da aposta), ela é a fonte PRINCIPAL: leia 
 Cada perna = uma seleção REAL e DISTINTA. NUNCA funda pernas nem omita nenhuma.
 - "Mais de 2.5 gols na partida" -> Total de Gols, over, 2.5, periodo "jogo", alvo "jogo".
 - "Itália - Mais de 2.5 gols" -> Total de Gols de um TIME: over, 2.5, alvo "Itália" (DIFERENTE do total do jogo — OUTRA perna).
+- "Londrina - Menos de 0.5 escanteios" -> Escanteios, under, 0.5, alvo "Londrina". REGRA GERAL: "Time - Menos/Mais de X [mercado]" com qualquer mercado (Escanteios, Cartões, Chutes...) -> alvo = nome do time (NÃO "jogo").
 - "Mais de 0.5 Gols no 1º Tempo" -> Total de Gols, over, 0.5, periodo "1º tempo".
 - "Mais de 5.5 Cartões" -> Cartões, over, 5.5.
 - INTERVALO/FINAL (HT/FT): quando a selecao tem DOIS resultados separados por barra (ex: "Brasil/Brasil", "Empate/Brasil", "X/2", "Casa/Casa"), OU aparece sob um rotulo tipo "Intervalo/Final", "Resultado Intervalo/Final", "HT/FT", "Intervalo e Final" -> mercado "Intervalo/Final"; selecao = o par exato (ex: "Brasil/Brasil" = vence o 1º tempo E vence no final). ISSO NUNCA É Moneyline.
   Regra pratica: UM time sozinho ("Brasil") = Moneyline; o MESMO time repetido com barra ("Brasil/Brasil") = Intervalo/Final.
+- "Vencer em qualquer um dos tempos" / "Vencer pelo menos um tempo" / "Vence em algum período" -> mercado "Vencer pelo menos um tempo", selecao = nome do time. DIFERENTE de Intervalo/Final (que exige resultado em AMBOS os tempos com barra). NÃO escreva "Time/Time".
+- "Empate ou devolve" / "Empate devolve" / "DNB" -> mercado "DNB" (Draw No Bet), selecao = nome do time que deve vencer. NÃO é Moneyline. Se vier com período ("no 1º tempo"), use periodo "1º tempo".
 - "over 2.5 do jogo" e "over 2.5 da Itália" são DUAS pernas separadas.
 
 Ignore rótulos soltos que só repetem o tipo (ex: "Resultado Final", "Total de Gols" sem valor).
