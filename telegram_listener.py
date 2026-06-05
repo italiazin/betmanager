@@ -310,10 +310,13 @@ def iniciar(api_id, api_hash, session_str, grupo, anthropic_key,
 
     async def _forward_discord(client, m):
         """Encaminha a aposta pro Discord (embed) UMA vez so' (dedupe por id).
-        Marca como enviada SO' apos sucesso (erro de rede -> tenta no proximo
-        catch-up). Retorna True se enviou agora."""
+        Marca como enviada ANTES do primeiro await pra evitar race entre handler
+        e poll loop (ambos no mesmo event loop, mas await cede controle). Se der
+        erro de rede a mensagem fica marcada e nao tenta de novo — preferivel a
+        mandar em duplicata. Retorna True se enviou agora."""
         if not discord_webhook or _ja_enviada_discord(dados, m.id):
             return False
+        _marcar_discord(dados, m.id)          # marca ANTES do primeiro await
         try:
             img_bytes = await client.download_media(m, file=bytes) if m.photo else None
             txt = (m.message or "").strip()
@@ -332,7 +335,6 @@ def iniciar(api_id, api_hash, session_str, grupo, anthropic_key,
                 pass
             _discord_enviar(discord_webhook, txt, img_bytes,
                             quote=quote, titulo=_casa_do_texto(txt))
-            _marcar_discord(dados, m.id)
             print(f"[discord] aposta {m.id} encaminhada (foto={bool(img_bytes)})")
             return True
         except Exception as e:
