@@ -166,8 +166,10 @@ FOCO: só FUTEBOL e BASQUETE. Se o esporte for outro (tênis, beisebol, vôlei..
 REGRA CRÍTICA — "E" entre times/atletas = JOGOS SEPARADOS:
 Quando a mensagem une dois times ou atletas com "e", "e também", "&" no contexto de "vencer", "ML", "Moneyline", ou cada um tem sua odd separada, são APOSTAS EM JOGOS DISTINTOS — NUNCA um jogo entre eles. Exemplos:
 - "Tailândia e Omã para vencer" → 2 jogos: "Tailândia x ?" e "Omã x ?", 2 pernas ML separadas. NÃO "Tailândia x Omã".
+- "Panamá e Suíça vencerem" → 2 jogos: "Panamá x ?" e "Suíça x ?". NÃO "Panamá x Suíça".
 - "ML Zverev e ML Mensik" → 2 jogos: "Zverev x ?" e "Mensik x ?". NÃO "Mensik x Zverev".
 - "Coventry e Middlesbrough vencendo" → 2 jogos separados.
+ARGUMENTO LÓGICO: numa múltipla, ML do Time A + ML do Time B adversário NO MESMO JOGO é matematicamente impossível (só um pode vencer). Se duas pernas têm ML de times diferentes, são jogos DISTINTOS — mesmo que esses times joguem entre si na vida real. Cada perna deve ter seu próprio jogo em jogos[].
 Exceção: só escreva "A x B" no jogos[] se a mensagem deixar EXPLÍCITO que é um confronto direto ("A enfrenta B", "A vs B hoje", placar "2-1").
 
 ESPORTES INDIVIDUAIS (tênis, MMA, boxe, atletismo):
