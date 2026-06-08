@@ -7,7 +7,10 @@
 <style>
   .tips-toolbar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:14px;
     background:#13161e;border:1px solid #232838;border-radius:12px;padding:10px 14px}
-  .tips-toolbar .cont{color:#8a93a6;margin-right:auto}
+  .tips-toolbar .cont{color:#8a93a6}
+  .tip-busca{background:#0f1115;border:1px solid #2a2f3a;color:#e6e9ef;border-radius:9px;
+    padding:8px 12px;font-size:14px;width:220px;outline:none;margin-right:auto}
+  .tip-busca:focus{border-color:#7aa9ff}
   .tb-btn{border:1px solid #2a2f3a;background:#1a1e27;color:#cbd2e0;padding:8px 14px;border-radius:9px;
     cursor:pointer;font-size:14px;font-weight:600}
   .tb-btn.todas{border-color:#1f9d55;color:#37d67a}.tb-btn.todas:hover{background:rgba(31,157,85,.12)}
@@ -91,6 +94,7 @@
 <section class="panel">
     <div class="tips-toolbar">
         <span class="cont">Pendentes: <b id="contador">{{ tips|length }}</b></span>
+        <input type="search" class="tip-busca" id="tipBusca" placeholder="🔍 buscar por casa, jogo, mercado..." oninput="filtrar(this.value)">
         <span class="tips-pref">Imagens: <b>{{ 'ligadas' if com_imagem else 'desligadas' }}</b> · <a href="/configuracoes">mudar no perfil</a></span>
         <label style="color:#8a93a6;font-size:14px;cursor:pointer"><input type="checkbox" id="chkTodos" onchange="marcarTodos(this.checked)"> marcar todas</label>
         <button class="tb-btn sel" id="btnSel" onclick="aprovarSelecionadas()" disabled>✓ Aprovar selecionadas (<span id="nSel">0</span>)</button>
@@ -147,6 +151,25 @@ var MERCADOS = ["Moneyline","Total de Gols","Ambas Marcam","Dupla Chance","Handi
 var PERIODOS = ["jogo","1º tempo","2º tempo"];
 
 function cards(){ return Array.from(document.querySelectorAll('.tip-card')); }
+
+function filtrar(q){
+    q = (q || '').toLowerCase().trim();
+    var visiveis = 0;
+    cards().forEach(function(c){
+        var id = c.dataset.id;
+        var t = TIPS[id] || {};
+        var haystack = [
+            t.casa || '',
+            t.esporte || '',
+            (t.jogos || []).join(' '),
+            (t.pernas || []).map(function(p){ return (p.mercado||'')+' '+(p.selecao||'')+' '+(p.alvo||''); }).join(' ')
+        ].join(' ').toLowerCase();
+        var visivel = !q || haystack.indexOf(q) !== -1;
+        c.style.display = visivel ? '' : 'none';
+        if(visivel) visiveis++;
+    });
+    document.getElementById('vazio').style.display = (!q && visiveis === 0) || (q && visiveis === 0) ? '' : 'none';
+}
 function setContador(){
     var n = cards().length;
     document.getElementById('contador').innerText = n;
