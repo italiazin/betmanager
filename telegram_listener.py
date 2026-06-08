@@ -165,6 +165,19 @@ def _links_da_mensagem(msg):
     return urls
 
 
+def _link_aposta(msg):
+    """Retorna o primeiro link de aposta/share da mensagem (entities ou texto raw)."""
+    # 1) hyperlinks embutidos nas entidades do Telegram
+    for u in _links_da_mensagem(msg):
+        return u
+    # 2) link visível no texto
+    txt = getattr(msg, "message", "") or ""
+    m = re.search(r"https?://\S+", txt)
+    if m:
+        return m.group(0).rstrip(")")
+    return None
+
+
 def _casa_do_texto(texto):
     """Tenta achar o nome da casa/site da aposta (pro titulo do embed)."""
     import re as _re
@@ -217,7 +230,7 @@ def _discord_enviar(webhook, content, img_bytes=None, quote=None, titulo=None):
 
 def iniciar(api_id, api_hash, session_str, grupo, anthropic_key,
             dados, salvar_fn, interpretar_fn, horas_catchup=8, interpretar_img_fn=None,
-            discord_webhook=None):
+            discord_webhook=None, salvar_img_fn=None):
     """Loop do listener — BLOQUEIA, entao chame numa thread daemon.
     Reconecta sozinho com backoff. Telethon e' importado AQUI (lazy).
     `interpretar_img_fn(texto, b64) -> dict` (opcional): visao hibrida — quando a
@@ -242,21 +255,21 @@ def iniciar(api_id, api_hash, session_str, grupo, anthropic_key,
                 return d.entity
         return None
 
-    import os
-    PASTA_IMG = os.path.join("static", "tips_imgs")
-    os.makedirs(PASTA_IMG, exist_ok=True)
-
     async def _baixar_img(client, m, tip):
-        """Baixa o print da aposta pra static/ e poe o caminho na tip. Best-effort."""
-        if not getattr(m, "photo", None):
+        """Baixa o print da aposta e salva no PostgreSQL (via salvar_img_fn).
+        Se nao houver callback, nao salva (imagem ficaria no disco efemero)."""
+        if not getattr(m, "photo", None) or not salvar_img_fn:
+            return
+        if tip.get("img"):          # ja baixada anteriormente
             return
         try:
-            caminho = os.path.join(PASTA_IMG, f"msg_{m.id}.jpg")
-            if not os.path.exists(caminho):
-                await client.download_media(m, caminho)
-            tip["img"] = f"/static/tips_imgs/msg_{m.id}.jpg"
+            b = await client.download_media(m, file=bytes)
+            if not b:
+                return
+            salvar_img_fn(m.id, b)
+            tip["img"] = f"/tips/img/{m.id}"
         except Exception as e:
-            print("[telegram] falha ao baixar print:", e)
+            print("[telegram] falha ao baixar/salvar print:", e)
 
     async def _upgrade_com_imagem(client, m, tip):
         """Visao hibrida: se a leitura so'-texto ficou arriscada (ex: multipla de
@@ -372,6 +385,9 @@ def iniciar(api_id, api_hash, session_str, grupo, anthropic_key,
             if tip:
                 await _baixar_img(client, m, tip)
         if tip:
+            link = _link_aposta(m)
+            if link:
+                tip["link"] = link
             mudou = True
         return tip, mudou
 

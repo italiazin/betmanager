@@ -5,44 +5,75 @@
 <title>Tips do grupo · Bet Manager</title>
 <link rel="stylesheet" href="/static/style.css">
 <style>
-  .tips-toolbar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:14px;
-    background:#13161e;border:1px solid #232838;border-radius:12px;padding:10px 14px}
-  .tips-toolbar .cont{color:#8a93a6}
-  .tip-busca{background:#0f1115;border:1px solid #2a2f3a;color:#e6e9ef;border-radius:9px;
-    padding:8px 12px;font-size:14px;width:220px;outline:none;margin-right:auto}
+  /* ── toolbar ─────────────────────────────────────── */
+  .tips-toolbar{background:#13161e;border:1px solid #232838;border-radius:14px;
+    padding:12px 16px;margin-bottom:10px;display:flex;flex-direction:column;gap:10px}
+  .tb-row{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+  .tb-cont{color:#8a93a6;font-size:14px;white-space:nowrap}
+  .tb-cont b{color:#e6e9ef}
+  .tip-busca{flex:1;min-width:180px;background:#0f1115;border:1px solid #2a2f3a;
+    color:#e6e9ef;border-radius:9px;padding:8px 12px;font-size:14px;outline:none}
   .tip-busca:focus{border-color:#7aa9ff}
-  .tb-btn{border:1px solid #2a2f3a;background:#1a1e27;color:#cbd2e0;padding:8px 14px;border-radius:9px;
-    cursor:pointer;font-size:14px;font-weight:600}
+  .tips-pref{color:#8a93a6;font-size:13px;white-space:nowrap}
+  .tips-pref a{color:#7aa9ff;text-decoration:none}
+  .tb-btn{border:1px solid #2a2f3a;background:#1a1e27;color:#cbd2e0;padding:7px 14px;
+    border-radius:9px;cursor:pointer;font-size:13px;font-weight:600;white-space:nowrap}
   .tb-btn.todas{border-color:#1f9d55;color:#37d67a}.tb-btn.todas:hover{background:rgba(31,157,85,.12)}
   .tb-btn.sel{border-color:#7aa9ff;color:#7aa9ff}.tb-btn.sel:hover{background:rgba(122,169,255,.12)}
-  .tb-btn:disabled{opacity:.45;cursor:default}
-  .tips-pref{color:#8a93a6;font-size:13px}.tips-pref a{color:#7aa9ff;text-decoration:none}
-  .tip-card{display:flex;gap:12px;background:#161922;border:1px solid #232838;border-radius:14px;padding:14px 16px;margin-bottom:14px;position:relative}
-  .tip-card.editada{border-color:#caa23a}
-  .tip-card.reportada{border-color:#e0843a}
-  @keyframes tipIn { from { opacity:0; transform: translateY(-14px) scale(.98); } to { opacity:1; transform:none; } }
-  .tip-card.tip-nova{ animation: tipIn .5s ease; box-shadow:0 0 0 2px rgba(55,214,122,.5); }
-  .tip-report{position:absolute;right:12px;bottom:12px;border:1px solid #2a2f3a;background:#1a1e27;
-    color:#8a93a6;border-radius:8px;padding:5px 10px;cursor:pointer;font-size:12px}
-  .tip-report:hover{border-color:#e0843a;color:#e0843a}
-  .tip-report.feito{border-color:#e0843a;color:#e0843a;cursor:default}
-  .tip-card.indo{opacity:.35;transition:opacity .18s}
-  .tip-chk{padding-top:3px}.tip-chk input{width:18px;height:18px;cursor:pointer}
-  .tip-img img{width:180px;border-radius:10px;border:1px solid #2a2f3a;display:block;cursor:zoom-in}
+  .tb-btn:disabled{opacity:.4;cursor:default}
+  .tb-chk{color:#8a93a6;font-size:13px;cursor:pointer;white-space:nowrap;display:flex;align-items:center;gap:5px}
+  .tb-chk input{width:16px;height:16px;cursor:pointer}
+
+  /* ── filtros ─────────────────────────────────────── */
+  .filtros{display:flex;gap:6px;flex-wrap:wrap}
+  .fp{border:1px solid #2a2f3a;background:#1a1e27;color:#8a93a6;padding:5px 13px;
+    border-radius:20px;cursor:pointer;font-size:13px;transition:all .15s;white-space:nowrap}
+  .fp:hover{border-color:#5a6172;color:#cbd2e0}
+  .fp.ativo{border-color:#7aa9ff;color:#7aa9ff;background:rgba(122,169,255,.1)}
+  .fp .cnt{font-size:11px;opacity:.7;margin-left:3px}
+
+  /* ── cards ───────────────────────────────────────── */
+  .tip-card{display:flex;gap:12px;background:#161922;border:1px solid #232838;
+    border-radius:14px;padding:14px 16px;margin-bottom:12px;position:relative;
+    transition:transform .15s,box-shadow .15s;border-left:3px solid #2a2f3a}
+  .tip-card:hover{transform:translateY(-2px);box-shadow:0 8px 28px rgba(0,0,0,.45)}
+  /* accent por esporte */
+  .tip-card[data-esporte="Futebol"]{border-left-color:#37d67a}
+  .tip-card[data-esporte="Basquete"]{border-left-color:#ff9e64}
+  .tip-card[data-esporte="Tênis"]{border-left-color:#7aa9ff}
+  .tip-card[data-esporte="MMA"],.tip-card[data-esporte="Boxe"]{border-left-color:#ff6b6b}
+  /* estados */
+  .tip-card.editada{border-top-color:#caa23a;border-right-color:#caa23a;border-bottom-color:#caa23a}
+  .tip-card.reportada{border-top-color:#e0843a;border-right-color:#e0843a;border-bottom-color:#e0843a}
+  @keyframes tipIn{from{opacity:0;transform:translateY(-12px) scale(.98)}to{opacity:1;transform:none}}
+  .tip-card.tip-nova{animation:tipIn .45s ease;box-shadow:0 0 0 2px rgba(55,214,122,.4)}
+  .tip-card.indo{opacity:.3;transform:scale(.98);transition:all .18s}
+
+  .tip-chk{padding-top:2px}.tip-chk input{width:17px;height:17px;cursor:pointer}
+  .tip-img img{width:170px;border-radius:10px;border:1px solid #2a2f3a;display:block;cursor:zoom-in;
+    transition:opacity .2s}.tip-img img:hover{opacity:.85}
   .tip-body{flex:1;min-width:0}
-  .tip-head{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:6px}
-  .tip-head .casa{font-weight:800;font-size:16px;color:#e6e9ef}
-  .tip-head .odd{color:#7aa9ff;font-weight:700}.tip-head .val{color:#37d67a;font-weight:700}
+
+  /* head */
+  .tip-head{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:5px}
+  .tip-head .casa{font-weight:800;font-size:17px;color:#e6e9ef;letter-spacing:-.2px}
+  .tip-head .odd{color:#7aa9ff;font-weight:700;font-size:15px}
+  .tip-head .val{color:#37d67a;font-weight:700;font-size:14px;
+    background:rgba(55,214,122,.1);padding:2px 8px;border-radius:20px}
   .tip-head .hora{color:#8a93a6;font-size:12px;margin-left:auto}
-  .tip-head .multi{background:rgba(155,89,255,.18);color:#c4a3ff;padding:2px 8px;border-radius:20px;font-size:11px;font-weight:700}
-  .tip-head .fora{background:rgba(214,69,69,.15);color:#ff6b6b;padding:2px 8px;border-radius:20px;font-size:11px;font-weight:700}
-  .tip-head .edit-tag{background:rgba(202,162,58,.16);color:#caa23a;padding:2px 8px;border-radius:20px;font-size:11px;font-weight:700}
-  .tip-jogo{color:#cbd2e0;margin-bottom:8px}
-  .jogo-chip{cursor:pointer;border-bottom:1px dashed #3a4151;padding-bottom:1px}
+  .badge{padding:2px 8px;border-radius:20px;font-size:11px;font-weight:700}
+  .badge.multi{background:rgba(155,89,255,.18);color:#c4a3ff}
+  .badge.fora{background:rgba(214,69,69,.15);color:#ff6b6b}
+  .badge.edit-tag{background:rgba(202,162,58,.16);color:#caa23a}
+  .badge.rep-tag{background:rgba(224,132,58,.16);color:#e0843a}
+
+  /* jogo */
+  .tip-jogo{color:#cbd2e0;margin-bottom:10px;font-size:14px}
+  .jogo-chip{cursor:pointer;border-bottom:1px dashed #3a4151;padding-bottom:1px;transition:color .1s}
   .jogo-chip:hover{color:#7aa9ff;border-color:#7aa9ff}
-  .jogo-chip .ed-ic{font-size:11px;color:#8a93a6}
+  .jogo-chip .ed-ic{font-size:10px;color:#8a93a6;margin-left:2px}
   .jogo-sep{color:#5a6172;margin:0 5px}
-  .jogo-esp{color:#8a93a6;margin-left:4px}
+  .jogo-esp{color:#8a93a6;margin-left:5px;font-size:13px}
   .jogo-edit-wrap{position:relative;display:inline-block}
   .jogo-search{background:#0f1115;border:1px solid #7aa9ff;color:#e6e9ef;border-radius:8px;padding:5px 8px;font-size:14px;width:240px}
   .jogo-drop{position:absolute;z-index:60;left:0;top:115%;background:#13161e;border:1px solid #2a2f3a;border-radius:10px;width:330px;max-height:300px;overflow:auto;box-shadow:0 10px 26px rgba(0,0,0,.55)}
@@ -51,23 +82,58 @@
   .jogo-opt .lg{color:#8a93a6;font-size:11px}
   .jogo-opt .hr{color:#7aa9ff;font-size:11px;float:right;margin-left:8px}
   .jogo-drop .vazio2{padding:10px;color:#8a93a6;font-size:13px}
-  .perna{padding:5px 0;border-bottom:1px solid #1c2027;font-size:14px;color:#e6e9ef}
-  .ln{color:#caa23a;font-size:12px;margin-left:4px}
-  .dir{color:#7aa9ff;font-size:12px;text-transform:uppercase;margin-left:4px}
-  .per{color:#ff9e64;font-size:12px;background:rgba(255,158,100,.12);padding:1px 6px;border-radius:6px;margin-left:4px}
-  .alvo{color:#37d67a;font-size:12px;background:rgba(55,214,122,.12);padding:1px 6px;border-radius:6px;margin-left:4px}
-  .tip-acoes{margin-top:12px;display:flex;gap:8px;flex-wrap:wrap}
-  .tip-acoes button{border:1px solid #2a2f3a;background:#1a1e27;color:#cbd2e0;padding:8px 16px;border-radius:9px;cursor:pointer;font-size:14px;font-weight:600}
-  .tip-acoes .ap{border-color:#1f9d55;color:#37d67a}.tip-acoes .ap:hover{background:rgba(31,157,85,.12)}
-  .tip-acoes .ed{border-color:#caa23a;color:#caa23a}.tip-acoes .ed:hover{background:rgba(202,162,58,.12)}
-  .tip-acoes .dc{border-color:#d64545;color:#ff6b6b}.tip-acoes .dc:hover{background:rgba(214,69,69,.12)}
-  .vazio{color:#8a93a6;padding:20px;text-align:center}
-  /* modal de edicao (classes proprias p/ nao colidir com .modal do site) */
-  .tip-modal-bg{display:none;position:fixed;inset:0;background:rgba(0,0,0,.65);z-index:100000;
+
+  /* pernas */
+  .pernas{display:flex;flex-direction:column;gap:5px;margin-bottom:12px}
+  .perna{display:flex;align-items:center;gap:6px;flex-wrap:wrap;
+    padding:6px 8px;background:#0f1115;border-radius:8px;font-size:13px}
+  .mt{padding:2px 8px;border-radius:6px;font-size:11px;font-weight:700;white-space:nowrap}
+  /* cores por mercado */
+  .mt[data-m="Moneyline"]{background:rgba(122,169,255,.15);color:#7aa9ff}
+  .mt[data-m="DNB"]{background:rgba(100,217,255,.15);color:#64d9ff}
+  .mt[data-m="Total de Gols"]{background:rgba(55,214,122,.15);color:#37d67a}
+  .mt[data-m="Handicap"]{background:rgba(255,158,100,.15);color:#ff9e64}
+  .mt[data-m="Ambas Marcam"]{background:rgba(196,163,255,.15);color:#c4a3ff}
+  .mt[data-m="Dupla Chance"]{background:rgba(255,214,100,.15);color:#ffd664}
+  .mt[data-m="Escanteios"]{background:rgba(202,162,58,.18);color:#caa23a}
+  .mt[data-m="Cartões"]{background:rgba(255,107,107,.15);color:#ff6b6b}
+  .mt[data-m="Intervalo/Final"]{background:rgba(255,107,107,.1);color:#ff9e64}
+  .mt[data-m="Vencer pelo menos um tempo"]{background:rgba(196,163,255,.1);color:#c4a3ff}
+  .mt{background:rgba(138,147,166,.12);color:#8a93a6} /* fallback */
+  .p-sel{color:#e6e9ef;font-weight:500}
+  .ln{color:#caa23a;font-size:11px;background:rgba(202,162,58,.1);padding:1px 6px;border-radius:5px}
+  .dir{color:#7aa9ff;font-size:11px;font-weight:700;text-transform:uppercase}
+  .per{color:#ff9e64;font-size:11px;background:rgba(255,158,100,.1);padding:1px 6px;border-radius:5px}
+  .alvo{color:#37d67a;font-size:11px;background:rgba(55,214,122,.1);padding:1px 6px;border-radius:5px}
+
+  /* ações */
+  .tip-acoes{display:flex;gap:7px;flex-wrap:wrap}
+  .tip-acoes button{border:1px solid #2a2f3a;background:#1a1e27;color:#cbd2e0;
+    padding:8px 16px;border-radius:9px;cursor:pointer;font-size:13px;font-weight:600;
+    transition:background .15s,border-color .15s}
+  .tip-acoes .ap{border-color:#1f9d55;color:#37d67a}.tip-acoes .ap:hover{background:rgba(31,157,85,.15)}
+  .tip-acoes .ed{border-color:#caa23a;color:#caa23a}.tip-acoes .ed:hover{background:rgba(202,162,58,.15)}
+  .tip-acoes .dc{border-color:#d64545;color:#ff6b6b}.tip-acoes .dc:hover{background:rgba(214,69,69,.15)}
+  .tip-report{position:absolute;right:12px;bottom:12px;border:1px solid #1c2027;background:transparent;
+    color:#5a6172;border-radius:8px;padding:4px 10px;cursor:pointer;font-size:11px;transition:all .15s}
+  .tip-report:hover{border-color:#e0843a;color:#e0843a}
+  .tip-report.feito{border-color:#e0843a;color:#e0843a;cursor:default}
+
+  /* notificação novas */
+  #novasTips{cursor:pointer;margin-bottom:12px;background:rgba(55,214,122,.08);
+    border:1px solid #1f9d55;color:#37d67a;border-radius:10px;padding:10px 16px;
+    font-weight:600;display:flex;align-items:center;gap:8px}
+
+  /* vazio */
+  .vazio{color:#8a93a6;padding:40px 20px;text-align:center;font-size:15px}
+  .vazio-icon{font-size:36px;display:block;margin-bottom:10px;opacity:.4}
+
+  /* modal */
+  .tip-modal-bg{display:none;position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:100000;
     align-items:flex-start;justify-content:center;overflow:auto;padding:30px 12px}
   .tip-modal-bg.open{display:flex}
-  .tip-modal{background:#161922;border:1px solid #2a2f3a;border-radius:14px;max-width:680px;width:100%;padding:20px}
-  .tip-modal h3{margin:0 0 14px}
+  .tip-modal{background:#161922;border:1px solid #2a2f3a;border-radius:14px;max-width:680px;width:100%;padding:22px}
+  .tip-modal h3{margin:0 0 16px;font-size:16px}
   .frm-row{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:10px}
   .frm-row label{flex:1;min-width:120px;font-size:13px;color:#8a93a6;display:flex;flex-direction:column;gap:4px}
   .frm-row input,.frm-row select,.tip-modal textarea{background:#0f1115;border:1px solid #2a2f3a;color:#e6e9ef;border-radius:8px;padding:8px;font-size:14px}
@@ -80,8 +146,9 @@
   .modal-acoes button{padding:9px 18px;border-radius:9px;cursor:pointer;font-weight:600;border:1px solid #2a2f3a;background:#1a1e27;color:#cbd2e0}
   .modal-acoes .save{border-color:#1f9d55;color:#37d67a}
   .add-perna{border:1px dashed #2a2f3a;background:transparent;color:#7aa9ff;border-radius:8px;padding:6px 12px;cursor:pointer;font-size:13px}
-  /* lightbox (zoom da imagem dentro do site) */
-  .lightbox{display:none;position:fixed;inset:0;background:rgba(0,0,0,.85);z-index:100001;
+
+  /* lightbox */
+  .lightbox{display:none;position:fixed;inset:0;background:rgba(0,0,0,.88);z-index:100001;
     align-items:center;justify-content:center;cursor:zoom-out;padding:20px}
   .lightbox.open{display:flex}
   .lightbox img{max-width:95%;max-height:95%;border-radius:10px;border:1px solid #2a2f3a}
@@ -92,28 +159,45 @@
 <main class="app">
 <header class="topbar"><div><h1>🎯 Tips do grupo</h1><p>Apostas lidas pela IA — confira, edite se precisar e aprove pra planilhar</p></div></header>
 <section class="panel">
-    <div class="tips-toolbar">
-        <span class="cont">Pendentes: <b id="contador">{{ tips|length }}</b></span>
-        <input type="search" class="tip-busca" id="tipBusca" placeholder="🔍 buscar por casa, jogo, mercado..." oninput="filtrar(this.value)">
-        <span class="tips-pref">Imagens: <b>{{ 'ligadas' if com_imagem else 'desligadas' }}</b> · <a href="/configuracoes">mudar no perfil</a></span>
-        <label style="color:#8a93a6;font-size:14px;cursor:pointer"><input type="checkbox" id="chkTodos" onchange="marcarTodos(this.checked)"> marcar todas</label>
-        <button class="tb-btn sel" id="btnSel" onclick="aprovarSelecionadas()" disabled>✓ Aprovar selecionadas (<span id="nSel">0</span>)</button>
-        <button class="tb-btn todas" id="btnTodas" onclick="aprovarTodas()" {{ 'disabled' if not tips }}>✓✓ Aprovar todas</button>
+
+  <div class="tips-toolbar">
+    <!-- linha 1: busca + pref -->
+    <div class="tb-row">
+      <input type="search" class="tip-busca" id="tipBusca" placeholder="🔍  buscar por casa, jogo, mercado..." oninput="filtrar()">
+      <span class="tips-pref">Imagens: <b>{{ 'ligadas' if com_imagem else 'desligadas' }}</b> · <a href="/configuracoes">mudar</a></span>
     </div>
-    <div id="novasTips" onclick="location.reload()" style="display:none;cursor:pointer;margin-bottom:14px;
-        background:rgba(55,214,122,.12);border:1px solid #1f9d55;color:#37d67a;border-radius:10px;
-        padding:10px 14px;font-weight:600">🔔 <span id="nNovas">0</span> nova(s) tip(s) chegaram — clique para atualizar</div>
-    <div id="vazio" class="vazio" style="{{ '' if not tips else 'display:none' }}">Nenhuma tip pendente no momento.</div>
-    <div id="lista">
-    {% for t in tips %}{% include "_tip_card.html" %}{% endfor %}
+    <!-- linha 2: filtros + ações -->
+    <div class="tb-row">
+      <div class="filtros">
+        <button class="fp ativo" data-f="todos" onclick="setFiltro('todos')">Todos <span class="cnt" id="cnt-todos">{{ tips|length }}</span></button>
+        <button class="fp" data-f="Futebol" onclick="setFiltro('Futebol')">⚽ Futebol <span class="cnt" id="cnt-Futebol">0</span></button>
+        <button class="fp" data-f="Basquete" onclick="setFiltro('Basquete')">🏀 Basquete <span class="cnt" id="cnt-Basquete">0</span></button>
+        <button class="fp" data-f="multipla" onclick="setFiltro('multipla')">🔀 Múltipla <span class="cnt" id="cnt-multipla">0</span></button>
+        <button class="fp" data-f="fora" onclick="setFiltro('fora')">⚠ Fora de escopo <span class="cnt" id="cnt-fora">0</span></button>
+      </div>
+      <label class="tb-chk" style="margin-left:auto"><input type="checkbox" id="chkTodos" onchange="marcarTodos(this.checked)"> marcar todas</label>
+      <button class="tb-btn sel" id="btnSel" onclick="aprovarSelecionadas()" disabled>✓ Aprovar (<span id="nSel">0</span>)</button>
+      <button class="tb-btn todas" id="btnTodas" onclick="aprovarTodas()" {{ 'disabled' if not tips }}>✓✓ Aprovar todas</button>
     </div>
+  </div>
+
+  <div id="novasTips" onclick="location.reload()" style="display:none">
+    🔔 <span id="nNovas">0</span> nova(s) tip(s) — clique para atualizar
+  </div>
+
+  <div id="vazio" class="vazio" style="{{ '' if not tips else 'display:none' }}">
+    <span class="vazio-icon">🎯</span>Nenhuma tip pendente no momento.
+  </div>
+  <div id="lista">
+  {% for t in tips %}{% include "_tip_card.html" %}{% endfor %}
+  </div>
 </section>
 </main>
 
 <!-- Lightbox -->
 <div class="lightbox" id="lightbox" onclick="fecharImagem()"><img id="lightboxImg" src=""></div>
 
-<!-- Modal de edicao -->
+<!-- Modal de edição -->
 <div class="tip-modal-bg" id="modalBg">
   <div class="tip-modal">
     <h3>✎ Editar tip</h3>
@@ -147,240 +231,269 @@ var TIPS = {
 {% for t in tips %}"{{ t.id }}": {{ t|tojson }}{{ "," if not loop.last }}
 {% endfor %}
 };
-var MERCADOS = ["Moneyline","Total de Gols","Ambas Marcam","Dupla Chance","Handicap","Intervalo/Final","Escanteios","Cartões","Chutes","Chutes no Gol","HT Resultado","Marcador","Assistência","Outro"];
-var PERIODOS = ["jogo","1º tempo","2º tempo"];
+var MERCADOS = ["Moneyline","DNB","Total de Gols","Ambas Marcam","Dupla Chance","Handicap","Intervalo/Final","Escanteios","Cartões","Chutes","Chutes no Gol","HT Resultado","Vencer pelo menos um tempo","Marcador","Assistência","Outro"];
+var PERIODOS = ["jogo","1º tempo","2º tempo","1º quarto","2º quarto","3º quarto","4º quarto"];
+var _filtroAtivo = 'todos';
 
 function cards(){ return Array.from(document.querySelectorAll('.tip-card')); }
 
-function filtrar(q){
-    q = (q || '').toLowerCase().trim();
-    var visiveis = 0;
-    cards().forEach(function(c){
-        var id = c.dataset.id;
-        var t = TIPS[id] || {};
-        var haystack = [
-            t.casa || '',
-            t.esporte || '',
-            (t.jogos || []).join(' '),
-            (t.pernas || []).map(function(p){ return (p.mercado||'')+' '+(p.selecao||'')+' '+(p.alvo||''); }).join(' ')
-        ].join(' ').toLowerCase();
-        var visivel = !q || haystack.indexOf(q) !== -1;
-        c.style.display = visivel ? '' : 'none';
-        if(visivel) visiveis++;
-    });
-    document.getElementById('vazio').style.display = (!q && visiveis === 0) || (q && visiveis === 0) ? '' : 'none';
-}
 function setContador(){
-    var n = cards().length;
-    document.getElementById('contador').innerText = n;
-    document.getElementById('vazio').style.display = n ? 'none' : '';
-    document.getElementById('btnTodas').disabled = !n;
+    // conta visíveis (não ocultos por display:none)
+    var visiveis = cards().filter(c => c.style.display !== 'none').length;
+    document.getElementById('contador') && (document.getElementById('contador').innerText = visiveis);
+    document.getElementById('btnTodas').disabled = !visiveis;
     atualizarSel();
+    atualizarContsFiltros();
 }
-function selecionados(){ return cards().filter(c => c.querySelector('.chk').checked); }
+
+function atualizarContsFiltros(){
+    var tots = {todos:0, Futebol:0, Basquete:0, multipla:0, fora:0};
+    cards().forEach(function(c){
+        var t = TIPS[c.dataset.id] || {};
+        tots.todos++;
+        var esp = (t.esporte||'');
+        if(esp==='Futebol') tots.Futebol++;
+        if(esp==='Basquete') tots.Basquete++;
+        if(t.eh_multipla) tots.multipla++;
+        if(t.fora_escopo) tots.fora++;
+    });
+    ['todos','Futebol','Basquete','multipla','fora'].forEach(function(k){
+        var el = document.getElementById('cnt-'+k);
+        if(el) el.innerText = tots[k];
+    });
+}
+
+function selecionados(){ return cards().filter(c => c.style.display!=='none' && c.querySelector('.chk').checked); }
 function atualizarSel(){
     var n = selecionados().length;
     document.getElementById('nSel').innerText = n;
     document.getElementById('btnSel').disabled = !n;
 }
-function marcarTodos(v){ cards().forEach(c => c.querySelector('.chk').checked = v); atualizarSel(); }
-function removerCard(card){ card.classList.add('indo'); setTimeout(()=>{ card.remove(); setContador(); }, 160); }
+function marcarTodos(v){
+    cards().filter(c=>c.style.display!=='none').forEach(c=>c.querySelector('.chk').checked=v);
+    atualizarSel();
+}
+function removerCard(card){
+    card.classList.add('indo');
+    setTimeout(()=>{ card.remove(); setContador(); },160);
+}
 
-// ---------- lightbox ----------
-function verImagem(src){ document.getElementById('lightboxImg').src = src; document.getElementById('lightbox').classList.add('open'); }
+// ---------- filtros ──────────────────────────────
+function setFiltro(f){
+    _filtroAtivo = f;
+    document.querySelectorAll('.fp').forEach(p=>{
+        p.classList.toggle('ativo', p.dataset.f===f);
+    });
+    filtrar();
+}
+
+function filtrar(){
+    var q = (document.getElementById('tipBusca').value||'').toLowerCase().trim();
+    var f = _filtroAtivo;
+    var visiveis = 0;
+    cards().forEach(function(c){
+        var id = c.dataset.id;
+        var t = TIPS[id]||{};
+        // filtro por categoria
+        var passaFiltro = true;
+        if(f==='Futebol')  passaFiltro = (t.esporte||'')==='Futebol';
+        if(f==='Basquete') passaFiltro = (t.esporte||'')==='Basquete';
+        if(f==='multipla') passaFiltro = !!t.eh_multipla;
+        if(f==='fora')     passaFiltro = !!t.fora_escopo;
+        // filtro por busca
+        var passaBusca = !q || [
+            t.casa||'', t.esporte||'',
+            (t.jogos||[]).join(' '),
+            (t.pernas||[]).map(function(p){return (p.mercado||'')+' '+(p.selecao||'')+' '+(p.alvo||'');}).join(' ')
+        ].join(' ').toLowerCase().indexOf(q) !== -1;
+
+        var visivel = passaFiltro && passaBusca;
+        c.style.display = visivel ? '' : 'none';
+        if(visivel) visiveis++;
+    });
+    document.getElementById('vazio').style.display = visiveis===0 ? '' : 'none';
+    atualizarSel();
+}
+
+// ---------- lightbox ─────────────────────────────
+function verImagem(src){ document.getElementById('lightboxImg').src=src; document.getElementById('lightbox').classList.add('open'); }
 function fecharImagem(){ document.getElementById('lightbox').classList.remove('open'); }
 
-// ---------- aprovar / descartar ----------
+// ---------- aprovar / descartar ──────────────────
 function aprovar(id, btn){
-    btn.disabled = true;
-    fetch('/admin/tips/aprovar/' + id, {method:'POST', headers:{'X-Requested-With':'fetch'}})
-        .then(r => r.json()).then(()=> removerCard(btn.closest('.tip-card')))
-        .catch(()=>{ btn.disabled = false; alert('Falha ao aprovar.'); });
+    btn.disabled=true;
+    fetch('/admin/tips/aprovar/'+id,{method:'POST',headers:{'X-Requested-With':'fetch'}})
+        .then(r=>r.json()).then(()=>removerCard(btn.closest('.tip-card')))
+        .catch(()=>{btn.disabled=false;alert('Falha ao aprovar.');});
 }
 function descartar(id, btn){
     if(!confirm('Descartar esta tip?')) return;
-    btn.disabled = true;
-    fetch('/admin/tips/descartar/' + id, {method:'POST', headers:{'X-Requested-With':'fetch'}})
-        .then(r => r.json()).then(()=> removerCard(btn.closest('.tip-card')))
-        .catch(()=>{ btn.disabled = false; });
+    btn.disabled=true;
+    fetch('/admin/tips/descartar/'+id,{method:'POST',headers:{'X-Requested-With':'fetch'}})
+        .then(r=>r.json()).then(()=>removerCard(btn.closest('.tip-card')))
+        .catch(()=>{btn.disabled=false;});
 }
 function aprovarLote(ids){
-    document.querySelectorAll('.tb-btn').forEach(b => b.disabled = true);
-    return fetch('/admin/tips/aprovar-lote', {
-        method:'POST', headers:{'Content-Type':'application/json'},
-        body: JSON.stringify({ids: ids})
-    }).then(r => r.json()).then(()=> {
-        ids.forEach(id => { var c = document.querySelector('.tip-card[data-id="'+id+'"]'); if(c) c.remove(); });
+    document.querySelectorAll('.tb-btn').forEach(b=>b.disabled=true);
+    return fetch('/admin/tips/aprovar-lote',{
+        method:'POST',headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({ids:ids})
+    }).then(r=>r.json()).then(()=>{
+        ids.forEach(id=>{var c=document.querySelector('.tip-card[data-id="'+id+'"]');if(c)c.remove();});
         setContador();
     });
 }
-function aprovarSelecionadas(){ var ids = selecionados().map(c => c.dataset.id); if(ids.length) aprovarLote(ids); }
-function aprovarTodas(){ var ids = cards().map(c => c.dataset.id); if(ids.length && confirm('Aprovar todas as '+ids.length+' tips?')) aprovarLote(ids); }
+function aprovarSelecionadas(){var ids=selecionados().map(c=>c.dataset.id);if(ids.length)aprovarLote(ids);}
+function aprovarTodas(){
+    var ids=cards().filter(c=>c.style.display!=='none').map(c=>c.dataset.id);
+    if(ids.length&&confirm('Aprovar as '+ids.length+' tips visíveis?'))aprovarLote(ids);
+}
 
-// ---------- auto-load: tips novas aparecem sozinhas (sem F5), com animacao ----------
+// ---------- auto-load ────────────────────────────
 (function(){
     function maxId(){
-        var m = 0;
-        cards().forEach(c => { var i = parseInt(c.dataset.id); if(!isNaN(i) && i > m) m = i; });
+        var m=0;
+        cards().forEach(c=>{var i=parseInt(c.dataset.id);if(!isNaN(i)&&i>m)m=i;});
         return m;
     }
     function checar(){
-        fetch('/admin/tips/novas?desde=' + maxId()).then(r => r.json()).then(d => {
+        fetch('/admin/tips/novas?desde='+maxId()).then(r=>r.json()).then(d=>{
             if(d.html){
-                Object.assign(TIPS, d.tips || {});   // pro editor funcionar nos novos cards
-                var lista = document.getElementById('lista');
-                var tmp = document.createElement('div');
-                tmp.innerHTML = d.html;
-                // insere do mais antigo do lote pro mais novo -> o mais novo fica no topo
-                Array.from(tmp.children).reverse().forEach(card => {
+                Object.assign(TIPS,d.tips||{});
+                var lista=document.getElementById('lista');
+                var tmp=document.createElement('div');
+                tmp.innerHTML=d.html;
+                Array.from(tmp.children).reverse().forEach(card=>{
                     card.classList.add('tip-nova');
-                    lista.insertBefore(card, lista.firstChild);
-                    setTimeout(() => card.classList.remove('tip-nova'), 1500);
+                    lista.insertBefore(card,lista.firstChild);
+                    setTimeout(()=>card.classList.remove('tip-nova'),1500);
                 });
                 setContador();
+                filtrar();
             }
         }).catch(function(){});
     }
-    setInterval(checar, 12000);   // a cada 12s
+    setInterval(checar,12000);
 })();
 
-// ---------- corrigir jogo (dropdown ESPN inline) ----------
+// ---------- corrigir jogo ────────────────────────
 function editarJogo(chip){
-    var wrap = chip.closest('.tip-jogo');
-    var tid = wrap.dataset.id, esporte = wrap.dataset.esporte || '', idx = chip.dataset.idx;
-    var atual = chip.textContent.replace('✎','').replace('+ definir jogo','').trim();
-    var ed = document.createElement('span');
-    ed.className = 'jogo-edit-wrap';
-    ed.innerHTML = '<input class="jogo-search" placeholder="buscar jogo na ESPN..."><div class="jogo-drop" style="display:none"></div>';
+    var wrap=chip.closest('.tip-jogo');
+    var tid=wrap.dataset.id,esporte=wrap.dataset.esporte||'',idx=chip.dataset.idx;
+    var atual=chip.textContent.replace('✎','').replace('+ definir jogo','').trim();
+    var ed=document.createElement('span');
+    ed.className='jogo-edit-wrap';
+    ed.innerHTML='<input class="jogo-search" placeholder="buscar jogo na ESPN..."><div class="jogo-drop" style="display:none"></div>';
     chip.replaceWith(ed);
-    var input = ed.querySelector('.jogo-search');
-    var drop = ed.querySelector('.jogo-drop');
-    input.value = atual; input.focus(); input.select();
-    var timer = null, resultados = [];
-
-    function fechar(){
-        if(ed.parentNode) ed.replaceWith(chip);
-        document.removeEventListener('mousedown', fora, true);
-    }
-    function fora(e){ if(!ed.contains(e.target)) fechar(); }
-    setTimeout(function(){ document.addEventListener('mousedown', fora, true); }, 0);
-
+    var input=ed.querySelector('.jogo-search');
+    var drop=ed.querySelector('.jogo-drop');
+    input.value=atual;input.focus();input.select();
+    var timer=null,resultados=[];
+    function fechar(){if(ed.parentNode)ed.replaceWith(chip);document.removeEventListener('mousedown',fora,true);}
+    function fora(e){if(!ed.contains(e.target))fechar();}
+    setTimeout(function(){document.addEventListener('mousedown',fora,true);},0);
     function buscar(){
-        var q = input.value.trim();
-        drop.style.display = 'block';
-        drop.innerHTML = '<div class="vazio2">buscando...</div>';
-        fetch('/api/buscar_jogos?q=' + encodeURIComponent(q) + '&esporte=' + encodeURIComponent(esporte))
-          .then(r => r.json()).then(d => {
-            resultados = d.jogos || [];
-            if(!resultados.length){ drop.innerHTML = '<div class="vazio2">nada encontrado</div>'; return; }
-            drop.innerHTML = resultados.map(function(g, i){
-                return '<div class="jogo-opt" data-i="' + i + '">' +
-                       '<span class="hr">' + _esc(g.horario_jogo || g.status_jogo || '') + '</span>' +
-                       _esc(g.jogo) + '<br><span class="lg">' + _esc(g.liga_nome || '') + '</span></div>';
+        var q=input.value.trim();
+        drop.style.display='block';
+        drop.innerHTML='<div class="vazio2">buscando...</div>';
+        fetch('/api/buscar_jogos?q='+encodeURIComponent(q)+'&esporte='+encodeURIComponent(esporte))
+          .then(r=>r.json()).then(d=>{
+            resultados=d.jogos||[];
+            if(!resultados.length){drop.innerHTML='<div class="vazio2">nada encontrado</div>';return;}
+            drop.innerHTML=resultados.map(function(g,i){
+                return '<div class="jogo-opt" data-i="'+i+'">'+
+                       '<span class="hr">'+_esc(g.horario_jogo||g.status_jogo||'')+'</span>'+
+                       _esc(g.jogo)+'<br><span class="lg">'+_esc(g.liga_nome||'')+'</span></div>';
             }).join('');
             drop.querySelectorAll('.jogo-opt').forEach(function(o){
-                o.onclick = function(){ escolherJogo(tid, idx, resultados[parseInt(o.dataset.i)], esporte); };
+                o.onclick=function(){escolherJogo(tid,idx,resultados[parseInt(o.dataset.i)],esporte);};
             });
-          }).catch(function(){ drop.innerHTML = '<div class="vazio2">erro na busca</div>'; });
+          }).catch(function(){drop.innerHTML='<div class="vazio2">erro na busca</div>';});
     }
-    input.oninput = function(){ clearTimeout(timer); timer = setTimeout(buscar, 300); };
-    input.onkeydown = function(e){ if(e.key === 'Escape') fechar(); };
+    input.oninput=function(){clearTimeout(timer);timer=setTimeout(buscar,300);};
+    input.onkeydown=function(e){if(e.key==='Escape')fechar();};
     buscar();
 }
-function escolherJogo(tid, idx, g, esporte){
-    fetch('/admin/tips/definir-jogo/' + tid, {
-        method:'POST', headers:{'Content-Type':'application/json'},
-        body: JSON.stringify({idx: parseInt(idx), jogo: g.jogo, espn_event_id: g.id,
-            sport: g.sport, league: g.league, horario_jogo: g.horario_jogo,
-            horario_jogo_iso: g.horario_jogo_iso, status_jogo: g.status_jogo,
-            ao_vivo: g.ao_vivo, esporte: g.esporte || esporte})
-    }).then(r => r.json()).then(d => {
-        if(d.ok){ location.reload(); } else { alert('Falha: ' + (d.erro || '')); }
-    }).catch(function(){ alert('Falha ao salvar o jogo.'); });
+function escolherJogo(tid,idx,g,esporte){
+    fetch('/admin/tips/definir-jogo/'+tid,{
+        method:'POST',headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({idx:parseInt(idx),jogo:g.jogo,espn_event_id:g.id,
+            sport:g.sport,league:g.league,horario_jogo:g.horario_jogo,
+            horario_jogo_iso:g.horario_jogo_iso,status_jogo:g.status_jogo,
+            ao_vivo:g.ao_vivo,esporte:g.esporte||esporte})
+    }).then(r=>r.json()).then(d=>{
+        if(d.ok){location.reload();}else{alert('Falha: '+(d.erro||''));}
+    }).catch(function(){alert('Falha ao salvar o jogo.');});
 }
 
-// ---------- reportar erro ----------
-function reportar(id, btn){
+// ---------- reportar ─────────────────────────────
+function reportar(id,btn){
     if(btn.classList.contains('feito')) return;
-    var motivo = prompt('O que foi puxado errado nesta tip? (ex: mercado errado, time trocado, odd errada)');
-    if(motivo === null) return;
-    fetch('/admin/tips/reportar/' + id, {
-        method:'POST', headers:{'Content-Type':'application/json'},
-        body: JSON.stringify({motivo: motivo})
-    }).then(r => r.json()).then(d => {
-        if(d.ok){
-            btn.classList.add('feito'); btn.innerText = '⚠ reportada';
-            btn.closest('.tip-card').classList.add('reportada');
-        } else { alert('Falha ao reportar.'); }
-    }).catch(()=> alert('Falha ao reportar.'));
+    var motivo=prompt('O que foi puxado errado? (mercado, time, odd...)');
+    if(motivo===null) return;
+    fetch('/admin/tips/reportar/'+id,{
+        method:'POST',headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({motivo:motivo})
+    }).then(r=>r.json()).then(d=>{
+        if(d.ok){btn.classList.add('feito');btn.innerText='⚠ reportada';btn.closest('.tip-card').classList.add('reportada');}
+        else{alert('Falha ao reportar.');}
+    }).catch(()=>alert('Falha ao reportar.'));
 }
 
-// ---------- editor ----------
-function _esc(s){ return String(s==null?'':s).replace(/"/g,'&quot;'); }
-function _sel(opts, val){
-    return opts.map(o => '<option'+(String(o)===String(val)?' selected':'')+'>'+o+'</option>').join('');
-}
+// ---------- editor ───────────────────────────────
+function _esc(s){return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/"/g,'&quot;');}
+function _sel(opts,val){return opts.map(o=>'<option'+(String(o)===String(val)?' selected':'')+'>'+o+'</option>').join('');}
 function linhaPerna(p){
-    p = p || {};
-    var div = document.createElement('div');
-    div.className = 'perna-edit';
-    div.innerHTML =
-      '<label>Mercado<select class="p-mercado">'+_sel(MERCADOS, p.mercado||'Outro')+'</select></label>'+
+    p=p||{};
+    var div=document.createElement('div');
+    div.className='perna-edit';
+    div.innerHTML=
+      '<label>Mercado<select class="p-mercado">'+_sel(MERCADOS,p.mercado||'Outro')+'</select></label>'+
       '<label>Seleção<input class="p-selecao" value="'+_esc(p.selecao)+'"></label>'+
       '<label>Linha<input class="p-linha" type="number" step="0.5" style="width:75px" value="'+(p.linha!=null?p.linha:'')+'"></label>'+
       '<label>Direção<select class="p-direcao"><option value="">—</option><option'+(p.direcao==='over'?' selected':'')+'>over</option><option'+(p.direcao==='under'?' selected':'')+'>under</option></select></label>'+
-      '<label>Período<select class="p-periodo">'+_sel(PERIODOS, p.periodo||'jogo')+'</select></label>'+
+      '<label>Período<select class="p-periodo">'+_sel(PERIODOS,p.periodo||'jogo')+'</select></label>'+
       '<label>Alvo<input class="p-alvo" style="width:90px" value="'+_esc(p.alvo||'jogo')+'"></label>'+
       '<button type="button" class="rm" onclick="this.closest(\'.perna-edit\').remove()">✕</button>';
     return div;
 }
-function addPerna(p){ document.getElementById('edPernas').appendChild(linhaPerna(p && p.mercado ? p : null)); }
-
+function addPerna(p){document.getElementById('edPernas').appendChild(linhaPerna(p&&p.mercado?p:null));}
 function abrirEditor(id){
-    var t = TIPS[id]; if(!t){ alert('Tip nao encontrada.'); return; }
-    document.getElementById('edId').value = id;
-    document.getElementById('edCasa').value = t.casa||'';
-    document.getElementById('edEsporte').value = t.esporte||'';
-    document.getElementById('edOdd').value = t.odd!=null?t.odd:'';
-    document.getElementById('edValor').value = t.valor_reais!=null?t.valor_reais:'';
-    document.getElementById('edJogos').value = (t.jogos||[]).join('\n');
-    document.getElementById('edMulti').checked = !!t.eh_multipla;
-    document.getElementById('edFora').checked = !!t.fora_escopo;
-    var box = document.getElementById('edPernas'); box.innerHTML='';
-    (t.pernas||[]).forEach(p => box.appendChild(linhaPerna(p)));
+    var t=TIPS[id];if(!t){alert('Tip não encontrada.');return;}
+    document.getElementById('edId').value=id;
+    document.getElementById('edCasa').value=t.casa||'';
+    document.getElementById('edEsporte').value=t.esporte||'';
+    document.getElementById('edOdd').value=t.odd!=null?t.odd:'';
+    document.getElementById('edValor').value=t.valor_reais!=null?t.valor_reais:'';
+    document.getElementById('edJogos').value=(t.jogos||[]).join('\n');
+    document.getElementById('edMulti').checked=!!t.eh_multipla;
+    document.getElementById('edFora').checked=!!t.fora_escopo;
+    var box=document.getElementById('edPernas');box.innerHTML='';
+    (t.pernas||[]).forEach(p=>box.appendChild(linhaPerna(p)));
     document.getElementById('modalBg').classList.add('open');
 }
-function fecharEditor(){ document.getElementById('modalBg').classList.remove('open'); }
-
+function fecharEditor(){document.getElementById('modalBg').classList.remove('open');}
 function salvarEdicao(){
-    var id = document.getElementById('edId').value;
-    var pernas = Array.from(document.querySelectorAll('#edPernas .perna-edit')).map(r => {
-        var ln = r.querySelector('.p-linha').value;
-        return {
-            mercado: r.querySelector('.p-mercado').value,
-            selecao: r.querySelector('.p-selecao').value,
-            linha: ln===''?null:parseFloat(ln),
-            direcao: r.querySelector('.p-direcao').value,
-            periodo: r.querySelector('.p-periodo').value,
-            alvo: r.querySelector('.p-alvo').value || 'jogo'
-        };
+    var id=document.getElementById('edId').value;
+    var pernas=Array.from(document.querySelectorAll('#edPernas .perna-edit')).map(r=>{
+        var ln=r.querySelector('.p-linha').value;
+        return{mercado:r.querySelector('.p-mercado').value,selecao:r.querySelector('.p-selecao').value,
+            linha:ln===''?null:parseFloat(ln),direcao:r.querySelector('.p-direcao').value,
+            periodo:r.querySelector('.p-periodo').value,alvo:r.querySelector('.p-alvo').value||'jogo'};
     });
-    var body = {
-        casa: document.getElementById('edCasa').value,
-        esporte: document.getElementById('edEsporte').value,
-        odd: document.getElementById('edOdd').value,
-        valor_reais: document.getElementById('edValor').value,
-        jogos: document.getElementById('edJogos').value.split('\n').map(s=>s.trim()).filter(Boolean),
-        eh_multipla: document.getElementById('edMulti').checked,
-        fora_escopo: document.getElementById('edFora').checked,
-        pernas: pernas
-    };
-    fetch('/admin/tips/editar/' + id, {
-        method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body)
-    }).then(r => r.json()).then(d => {
-        if(d.ok){ location.reload(); } else { alert('Falha ao salvar: '+(d.erro||'')); }
-    }).catch(()=> alert('Falha ao salvar.'));
+    var body={casa:document.getElementById('edCasa').value,esporte:document.getElementById('edEsporte').value,
+        odd:document.getElementById('edOdd').value,valor_reais:document.getElementById('edValor').value,
+        jogos:document.getElementById('edJogos').value.split('\n').map(s=>s.trim()).filter(Boolean),
+        eh_multipla:document.getElementById('edMulti').checked,
+        fora_escopo:document.getElementById('edFora').checked,pernas:pernas};
+    fetch('/admin/tips/editar/'+id,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)})
+        .then(r=>r.json()).then(d=>{
+            if(d.ok){location.reload();}else{alert('Falha ao salvar: '+(d.erro||''));}
+        }).catch(()=>alert('Falha ao salvar.'));
 }
+
+// init contadores dos filtros
+atualizarContsFiltros();
 </script>
 </body>
 </html>

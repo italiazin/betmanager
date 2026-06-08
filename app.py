@@ -83,16 +83,61 @@ def release_pg_conn(conn):
     except Exception:
         pass
 
+def salvar_img_tip(msg_id, img_bytes):
+    """Salva imagem de tip no PostgreSQL (sobrevive a restarts/deploys)."""
+    conn = get_pg_conn()
+    if not conn:
+        return
+    try:
+        cur = conn.cursor()
+        cur.execute(
+            "INSERT INTO tip_images (msg_id, dados) VALUES (%s, %s) ON CONFLICT DO NOTHING",
+            (msg_id, psycopg2.Binary(img_bytes))
+        )
+        conn.commit()
+    except Exception as e:
+        print(f"[tip_img] falha ao salvar imagem {msg_id}: {e}")
+    finally:
+        release_pg_conn(conn)
+
+
+def limpar_imgs_antigas():
+    """Remove imagens de tips com mais de 54h (48h retenção + 6h buffer)."""
+    conn = get_pg_conn()
+    if not conn:
+        return
+    try:
+        cur = conn.cursor()
+        cur.execute("DELETE FROM tip_images WHERE criado_em < NOW() - INTERVAL '54 hours'")
+        n = cur.rowcount
+        conn.commit()
+        if n:
+            print(f"[tip_img] {n} imagem(ns) antiga(s) removida(s)")
+    except Exception as e:
+        print(f"[tip_img] erro na limpeza: {e}")
+    finally:
+        release_pg_conn(conn)
+
+
+_ultima_limpeza_imgs = 0.0
+
 def salvar():
+    global _ultima_limpeza_imgs
     criar_backup_pg()
     if _pg_salvar_dados(dados):
-        return
-    # Fallback: arquivo local
-    try:
-        with open(ARQUIVO, "w", encoding="utf-8") as f:
-            json.dump(dados, f, indent=4, ensure_ascii=False)
-    except Exception as e:
-        print("ERRO AO SALVAR dados.json:", e)
+        pass
+    else:
+        # Fallback: arquivo local
+        try:
+            with open(ARQUIVO, "w", encoding="utf-8") as f:
+                json.dump(dados, f, indent=4, ensure_ascii=False)
+        except Exception as e:
+            print("ERRO AO SALVAR dados.json:", e)
+    # Limpeza de imagens antigas a cada 6h (não bloqueia)
+    agora = time.time()
+    if agora - _ultima_limpeza_imgs > 6 * 3600:
+        _ultima_limpeza_imgs = agora
+        threading.Thread(target=limpar_imgs_antigas, daemon=True).start()
 
 
 def init_pg_db():
@@ -123,6 +168,13 @@ def init_pg_db():
                 atualizado_em TIMESTAMP DEFAULT NOW()
             )
         """)
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS tip_images (
+                msg_id BIGINT PRIMARY KEY,
+                dados BYTEA NOT NULL,
+                criado_em TIMESTAMPTZ DEFAULT NOW()
+            )
+        """)
         conn.commit()
         cur.close()
         try:
@@ -131,7 +183,7 @@ def init_pg_db():
         except Exception as e:
             print("ERRO init durabilidade (app segue):", e)
         conn.close()
-        print("PostgreSQL: tabelas storage, backups e app_store OK")
+        print("PostgreSQL: tabelas storage, backups, app_store e tip_images OK")
     except Exception as e:
         print("ERRO AO INICIALIZAR POSTGRES:", e)
         try:
@@ -6830,6 +6882,28 @@ def _hora_tip(iso):
         return ""
 
 
+@app.route("/tips/img/<int:msg_id>")
+@login_required
+def tip_img(msg_id):
+    """Serve imagem de tip armazenada no PostgreSQL."""
+    from flask import Response, abort
+    conn = get_pg_conn()
+    if not conn:
+        abort(404)
+    try:
+        cur = conn.cursor()
+        cur.execute("SELECT dados FROM tip_images WHERE msg_id = %s", (msg_id,))
+        row = cur.fetchone()
+        if not row:
+            abort(404)
+        return Response(bytes(row[0]), mimetype="image/jpeg",
+                        headers={"Cache-Control": "public, max-age=86400"})
+    except Exception:
+        abort(404)
+    finally:
+        release_pg_conn(conn)
+
+
 @app.route("/admin/tips")
 @admin_required
 def admin_tips():
@@ -9554,7 +9628,8 @@ def _iniciar_listener_telegram():
             kwargs=dict(api_id=int(api_id), api_hash=api_hash, session_str=session_str,
                         grupo=grupo, anthropic_key=key, dados=dados, salvar_fn=salvar,
                         interpretar_fn=_interpretar, interpretar_img_fn=_interpretar_img,
-                        discord_webhook=os.environ.get("DISCORD_WEBHOOK", "")),
+                        discord_webhook=os.environ.get("DISCORD_WEBHOOK", ""),
+                        salvar_img_fn=salvar_img_tip),
             daemon=True,
         ).start()
         print("[telegram] listener iniciado (thread)")

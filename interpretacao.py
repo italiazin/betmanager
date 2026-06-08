@@ -157,7 +157,7 @@ Responda SOMENTE com um JSON:
  "stake_pct": número (% da banca) ou null,
  "fora_escopo": true se o esporte NÃO for Futebol nem Basquete (senão false),
  "eh_multipla": true ou false,
- "pernas": [{"mercado": "...", "selecao": "...", "linha": número ou null, "direcao": "over"/"under"/"", "periodo": "jogo"/"1º tempo"/"2º tempo", "alvo": "jogo" ou nome do time}]
+ "pernas": [{"mercado": "...", "selecao": "...", "linha": número ou null, "direcao": "over"/"under"/"", "periodo": "jogo"/"1º tempo"/"2º tempo"/"1º quarto"/"2º quarto"/"3º quarto"/"4º quarto", "alvo": "jogo" ou nome do time}]
 }
 mercado é um de: Moneyline, DNB, Total de Gols, Ambas Marcam, Dupla Chance, Handicap, Intervalo/Final, Escanteios, Cartões, Chutes, Chutes no Gol, HT Resultado, Vencer pelo menos um tempo, Marcador, Assistência, Outro.
 
@@ -188,6 +188,11 @@ Cada perna = uma seleção REAL e DISTINTA. NUNCA funda pernas nem omita nenhuma
 - "Vencer em qualquer um dos tempos" / "Vencer pelo menos um tempo" / "Vence em algum período" -> mercado "Vencer pelo menos um tempo", selecao = nome do time. DIFERENTE de Intervalo/Final (que exige resultado em AMBOS os tempos com barra). NÃO escreva "Time/Time".
 - "Empate ou devolve" / "Empate devolve" / "DNB" -> mercado "DNB" (Draw No Bet), selecao = nome do time que deve vencer. NÃO é Moneyline. Se vier com período ("no 1º tempo"), use periodo "1º tempo".
 - "over 2.5 do jogo" e "over 2.5 da Itália" são DUAS pernas separadas.
+- "França Total de Gols no 1º tempo" / "1º tempo: França Total de gols" -> Total de Gols, alvo "França", periodo "1º tempo". A linha é de GOLS DO TIME, não da partida toda.
+
+BASQUETE — QUARTOS: "1º quarto", "2º quarto", "3º quarto", "4º quarto" são períodos válidos. "Total do 1º quarto" = Total de Gols, periodo "1º quarto", alvo "jogo" (pontos totais do quarto de AMBAS as equipes — NÃO alvo de um time). "Moneyline no 1º quarto" = Moneyline, selecao = nome do time, periodo "1º quarto". NUNCA use "1º tempo" para quartos de basquete.
+
+GOL MAIS RÁPIDO / PRIMEIRO A MARCAR: mercado "Outro", selecao "Gol mais Rápido". É UMA ÚNICA perna independente de quantos times aparecem. NÃO crie uma perna por time.
 
 Ignore rótulos soltos que só repetem o tipo (ex: "Resultado Final", "Total de Gols" sem valor).
 Se for só comentário (ex: "Valendo 0,5%", "aproveitem"), eh_aposta=false."""
