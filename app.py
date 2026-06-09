@@ -7099,6 +7099,25 @@ def admin_tips_reportar(tid):
     return jsonify({"ok": True})
 
 
+@app.route("/admin/dev/patch-saldos-italiazin")
+@admin_required
+def patch_saldos_italiazin():
+    UID = "c7610409-a16a-465b-a8b2-e1d2894fea47"
+    SALDOS = {
+        "BETesporte":1237.60,"KingPanda":45.24,"BetPonto":1077.99,"BetVip":577.64,
+        "Vaidebet":289.30,"BetPix":77.10,"EsporteDaSorte":830.33,"VivaSorte":282.48,
+        "Ginga":121.88,"VeraBet":1500.00,"H2Bet":88.00,"F12":433.15,"4Play":19.49,
+        "Lottu":1252.00,"FullteBet":476.32,"BetFast":189.25,"Matchbook":322.46,
+        "BetBra":1673.60,"PlayBet":227.00,"ApostaGanha":112.13,"BandBet":66.00,
+        "JogaJunto":42.32,"4Win":225.00,"MCGames":583.35,"JogoDeOuro":1027.85,
+        "Pagol":2058.27,"Esportiva":2476.19,"365":978.00,"Donald":3068.49,
+        "BolsaDeAposta":966.00,
+    }
+    dados.setdefault("saldo_casas_por_usuario", {}).setdefault(UID, {}).update(SALDOS)
+    salvar()
+    return jsonify({"ok": True, "casas": len(SALDOS)})
+
+
 @app.route("/admin/durabilidade/status")
 @admin_required
 def admin_durabilidade_status():
