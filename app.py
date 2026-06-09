@@ -7498,12 +7498,16 @@ def historico():
 
 
 def total_saldos_casas():
-    # Usa o mesmo cálculo da página /saldos (movimentações + apostas + ajustes)
-    # Fallback para v61 se _saldos_ajustados_por_casa ainda não estiver disponível
+    # Prefere o cálculo completo da página /saldos (ajustes + movimentações + apostas).
+    # Se retornar 0 (usuário ainda não migrou para o novo sistema), cai no legado
+    # que lê saldo_casas_por_usuario (escrito por set_saldo_casa / saldo rápido).
     try:
-        return round(sum(c["saldo"] for c in _saldos_ajustados_por_casa()), 2)
+        v = round(sum(c["saldo"] for c in _saldos_ajustados_por_casa()), 2)
+        if v:
+            return v
     except Exception:
-        return total_saldos_casas_v61()
+        pass
+    return total_saldos_casas_v61()
 
 
 def ultimas_apostas_comunidade_base(limit=10):
