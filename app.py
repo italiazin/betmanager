@@ -1648,7 +1648,7 @@ def metricas():
 
     return {
         "banca_atual": banca_atual,
-        "banca_inicial": round(float(dados.get("banca_inicial", 0)), 2),
+        "banca_inicial": saldo_total_casas,
         "lucro_total": lucro_total,
         "roi": roi,
         "taxa": taxa,
@@ -8910,22 +8910,7 @@ def api_apostas_versao():
 @login_required
 def api_v132_cards():
     try:
-        user_key = v140_usuario_key_atual()
-        banca_inicial = 0.0
-
-        if user_key:
-            banca_inicial = dados.get("usuarios", {}).get(user_key, {}).get("banca_inicial", 0)
-
-        # compatibilidade: tenta user/email caso user_key principal não tenha valor
-        if not banca_inicial:
-            for k in ("user", "email", "usuario_email", "logged_user"):
-                sk = session.get(k)
-                if sk:
-                    banca_inicial = dados.get("usuarios", {}).get(str(sk).strip(), {}).get("banca_inicial", 0)
-                    if banca_inicial:
-                        break
-
-        banca_inicial = v140_parse_valor(banca_inicial)
+        banca_inicial = total_saldos_casas()
     except Exception as e:
         print("api_v132_cards erro:", repr(e))
         banca_inicial = 0.0
