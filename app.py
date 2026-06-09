@@ -6623,6 +6623,35 @@ def _tips_visiveis():
     return vis
 
 
+def _aposta_str_da_tip(tip):
+    """Monta a descrição legível da aposta a partir das pernas interpretadas.
+    Ex: 'Moneyline — Flamengo' ou 'Total de Gols Over 2.5 / Moneyline — Vasco'"""
+    pernas = tip.get("pernas", []) or []
+    if not pernas:
+        return " / ".join(tip.get("jogos", [])) if tip.get("jogos") else ""
+    partes = []
+    for p in pernas:
+        mercado  = (p.get("mercado")  or "").strip()
+        selecao  = (p.get("selecao")  or "").strip()
+        linha    = p.get("linha")
+        direcao  = (p.get("direcao")  or "").strip()
+        periodo  = (p.get("periodo")  or "jogo").strip()
+        alvo     = (p.get("alvo")     or "jogo").strip()
+        parte = mercado
+        if selecao:
+            parte += f" — {selecao}"
+        if linha is not None:
+            parte += f" {direcao.upper()} {linha}" if direcao else f" {linha}"
+        elif direcao:
+            parte += f" {direcao.upper()}"
+        if periodo and periodo != "jogo":
+            parte += f" ({periodo})"
+        if alvo and alvo != "jogo":
+            parte += f" [{alvo}]"
+        partes.append(parte)
+    return " / ".join(partes)
+
+
 def _tip_para_bet(tip, uid):
     """Converte uma tip interpretada em uma aposta (bet) do usuario, com os MESMOS
     campos de uma aposta manual (pra exibir, debitar saldo e resolver igualzinho).
@@ -6646,7 +6675,7 @@ def _tip_para_bet(tip, uid):
         "id": str(uuid.uuid4()),
         "user_id": uid,
         "data": datetime.now().strftime("%d/%m/%Y %H:%M"),
-        "aposta": jogo_str,
+        "aposta": _aposta_str_da_tip(tip),
         "casa": tip.get("casa", "") or "",
         "esporte": tip.get("esporte", "Futebol") or "Futebol",
         "jogo": jogo_str,

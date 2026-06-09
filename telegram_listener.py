@@ -165,17 +165,39 @@ def _links_da_mensagem(msg):
     return urls
 
 
+_RE_LINK_BET = re.compile(
+    r"\.bet\.br|\.bet/|/shr/|/share/|betslip|bscode|/bets\?|sportsbook",
+    re.IGNORECASE
+)
+_RE_LINK_LIXO = re.compile(
+    r"t\.me/|telegram\.|calcul|wa\.me/|bit\.ly|tinyurl|aff\.",
+    re.IGNORECASE
+)
+
+
 def _link_aposta(msg):
-    """Retorna o primeiro link de aposta/share da mensagem (entities ou texto raw)."""
-    # 1) hyperlinks embutidos nas entidades do Telegram
+    """Retorna o link de share da aposta, preferindo URLs de casas de apostas.
+    Ignora links de calculadoras/afiliados/Telegram."""
+    urls = []
+    # entidades (hyperlinks embutidos) e texto visível
     for u in _links_da_mensagem(msg):
-        return u
-    # 2) link visível no texto
+        urls.append(u)
     txt = getattr(msg, "message", "") or ""
-    m = re.search(r"https?://\S+", txt)
-    if m:
-        return m.group(0).rstrip(")")
-    return None
+    for m in re.finditer(r"https?://\S+", txt):
+        u = m.group(0).rstrip(").,")
+        if u not in urls:
+            urls.append(u)
+    if not urls:
+        return None
+    # prefere link que parece de aposta e não é lixo
+    for u in urls:
+        if _RE_LINK_BET.search(u) and not _RE_LINK_LIXO.search(u):
+            return u
+    # fallback: primeiro que não parece lixo
+    for u in urls:
+        if not _RE_LINK_LIXO.search(u):
+            return u
+    return urls[0]
 
 
 def _casa_do_texto(texto):

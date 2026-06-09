@@ -197,6 +197,9 @@
 <!-- Lightbox -->
 <div class="lightbox" id="lightbox" onclick="fecharImagem()"><img id="lightboxImg" src=""></div>
 
+<!-- Sugestões de alvo (populadas ao abrir o editor) -->
+<datalist id="alvo-sugs"></datalist>
+
 <!-- Modal de edição -->
 <div class="tip-modal-bg" id="modalBg">
   <div class="tip-modal">
@@ -453,13 +456,27 @@ function linhaPerna(p){
       '<label>Linha<input class="p-linha" type="number" step="0.5" style="width:75px" value="'+(p.linha!=null?p.linha:'')+'"></label>'+
       '<label>Direção<select class="p-direcao"><option value="">—</option><option'+(p.direcao==='over'?' selected':'')+'>over</option><option'+(p.direcao==='under'?' selected':'')+'>under</option></select></label>'+
       '<label>Período<select class="p-periodo">'+_sel(PERIODOS,p.periodo||'jogo')+'</select></label>'+
-      '<label>Alvo<input class="p-alvo" style="width:90px" value="'+_esc(p.alvo||'jogo')+'"></label>'+
+      '<label>Alvo<input class="p-alvo" list="alvo-sugs" style="width:110px" value="'+_esc(p.alvo||'jogo')+'"></label>'+
       '<button type="button" class="rm" onclick="this.closest(\'.perna-edit\').remove()">✕</button>';
     return div;
 }
 function addPerna(p){document.getElementById('edPernas').appendChild(linhaPerna(p&&p.mercado?p:null));}
+function _timesDoTip(t){
+    var times=['jogo'];
+    (t.jogos||[]).forEach(function(jogo){
+        jogo.split(/\s+(?:x|vs\.?)\s+/i).forEach(function(nome){
+            var n=nome.replace(/\?/g,'').trim();
+            if(n && times.indexOf(n)===-1) times.push(n);
+        });
+    });
+    return times;
+}
+
 function abrirEditor(id){
     var t=TIPS[id];if(!t){alert('Tip não encontrada.');return;}
+    // popula sugestões de alvo com "jogo" + times do confronto
+    var dl=document.getElementById('alvo-sugs');
+    dl.innerHTML=_timesDoTip(t).map(function(s){return '<option value="'+_esc(s)+'">';}).join('');
     document.getElementById('edId').value=id;
     document.getElementById('edCasa').value=t.casa||'';
     document.getElementById('edEsporte').value=t.esporte||'';
