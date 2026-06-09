@@ -195,7 +195,19 @@ BASQUETE — QUARTOS: "1º quarto", "2º quarto", "3º quarto", "4º quarto" sã
 GOL MAIS RÁPIDO / PRIMEIRO A MARCAR: mercado "Outro", selecao "Gol mais Rápido". É UMA ÚNICA perna independente de quantos times aparecem. NÃO crie uma perna por time.
 
 Ignore rótulos soltos que só repetem o tipo (ex: "Resultado Final", "Total de Gols" sem valor).
-Se for só comentário (ex: "Valendo 0,5%", "aproveitem"), eh_aposta=false."""
+Se for só comentário (ex: "Valendo 0,5%", "aproveitem"), eh_aposta=false.
+
+FORMATO BOT BetPontoBet — quando a mensagem seguir esse padrão de emojis-chave:
+  🏠 = nome da casa de apostas
+  🆚 = confronto (Time A x Time B)
+  ⚽/🏀 = esporte
+  🚀 = seleção da perna (ex: "🚀 Ceará ML" → mercado Moneyline, seleção Ceará)
+  🎰 = odd
+  🍊 = stake em % da banca
+  💰 = valor em R$
+  🔒 Limite da aposta = limite máximo permitido (IGNORAR — não é o valor apostado)
+  👤 ADM: = nome do admin (ignorar)
+Nesses casos, "ML" após o nome do time = Moneyline do time. Sempre eh_aposta=true."""
 
 # Trechos de "lixo" (links/propaganda) removidos antes de enviar -> menos tokens
 _LIXO_LINHA = ("http", "não tem cadastro", "nao tem cadastro", "nos ajuda", "odd justa",

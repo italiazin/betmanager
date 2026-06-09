@@ -7081,6 +7081,40 @@ def admin_tips_definir_jogo(tid):
     return jsonify({"ok": True, "jogo": nome, "jogos": jogos})
 
 
+@app.route("/admin/tips/manual", methods=["POST"])
+@admin_required
+def admin_tip_manual():
+    """Reprocessa manualmente um texto de aposta que o listener perdeu/falhou.
+    POST JSON: {"texto": "...", "msg_id": 0}  (msg_id opcional — usa timestamp se omitido)
+    """
+    from interpretacao import interpretar_mensagem_grupo
+    body = request.get_json(silent=True) or {}
+    texto = str(body.get("texto", "")).strip()
+    if not texto:
+        return jsonify({"ok": False, "erro": "texto vazio"}), 400
+    import time
+    msg_id = int(body.get("msg_id") or 0) or int(time.time() * 1000)
+    key = os.environ.get("ANTHROPIC_API_KEY", "")
+    if not key:
+        return jsonify({"ok": False, "erro": "sem chave Anthropic"}), 500
+    try:
+        interp = interpretar_mensagem_grupo(texto, key)
+    except Exception as e:
+        return jsonify({"ok": False, "erro": str(e)}), 500
+    if not (interp and interp.get("eh_aposta")):
+        return jsonify({"ok": False, "erro": "IA retornou eh_aposta=false", "raw": interp})
+    # remove da lista de processadas para evitar conflito de id
+    ids = dados.get("tips_processadas_ids", [])
+    if msg_id in ids:
+        ids.remove(msg_id)
+    tip = dict(interp)
+    tip["id"] = msg_id
+    tip["data_envio"] = datetime.now().isoformat()
+    dados.setdefault("tips_pendentes", []).append(tip)
+    salvar()
+    return jsonify({"ok": True, "tip": tip})
+
+
 @app.route("/admin/tips/reportar/<tid>", methods=["POST"])
 @admin_required
 def admin_tips_reportar(tid):
@@ -7113,7 +7147,13 @@ def patch_saldos_italiazin():
         "Pagol":2058.27,"Esportiva":2476.19,"365":978.00,"Donald":3068.49,
         "BolsaDeAposta":966.00,
     }
-    dados.setdefault("saldo_casas_por_usuario", {}).setdefault(UID, {}).update(SALDOS)
+    # ajuste_saldo_por_usuario é o que _saldos_ajustados_por_casa() lê
+    # chave = casa.lower() (sem bets/movimentos, ajuste == saldo desejado)
+    aj = dados.setdefault("ajuste_saldo_por_usuario", {}).setdefault(UID, {})
+    for casa, saldo in SALDOS.items():
+        aj[casa.lower()] = saldo
+    # limpa a chave errada que foi gravada antes
+    dados.get("saldo_casas_por_usuario", {}).pop(UID, None)
     salvar()
     return jsonify({"ok": True, "casas": len(SALDOS)})
 
@@ -7458,7 +7498,12 @@ def historico():
 
 
 def total_saldos_casas():
-    return total_saldos_casas_v61()
+    # Usa o mesmo cálculo da página /saldos (movimentações + apostas + ajustes)
+    # Fallback para v61 se _saldos_ajustados_por_casa ainda não estiver disponível
+    try:
+        return round(sum(c["saldo"] for c in _saldos_ajustados_por_casa()), 2)
+    except Exception:
+        return total_saldos_casas_v61()
 
 
 def ultimas_apostas_comunidade_base(limit=10):
