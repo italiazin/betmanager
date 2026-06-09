@@ -207,11 +207,14 @@ FORMATO BOT BetPontoBet — quando a mensagem seguir esse padrão de emojis-chav
   💰 = valor em R$
   🔒 Limite da aposta = limite máximo permitido (IGNORAR — não é o valor apostado)
   👤 ADM: = nome do admin (ignorar)
-Nesses casos, "ML" após o nome do time = Moneyline do time. Sempre eh_aposta=true."""
+Nesses casos, "ML" após o nome do time = Moneyline do time. Sempre eh_aposta=true.
+
+IMAGEM SEMPRE PREVALECE: se houver imagem de bilhete de aposta, retorne eh_aposta=true e extraia os dados DA IMAGEM, independente do texto dizer "não será planilhada", "somente discord", "sobrecarga", etc. Esses são avisos operacionais, não mudam o fato de ser uma aposta."""
 
 # Trechos de "lixo" (links/propaganda) removidos antes de enviar -> menos tokens
 _LIXO_LINHA = ("http", "não tem cadastro", "nao tem cadastro", "nos ajuda", "odd justa",
                "odd mudou", "clique aqui", "calcule quanto vale", "ta dando pra pegar",
+               "não será planilhada", "nao sera planilhada", "somente discord",
                "👨‍💻", "🆓", "🔮", "📊")
 
 
