@@ -36,19 +36,23 @@ def _parece_atualizacao(texto):
     return bool(_RE_ATUALIZACAO.search(texto))
 
 
+_RE_BETLINK = re.compile(r"https?://[^\s]*(?:share|/bet/|\.bet\.|sportsbook|aposta)", re.IGNORECASE)
+
+
 def parece_aposta(texto):
     """Heuristica BARATA: a mensagem parece uma aposta? (evita chamar IA a` toa)."""
     if not texto:
         return False
     if "🆚" in texto:
         return True
+    # Link de casa de apostas é evidência forte mesmo sem confronto explícito
+    # (cobre mensagens do JogaJunto, shares sem formatação de time x time, etc.)
+    if _RE_BETLINK.search(texto):
+        return True
     t = texto.lower()
     tem_confronto = bool(_RE_CONFRONTO.search(texto))
     tem_sinal = any(p in t for p in _SINAIS_APOSTA)
     return tem_confronto and tem_sinal
-
-
-_RE_BETLINK = re.compile(r"https?://[^\s]*(?:share|/bet/|\.bet\.|sportsbook|aposta)", re.IGNORECASE)
 
 
 def parece_aposta_ampla(texto, tem_foto=False):
@@ -58,8 +62,6 @@ def parece_aposta_ampla(texto, tem_foto=False):
         return True
     if tem_foto:
         t = (texto or "").lower()
-        if _RE_BETLINK.search(texto or ""):
-            return True
         if any(p in t for p in ("aposta", "valendo", "vale ", " odd", "stake", "unidade")):
             return True
         if "%" in t and any(p in t for p in ("banca", "entrada", "lucro", "green")):

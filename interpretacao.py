@@ -194,6 +194,8 @@ BASQUETE — QUARTOS: "1º quarto", "2º quarto", "3º quarto", "4º quarto" sã
 
 GOL MAIS RÁPIDO / PRIMEIRO A MARCAR: mercado "Outro", selecao "Gol mais Rápido". É UMA ÚNICA perna independente de quantos times aparecem. NÃO crie uma perna por time.
 
+APOSTAS DE QUALIFICAÇÃO / OUTRIGHT (sem confronto direto): quando a mensagem diz "X se classifica no grupo", "X avança", "X vence o torneio", "X vai ser campeão" etc., é uma aposta válida. Use mercado "Outro", selecao = descrição exata (ex: "Escócia se classifica no grupo"), jogo = "Escócia x ?". Se a odd não aparecer no texto, use null. Se a casa vier de um link (ex: jogajunto.bet.br → casa "JogaJunto"), use esse nome.
+
 Ignore rótulos soltos que só repetem o tipo (ex: "Resultado Final", "Total de Gols" sem valor).
 Se for só comentário (ex: "Valendo 0,5%", "aproveitem"), eh_aposta=false.
 
@@ -215,6 +217,7 @@ IMAGEM SEMPRE PREVALECE: se houver imagem de bilhete de aposta, retorne eh_apost
 _LIXO_LINHA = ("http", "não tem cadastro", "nao tem cadastro", "nos ajuda", "odd justa",
                "odd mudou", "clique aqui", "calcule quanto vale", "ta dando pra pegar",
                "não será planilhada", "nao sera planilhada", "somente discord",
+               "tu bota fé", "zebraça", "zebrinha", "bota fe",
                "👨‍💻", "🆓", "🔮", "📊")
 
 
