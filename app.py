@@ -123,6 +123,12 @@ _ultima_limpeza_imgs = 0.0
 
 def salvar():
     global _ultima_limpeza_imgs
+    # Sincroniza cache da IA no dados antes de salvar
+    try:
+        import interpretacao as _itp_mod
+        dados["cache_ia_grupo"] = _itp_mod.dump_grupo_cache()
+    except Exception:
+        pass
     criar_backup_pg()
     if _pg_salvar_dados(dados):
         pass
@@ -547,6 +553,13 @@ def salvar_cache(cache):
 
 init_pg_db()
 dados = carregar()
+
+# Restaura cache de interpretação da IA persistido no banco
+try:
+    import interpretacao as _itp_mod
+    _itp_mod.load_grupo_cache(dados.get("cache_ia_grupo", {}))
+except Exception:
+    pass
 
 
 def _bootstrap_ledger():
@@ -6971,6 +6984,35 @@ def admin_tips_novas():
                     "total": len(_tips_visiveis())})
 
 
+@app.route("/api/tips/poll")
+@admin_required
+def api_tips_poll():
+    """Polling leve de novas tips para notificações de navegador."""
+    try:
+        desde = int(request.args.get("desde", "0") or 0)
+    except Exception:
+        desde = 0
+    novas = []
+    max_id = 0
+    for t in _tips_visiveis():
+        try:
+            tid = int(t.get("id") or 0)
+        except Exception:
+            tid = 0
+        if tid > max_id:
+            max_id = tid
+        if tid > desde:
+            novas.append({
+                "id": tid,
+                "confronto": t.get("confronto", ""),
+                "casa": t.get("casa", ""),
+                "odd": t.get("odd", ""),
+                "mercado": t.get("mercado", ""),
+                "selecao": t.get("selecao", ""),
+            })
+    return jsonify({"novas": len(novas), "tips": novas, "max_id": max_id})
+
+
 @app.route("/admin/tips/aprovar/<tid>", methods=["POST"])
 @admin_required
 def admin_tips_aprovar(tid):
@@ -7326,6 +7368,13 @@ def configuracoes():
                 user["senha_hash"] = generate_password_hash(nova)
                 salvar_usuarios(usuarios)
                 ok = "Senha alterada com sucesso."
+
+        elif acao == "notificacoes":
+            user["notif_som"] = request.form.get("notif_som") == "on"
+            user["notif_card"] = request.form.get("notif_card") == "on"
+            user["notif_som_tipo"] = request.form.get("notif_som_tipo") or "beep"
+            salvar_usuarios(usuarios)
+            ok = "Preferências de notificação salvas."
 
         else:
             user["apostas_publicas_padrao"] = request.form.get("apostas_publicas_padrao") == "on"

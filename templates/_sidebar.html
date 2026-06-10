@@ -68,6 +68,21 @@
         </div>
     </div>
 </aside>
+
+<style>
+#bm-notif-toast{position:fixed;top:20px;right:20px;z-index:9999;width:300px;background:rgba(15,15,25,0.97);border:1px solid rgba(255,255,255,0.1);border-left:3px solid #4ade80;border-radius:10px;box-shadow:0 8px 32px rgba(0,0,0,0.5);backdrop-filter:blur(12px);overflow:hidden;animation:bmToastIn .3s ease}
+@keyframes bmToastIn{from{opacity:0;transform:translateX(30px)}to{opacity:1;transform:translateX(0)}}
+@keyframes bmToastOut{from{opacity:1;transform:translateX(0)}to{opacity:0;transform:translateX(30px)}}
+.bm-toast-header{display:flex;align-items:center;justify-content:space-between;padding:10px 14px 6px;font-size:12px;font-weight:600;color:#4ade80;letter-spacing:.04em;text-transform:uppercase}
+.bm-toast-header button{background:none;border:none;color:rgba(255,255,255,0.4);font-size:18px;cursor:pointer;line-height:1;padding:0;margin:0}
+.bm-toast-header button:hover{color:#fff}
+.bm-toast-body{padding:0 14px 8px}
+.bm-toast-game{font-size:14px;font-weight:600;color:#f1f5f9;margin-bottom:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.bm-toast-meta{font-size:12px;color:rgba(255,255,255,0.55);margin-bottom:2px}
+.bm-toast-action{display:block;padding:8px 14px;background:rgba(74,222,128,0.12);color:#4ade80;font-size:12px;font-weight:600;text-decoration:none;border-top:1px solid rgba(74,222,128,0.2);transition:background .15s}
+.bm-toast-action:hover{background:rgba(74,222,128,0.22);color:#4ade80}
+</style>
+
 <script>
 // Funcoes da sidebar (auto-suficiente: funciona mesmo em paginas sem main.js)
 if (typeof toggleSidebar === "undefined") {
@@ -94,4 +109,107 @@ document.addEventListener("DOMContentLoaded", function(){
         const b = document.querySelector(".sidebar-toggle"); if(b) b.innerText = "›";
     }
 });
+
+// ── Notificações de novas tips ──
+window._notifPrefs = {
+    som: {{ (false if (usuario and usuario.notif_som == false) else true)|tojson }},
+    card: {{ (false if (usuario and usuario.notif_card == false) else true)|tojson }},
+    somTipo: {{ (usuario.notif_som_tipo or 'beep')|tojson if usuario else '"beep"' }},
+    isAdmin: {{ (true if (usuario and usuario.is_admin) else false)|tojson }}
+};
+
+(function(){
+    if (!window._notifPrefs.isAdmin) return;
+
+    var POLL_MS = 12000;
+    var STORE_KEY = 'bm_notif_max_id';
+
+    function isTipsPage(){
+        return window.location.pathname.indexOf('/admin/tips') === 0;
+    }
+
+    function playSound(tipo){
+        try {
+            var ctx = new (window.AudioContext || window.webkitAudioContext)();
+            var osc = ctx.createOscillator();
+            var gain = ctx.createGain();
+            osc.connect(gain);
+            gain.connect(ctx.destination);
+            var t = ctx.currentTime;
+            if (tipo === 'chime'){
+                osc.type = 'sine';
+                osc.frequency.setValueAtTime(523.25, t);
+                osc.frequency.setValueAtTime(659.25, t + 0.14);
+                osc.frequency.setValueAtTime(783.99, t + 0.28);
+                gain.gain.setValueAtTime(0.22, t);
+                gain.gain.exponentialRampToValueAtTime(0.001, t + 0.55);
+                osc.start(t); osc.stop(t + 0.55);
+            } else if (tipo === 'ping'){
+                osc.type = 'triangle';
+                osc.frequency.setValueAtTime(1047, t);
+                osc.frequency.exponentialRampToValueAtTime(523, t + 0.22);
+                gain.gain.setValueAtTime(0.28, t);
+                gain.gain.exponentialRampToValueAtTime(0.001, t + 0.28);
+                osc.start(t); osc.stop(t + 0.28);
+            } else {
+                osc.type = 'sine';
+                osc.frequency.setValueAtTime(440, t);
+                gain.gain.setValueAtTime(0.2, t);
+                gain.gain.exponentialRampToValueAtTime(0.001, t + 0.3);
+                osc.start(t); osc.stop(t + 0.3);
+            }
+        } catch(e){}
+    }
+
+    function showToast(tips){
+        var existing = document.getElementById('bm-notif-toast');
+        if (existing){ existing.style.animation = 'bmToastOut .25s ease forwards'; setTimeout(function(){ existing.remove(); }, 250); }
+        var tip = tips[0];
+        var count = tips.length;
+        var toast = document.createElement('div');
+        toast.id = 'bm-notif-toast';
+        var metaHtml = '';
+        if (tip.casa) metaHtml += '<div class="bm-toast-meta">🏠 ' + tip.casa + (tip.odd ? ' &nbsp;·&nbsp; Odd ' + tip.odd : '') + '</div>';
+        if (tip.selecao) metaHtml += '<div class="bm-toast-meta">' + tip.selecao + '</div>';
+        toast.innerHTML =
+            '<div class="bm-toast-header"><span>🎯 ' + (count > 1 ? count + ' novas tips' : 'Nova tip!') + '</span>'
+            + '<button onclick="(function(el){el.style.animation=\'bmToastOut .25s ease forwards\';setTimeout(function(){el.remove()},250)})(this.closest(\'#bm-notif-toast\'))">×</button></div>'
+            + '<div class="bm-toast-body"><div class="bm-toast-game">' + (tip.confronto || 'Nova aposta') + '</div>' + metaHtml + '</div>'
+            + '<a href="/admin/tips" class="bm-toast-action">Ver na fila de tips →</a>';
+        document.body.appendChild(toast);
+        setTimeout(function(){
+            if (toast.parentNode){
+                toast.style.animation = 'bmToastOut .25s ease forwards';
+                setTimeout(function(){ if(toast.parentNode) toast.remove(); }, 250);
+            }
+        }, 8000);
+    }
+
+    function poll(){
+        var maxId = parseInt(localStorage.getItem(STORE_KEY) || '0', 10);
+        fetch('/api/tips/poll?desde=' + maxId, {credentials: 'same-origin'})
+            .then(function(r){ return r.json(); })
+            .then(function(data){
+                if (data.max_id > maxId) localStorage.setItem(STORE_KEY, String(data.max_id));
+                if (data.novas > 0){
+                    var p = window._notifPrefs;
+                    if (p.som) playSound(p.somTipo);
+                    if (p.card && !isTipsPage()) showToast(data.tips);
+                }
+            })
+            .catch(function(){});
+    }
+
+    document.addEventListener('DOMContentLoaded', function(){
+        var maxId = localStorage.getItem(STORE_KEY);
+        if (!maxId){
+            fetch('/api/tips/poll?desde=0', {credentials: 'same-origin'})
+                .then(function(r){ return r.json(); })
+                .then(function(d){ localStorage.setItem(STORE_KEY, String(d.max_id || 0)); setInterval(poll, POLL_MS); })
+                .catch(function(){ setInterval(poll, POLL_MS); });
+        } else {
+            setInterval(poll, POLL_MS);
+        }
+    });
+})();
 </script>

@@ -4,123 +4,279 @@
     <meta charset="UTF-8">
     <title>Perfil e Configurações</title>
     <link rel="stylesheet" href="/static/style.css">
+    <style>
+        .cfg-page { padding: 28px 32px; max-width: 1100px; }
+        .cfg-topbar { display:flex; align-items:center; justify-content:space-between; margin-bottom:28px; }
+        .cfg-topbar h1 { font-size:22px; font-weight:700; margin:0; }
+        .cfg-topbar p  { font-size:13px; color:rgba(255,255,255,0.45); margin:4px 0 0; }
+
+        .cfg-grid { display:grid; grid-template-columns:1fr 1fr; gap:20px; }
+        @media(max-width:760px){ .cfg-grid { grid-template-columns:1fr; } }
+
+        .cfg-panel { background:var(--card-bg, rgba(255,255,255,0.04)); border:1px solid rgba(255,255,255,0.08); border-radius:14px; padding:24px; }
+        .cfg-panel-head { display:flex; align-items:center; gap:14px; margin-bottom:22px; }
+        .cfg-icon { width:40px; height:40px; border-radius:10px; display:flex; align-items:center; justify-content:center; font-size:18px; flex-shrink:0; }
+        .cfg-icon--blue   { background:rgba(99,179,237,0.15); }
+        .cfg-icon--purple { background:rgba(167,139,250,0.15); }
+        .cfg-icon--green  { background:rgba(74,222,128,0.15); }
+        .cfg-icon--amber  { background:rgba(251,191,36,0.15); }
+        .cfg-panel-head h2 { font-size:15px; font-weight:700; margin:0 0 3px; }
+        .cfg-panel-head p  { font-size:12px; color:rgba(255,255,255,0.4); margin:0; }
+
+        .cfg-form label.cfg-label { display:block; font-size:12px; font-weight:600; color:rgba(255,255,255,0.5); margin-bottom:5px; letter-spacing:.04em; text-transform:uppercase; }
+        .cfg-form input[type="text"],
+        .cfg-form input[type="email"],
+        .cfg-form input[type="password"] {
+            width:100%; box-sizing:border-box; background:rgba(255,255,255,0.05);
+            border:1px solid rgba(255,255,255,0.1); border-radius:8px;
+            padding:10px 12px; font-size:14px; color:#f1f5f9; outline:none;
+            transition:border .15s; margin-bottom:14px;
+        }
+        .cfg-form input:focus { border-color:rgba(99,179,237,0.5); }
+        .cfg-form input:disabled { opacity:.4; cursor:not-allowed; }
+        .cfg-form .cfg-hint { font-size:11px; color:rgba(255,255,255,0.3); margin-top:-10px; margin-bottom:14px; }
+
+        .cfg-btn { display:inline-flex; align-items:center; gap:6px; padding:9px 18px; border-radius:8px; font-size:13px; font-weight:600; cursor:pointer; border:none; transition:all .15s; }
+        .cfg-btn--primary { background:rgba(99,179,237,0.2); color:#63b3ed; border:1px solid rgba(99,179,237,0.3); }
+        .cfg-btn--primary:hover { background:rgba(99,179,237,0.3); }
+        .cfg-btn--purple { background:rgba(167,139,250,0.2); color:#a78bfa; border:1px solid rgba(167,139,250,0.3); }
+        .cfg-btn--purple:hover { background:rgba(167,139,250,0.3); }
+        .cfg-btn--green  { background:rgba(74,222,128,0.2);  color:#4ade80;  border:1px solid rgba(74,222,128,0.3); }
+        .cfg-btn--green:hover  { background:rgba(74,222,128,0.3); }
+        .cfg-btn--amber  { background:rgba(251,191,36,0.2);  color:#fbbf24;  border:1px solid rgba(251,191,36,0.3); }
+        .cfg-btn--amber:hover  { background:rgba(251,191,36,0.3); }
+
+        /* Toggle rows */
+        .cfg-toggle-row { display:flex; align-items:flex-start; justify-content:space-between; gap:14px; padding:12px 0; border-bottom:1px solid rgba(255,255,255,0.05); }
+        .cfg-toggle-row:last-of-type { border-bottom:none; }
+        .cfg-toggle-info strong { font-size:13px; font-weight:600; display:block; margin-bottom:3px; }
+        .cfg-toggle-info span   { font-size:12px; color:rgba(255,255,255,0.4); line-height:1.4; }
+        .cfg-switch { position:relative; display:inline-block; width:42px; height:24px; flex-shrink:0; }
+        .cfg-switch input { opacity:0; width:0; height:0; }
+        .cfg-switch-slider { position:absolute; inset:0; background:rgba(255,255,255,0.1); border-radius:12px; cursor:pointer; transition:.2s; }
+        .cfg-switch-slider:before { content:""; position:absolute; height:18px; width:18px; left:3px; bottom:3px; background:#fff; border-radius:50%; transition:.2s; }
+        .cfg-switch input:checked + .cfg-switch-slider { background:rgba(74,222,128,0.6); }
+        .cfg-switch input:checked + .cfg-switch-slider:before { transform:translateX(18px); }
+
+        /* Sound type selector */
+        .cfg-radio-group { display:flex; gap:8px; margin-bottom:16px; }
+        .cfg-radio-opt { flex:1; }
+        .cfg-radio-opt input[type="radio"] { display:none; }
+        .cfg-radio-opt label { display:flex; flex-direction:column; align-items:center; justify-content:center; gap:4px; padding:10px 8px; border-radius:8px; border:1px solid rgba(255,255,255,0.1); background:rgba(255,255,255,0.03); cursor:pointer; font-size:11px; color:rgba(255,255,255,0.5); transition:all .15s; text-align:center; }
+        .cfg-radio-opt input:checked + label { border-color:rgba(251,191,36,0.5); background:rgba(251,191,36,0.12); color:#fbbf24; }
+        .cfg-radio-opt label:hover { border-color:rgba(255,255,255,0.2); color:rgba(255,255,255,0.75); }
+        .cfg-radio-icon { font-size:20px; line-height:1; }
+
+        .cfg-feedback { padding:10px 14px; border-radius:8px; font-size:13px; font-weight:500; margin-bottom:18px; }
+        .cfg-feedback--ok    { background:rgba(74,222,128,0.12); border:1px solid rgba(74,222,128,0.25); color:#4ade80; }
+        .cfg-feedback--erro  { background:rgba(248,113,113,0.12); border:1px solid rgba(248,113,113,0.25); color:#f87171; }
+
+        .cfg-preview-btn { display:inline-flex; align-items:center; gap:6px; padding:7px 14px; border-radius:8px; font-size:12px; font-weight:500; background:rgba(255,255,255,0.06); border:1px solid rgba(255,255,255,0.1); color:rgba(255,255,255,0.6); cursor:pointer; transition:all .15s; margin-bottom:16px; }
+        .cfg-preview-btn:hover { background:rgba(255,255,255,0.1); color:#fff; }
+    </style>
 </head>
 <body>
 
 {% include '_sidebar.html' %}
 
 <main class="app">
-    <header class="topbar">
-        <div>
-            <h1>Perfil e Configurações</h1>
-            <p>Gerencie seu nome, senha e privacidade das apostas.</p>
-        </div>
-        <a href="/" class="api-button">Voltar ao Dashboard</a>
-    </header>
-
-    {% if ok %}
-    <div class="config-ok">{{ ok }}</div>
-    {% endif %}
-
-    {% if erro %}
-    <div class="auth-error">{{ erro }}</div>
-    {% endif %}
-
-    <section class="profile-grid">
-        <div class="panel config-panel">
-            <h2>Perfil</h2>
-            <form method="POST" class="config-form">
-                <input type="hidden" name="acao" value="perfil">
-
-                <label>Nome de usuário</label>
-                <input name="nome" value="{{ user.nome }}" required>
-
-                <label>E-mail</label>
-                <input value="{{ user.email }}" disabled>
-
-                <button type="submit">Salvar Perfil</button>
-            </form>
+    <div class="cfg-page">
+        <div class="cfg-topbar">
+            <div>
+                <h1>Perfil e Configurações</h1>
+                <p>Gerencie seu nome, senha, privacidade e notificações.</p>
+            </div>
+            <a href="/" class="api-button">← Dashboard</a>
         </div>
 
-        <div class="panel config-panel">
-            <h2>Segurança</h2>
-            <form method="POST" class="config-form">
-                <input type="hidden" name="acao" value="senha">
+        {% if ok %}
+        <div class="cfg-feedback cfg-feedback--ok">✓ {{ ok }}</div>
+        {% endif %}
+        {% if erro %}
+        <div class="cfg-feedback cfg-feedback--erro">✗ {{ erro }}</div>
+        {% endif %}
 
-                <label>Senha atual</label>
-                <input name="senha_atual" type="password" required>
+        <div class="cfg-grid">
 
-                <label>Nova senha</label>
-                <input name="nova_senha" type="password" required>
-
-                <label>Confirmar nova senha</label>
-                <input name="confirmar_senha" type="password" required>
-
-                <button type="submit">Alterar Senha</button>
-                <p class="saldo-help">A senha precisa ter pelo menos 6 caracteres.</p>
-            </form>
-        </div>
-
-        <div class="panel config-panel">
-            <h2>Privacidade das apostas</h2>
-            <form method="POST" class="config-form">
-                <input type="hidden" name="acao" value="preferencias">
-
-                <label class="config-toggle">
-                    <input type="checkbox" name="apostas_publicas_padrao" {% if user.apostas_publicas_padrao %}checked{% endif %}>
+            <!-- Perfil -->
+            <div class="cfg-panel">
+                <div class="cfg-panel-head">
+                    <div class="cfg-icon cfg-icon--blue">👤</div>
                     <div>
-                        <strong>Mostrar minhas apostas no feed da comunidade</strong>
-                        <span>Quando ativado, novas apostas aparecerão em “Últimas Apostas” para outros usuários copiarem.</span>
+                        <h2>Perfil</h2>
+                        <p>Seu nome de exibição no sistema</p>
                     </div>
-                </label>
+                </div>
+                <form method="POST" class="cfg-form">
+                    <input type="hidden" name="acao" value="perfil">
+                    <label class="cfg-label">Nome de usuário</label>
+                    <input type="text" name="nome" value="{{ user.nome }}" required>
+                    <label class="cfg-label">E-mail</label>
+                    <input type="email" value="{{ user.email }}" disabled>
+                    <button type="submit" class="cfg-btn cfg-btn--primary">Salvar Perfil</button>
+                </form>
+            </div>
 
-                {% if user.is_admin %}
-                <label class="config-toggle">
-                    <input type="checkbox" name="tips_com_imagem" {% if user.tips_com_imagem %}checked{% endif %}>
+            <!-- Segurança -->
+            <div class="cfg-panel">
+                <div class="cfg-panel-head">
+                    <div class="cfg-icon cfg-icon--purple">🔒</div>
                     <div>
-                        <strong>Mostrar a imagem (print) nas Tips do grupo</strong>
-                        <span>Ligado, cada tip exibe o print enviado no grupo. Desligado, os cards ficam mais enxutos.</span>
+                        <h2>Segurança</h2>
+                        <p>Altere sua senha de acesso</p>
                     </div>
-                </label>
-                {% endif %}
+                </div>
+                <form method="POST" class="cfg-form">
+                    <input type="hidden" name="acao" value="senha">
+                    <label class="cfg-label">Senha atual</label>
+                    <input type="password" name="senha_atual" required>
+                    <label class="cfg-label">Nova senha</label>
+                    <input type="password" name="nova_senha" required>
+                    <label class="cfg-label">Confirmar nova senha</label>
+                    <input type="password" name="confirmar_senha" required>
+                    <p class="cfg-hint">Mínimo de 6 caracteres.</p>
+                    <button type="submit" class="cfg-btn cfg-btn--purple">Alterar Senha</button>
+                </form>
+            </div>
 
-                <button type="submit">Salvar Privacidade</button>
-            </form>
+            <!-- Privacidade -->
+            <div class="cfg-panel">
+                <div class="cfg-panel-head">
+                    <div class="cfg-icon cfg-icon--green">🛡️</div>
+                    <div>
+                        <h2>Privacidade</h2>
+                        <p>Visibilidade das suas apostas</p>
+                    </div>
+                </div>
+                <form method="POST" class="cfg-form">
+                    <input type="hidden" name="acao" value="preferencias">
+
+                    <div class="cfg-toggle-row">
+                        <div class="cfg-toggle-info">
+                            <strong>Apostas no feed da comunidade</strong>
+                            <span>Quando ativado, suas apostas aparecem em "Últimas Apostas" para outros copiarem.</span>
+                        </div>
+                        <label class="cfg-switch">
+                            <input type="checkbox" name="apostas_publicas_padrao" {% if user.apostas_publicas_padrao %}checked{% endif %}>
+                            <span class="cfg-switch-slider"></span>
+                        </label>
+                    </div>
+
+                    {% if user.is_admin %}
+                    <div class="cfg-toggle-row">
+                        <div class="cfg-toggle-info">
+                            <strong>Mostrar imagem nas Tips</strong>
+                            <span>Exibe o print enviado no grupo em cada card de tip.</span>
+                        </div>
+                        <label class="cfg-switch">
+                            <input type="checkbox" name="tips_com_imagem" {% if user.tips_com_imagem %}checked{% endif %}>
+                            <span class="cfg-switch-slider"></span>
+                        </label>
+                    </div>
+                    {% endif %}
+
+                    <br>
+                    <button type="submit" class="cfg-btn cfg-btn--green">Salvar Privacidade</button>
+                </form>
+            </div>
+
+            <!-- Notificações -->
+            {% if user.is_admin %}
+            <div class="cfg-panel">
+                <div class="cfg-panel-head">
+                    <div class="cfg-icon cfg-icon--amber">🔔</div>
+                    <div>
+                        <h2>Notificações</h2>
+                        <p>Alerta sonoro e visual de novas tips</p>
+                    </div>
+                </div>
+                <form method="POST" class="cfg-form" id="frmNotif">
+                    <input type="hidden" name="acao" value="notificacoes">
+
+                    <div class="cfg-toggle-row">
+                        <div class="cfg-toggle-info">
+                            <strong>Som ao chegar tip</strong>
+                            <span>Toca um som assim que uma nova tip entrar na fila.</span>
+                        </div>
+                        <label class="cfg-switch">
+                            <input type="checkbox" name="notif_som" id="chkNotifSom" {% if user.notif_som != false %}checked{% endif %}>
+                            <span class="cfg-switch-slider"></span>
+                        </label>
+                    </div>
+
+                    <div class="cfg-toggle-row">
+                        <div class="cfg-toggle-info">
+                            <strong>Card de notificação</strong>
+                            <span>Mostra um cartão no canto direito quando estiver em outra aba do site.</span>
+                        </div>
+                        <label class="cfg-switch">
+                            <input type="checkbox" name="notif_card" {% if user.notif_card != false %}checked{% endif %}>
+                            <span class="cfg-switch-slider"></span>
+                        </label>
+                    </div>
+
+                    <br>
+                    <label class="cfg-label">Tipo de som</label>
+                    <div class="cfg-radio-group">
+                        <div class="cfg-radio-opt">
+                            <input type="radio" name="notif_som_tipo" id="sBeep" value="beep" {% if not user.notif_som_tipo or user.notif_som_tipo == 'beep' %}checked{% endif %}>
+                            <label for="sBeep"><span class="cfg-radio-icon">🔊</span>Beep</label>
+                        </div>
+                        <div class="cfg-radio-opt">
+                            <input type="radio" name="notif_som_tipo" id="sChime" value="chime" {% if user.notif_som_tipo == 'chime' %}checked{% endif %}>
+                            <label for="sChime"><span class="cfg-radio-icon">🎵</span>Chime</label>
+                        </div>
+                        <div class="cfg-radio-opt">
+                            <input type="radio" name="notif_som_tipo" id="sPing" value="ping" {% if user.notif_som_tipo == 'ping' %}checked{% endif %}>
+                            <label for="sPing"><span class="cfg-radio-icon">🔔</span>Ping</label>
+                        </div>
+                    </div>
+
+                    <button type="button" class="cfg-preview-btn" onclick="previewSound()">▶ Testar som</button>
+
+                    <button type="submit" class="cfg-btn cfg-btn--amber">Salvar Notificações</button>
+                </form>
+            </div>
+            {% endif %}
+
         </div>
-    </section>
+    </div>
 </main>
 
 <script>
-function toggleSidebar(){
-    document.body.classList.toggle("sidebar-collapsed")
-    const collapsed = document.body.classList.contains("sidebar-collapsed")
-    localStorage.setItem("sidebarCollapsed", collapsed ? "1" : "0")
-    const btn = document.querySelector(".sidebar-toggle")
-    if(btn) btn.innerText = collapsed ? "›" : "‹"
+function previewSound(){
+    var tipo = document.querySelector('input[name="notif_som_tipo"]:checked');
+    if (!tipo) return;
+    try {
+        var ctx = new (window.AudioContext || window.webkitAudioContext)();
+        var osc = ctx.createOscillator();
+        var gain = ctx.createGain();
+        osc.connect(gain); gain.connect(ctx.destination);
+        var t = ctx.currentTime;
+        if (tipo.value === 'chime'){
+            osc.type = 'sine';
+            osc.frequency.setValueAtTime(523.25, t);
+            osc.frequency.setValueAtTime(659.25, t + 0.14);
+            osc.frequency.setValueAtTime(783.99, t + 0.28);
+            gain.gain.setValueAtTime(0.22, t);
+            gain.gain.exponentialRampToValueAtTime(0.001, t + 0.55);
+            osc.start(t); osc.stop(t + 0.55);
+        } else if (tipo.value === 'ping'){
+            osc.type = 'triangle';
+            osc.frequency.setValueAtTime(1047, t);
+            osc.frequency.exponentialRampToValueAtTime(523, t + 0.22);
+            gain.gain.setValueAtTime(0.28, t);
+            gain.gain.exponentialRampToValueAtTime(0.001, t + 0.28);
+            osc.start(t); osc.stop(t + 0.28);
+        } else {
+            osc.type = 'sine';
+            osc.frequency.setValueAtTime(440, t);
+            gain.gain.setValueAtTime(0.2, t);
+            gain.gain.exponentialRampToValueAtTime(0.001, t + 0.3);
+            osc.start(t); osc.stop(t + 0.3);
+        }
+    } catch(e){ alert('Sem permissão de áudio. Clique em qualquer lugar primeiro.'); }
 }
-
-function toggleUserMenu(ev){
-    if(ev) ev.stopPropagation()
-    const menu = document.getElementById("sidebarUserMenu")
-    if(menu) menu.classList.toggle("open")
-}
-
-document.addEventListener("click", function(e){
-    const menu = document.getElementById("sidebarUserMenu")
-    const card = document.querySelector(".sidebar-user-card")
-    if(menu && card && !menu.contains(e.target) && !card.contains(e.target)){
-        menu.classList.remove("open")
-    }
-})
-
-document.addEventListener("DOMContentLoaded", ()=>{
-    const collapsed = localStorage.getItem("sidebarCollapsed") === "1"
-    if(collapsed){
-        document.body.classList.add("sidebar-collapsed")
-        const btn = document.querySelector(".sidebar-toggle")
-        if(btn) btn.innerText = "›"
-    }
-})
 </script>
 
 </body>

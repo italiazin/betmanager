@@ -144,74 +144,36 @@ def _parse_json_resposta(txt):
 # ============================================================
 
 # Instrucoes FIXAS (vao no "system" -> sao cacheadas pela API, baratendo as repeticoes)
-_INSTRUCOES_GRUPO = """Você extrai apostas de mensagens de um grupo de tips de apostas.
-A mensagem pode ter emojis ou não, e pode ser uma APOSTA (simples ou múltipla) ou só um COMENTÁRIO.
-Responda SOMENTE com um JSON:
-{
- "eh_aposta": true ou false,
- "casa": "casa de apostas" ou "",
- "esporte": "Futebol"/"Basquete"/... ou "",
- "jogos": ["Time A x Time B", ...],
- "odd": número ou null,
- "valor_reais": número (valor em R$ da entrada) ou null,
- "stake_pct": número (% da banca) ou null,
- "fora_escopo": true se o esporte NÃO for Futebol nem Basquete (senão false),
- "eh_multipla": true ou false,
- "pernas": [{"mercado": "...", "selecao": "...", "linha": número ou null, "direcao": "over"/"under"/"", "periodo": "jogo"/"1º tempo"/"2º tempo"/"1º quarto"/"2º quarto"/"3º quarto"/"4º quarto", "alvo": "jogo" ou nome do time}]
-}
-mercado é um de: Moneyline, DNB, Total de Gols, Ambas Marcam, Dupla Chance, Handicap, Intervalo/Final, Escanteios, Cartões, Chutes, Chutes no Gol, HT Resultado, Vencer pelo menos um tempo, Marcador, Assistência, Outro.
+_INSTRUCOES_GRUPO = """Extrai apostas de mensagens de um grupo de tips. Responda SOMENTE com JSON:
+{"eh_aposta":bool,"casa":"","esporte":"","jogos":["A x B"],"odd":num|null,"valor_reais":num|null,"stake_pct":num|null,"fora_escopo":bool,"eh_multipla":bool,"pernas":[{"mercado":"","selecao":"","linha":num|null,"direcao":"over"/"under"/"","periodo":"jogo"/"1º tempo"/"2º tempo"/"1º quarto"/"2º quarto"/"3º quarto"/"4º quarto","alvo":"jogo"|nome}]}
 
-FOCO: só FUTEBOL e BASQUETE. Se o esporte for outro (tênis, beisebol, vôlei...), preencha mas marque "fora_escopo": true.
+mercado: Moneyline, DNB, Total de Gols, Ambas Marcam, Dupla Chance, Handicap, Intervalo/Final, Escanteios, Cartões, Chutes, Chutes no Gol, HT Resultado, Vencer pelo menos um tempo, Marcador, Assistência, Outro.
 
-REGRA CRÍTICA — "E" entre times/atletas = JOGOS SEPARADOS:
-Quando a mensagem une dois times ou atletas com "e", "e também", "&" no contexto de "vencer", "ML", "Moneyline", ou cada um tem sua odd separada, são APOSTAS EM JOGOS DISTINTOS — NUNCA um jogo entre eles. Exemplos:
-- "Tailândia e Omã para vencer" → 2 jogos: "Tailândia x ?" e "Omã x ?", 2 pernas ML separadas. NÃO "Tailândia x Omã".
-- "Panamá e Suíça vencerem" → 2 jogos: "Panamá x ?" e "Suíça x ?". NÃO "Panamá x Suíça".
-- "ML Zverev e ML Mensik" → 2 jogos: "Zverev x ?" e "Mensik x ?". NÃO "Mensik x Zverev".
-- "Coventry e Middlesbrough vencendo" → 2 jogos separados.
-ARGUMENTO LÓGICO: numa múltipla, ML do Time A + ML do Time B adversário NO MESMO JOGO é matematicamente impossível (só um pode vencer). Se duas pernas têm ML de times diferentes, são jogos DISTINTOS — mesmo que esses times joguem entre si na vida real. Cada perna deve ter seu próprio jogo em jogos[].
-Exceção: só escreva "A x B" no jogos[] se a mensagem deixar EXPLÍCITO que é um confronto direto ("A enfrenta B", "A vs B hoje", placar "2-1").
+FOCO: Futebol e Basquete. Outro esporte: preencha + fora_escopo=true.
 
-ESPORTES INDIVIDUAIS (tênis, MMA, boxe, atletismo):
-Em tênis/MMA, dois atletas listados com "e"/"&"/"|" = DOIS JOGOS DIFERENTES, não um confronto entre eles. Cada atleta tem seu próprio jogo. Use "Atleta x ?" no jogos[].
+"E"/"&" ENTRE TIMES = JOGOS SEPARADOS (nunca um confronto entre eles):
+"Tailândia e Omã para vencer" → 2 pernas ML: "Tailândia x ?" e "Omã x ?". "ML Zverev e ML Mensik" → "Zverev x ?" e "Mensik x ?". Numa múltipla, dois times com ML no MESMO jogo é impossível — são jogos distintos. Só escreva "A x B" se a mensagem deixar EXPLÍCITO que é confronto direto.
+Em tênis/MMA/esportes individuais: dois atletas com "e"/"&"/"|" = dois jogos separados ("Atleta x ?").
 
-Se vier uma IMAGEM (print do bilhete da aposta), ela é a fonte PRINCIPAL: leia dela os CONFRONTOS REAIS (quem joga contra quem), mercados, seleções, linhas e odds. Em múltiplas de vários jogos, cada perna tem o SEU confronto real — NUNCA pareie times de jogos diferentes (ex: se "Itália" e "Albânia" estão em jogos distintos, é ERRADO escrever "Itália x Albânia"; use o confronto verdadeiro de cada uma, ex: "Luxemburgo x Itália").
+IMAGEM (print do bilhete): é a fonte PRINCIPAL. Leia confrontos reais, mercados e odds da imagem. NUNCA pareie times de jogos diferentes. Cada perna tem seu confronto real.
+Cada perna = seleção REAL e DISTINTA. NUNCA funda pernas nem omita nenhuma.
 
-Cada perna = uma seleção REAL e DISTINTA. NUNCA funda pernas nem omita nenhuma.
-- "Mais de 2.5 gols na partida" -> Total de Gols, over, 2.5, periodo "jogo", alvo "jogo".
-- "Itália - Mais de 2.5 gols" -> Total de Gols de um TIME: over, 2.5, alvo "Itália" (DIFERENTE do total do jogo — OUTRA perna).
-- "Londrina - Menos de 0.5 escanteios" -> Escanteios, under, 0.5, alvo "Londrina". REGRA GERAL: "Time - Menos/Mais de X [mercado]" com qualquer mercado (Escanteios, Cartões, Chutes...) -> alvo = nome do time (NÃO "jogo").
-- "Mais de 0.5 Gols no 1º Tempo" -> Total de Gols, over, 0.5, periodo "1º tempo".
-- "Mais de 5.5 Cartões" -> Cartões, over, 5.5.
-- INTERVALO/FINAL (HT/FT): quando a selecao tem DOIS resultados separados por barra (ex: "Brasil/Brasil", "Empate/Brasil", "X/2", "Casa/Casa"), OU aparece sob um rotulo tipo "Intervalo/Final", "Resultado Intervalo/Final", "HT/FT", "Intervalo e Final" -> mercado "Intervalo/Final"; selecao = o par exato (ex: "Brasil/Brasil" = vence o 1º tempo E vence no final). ISSO NUNCA É Moneyline.
-  Regra pratica: UM time sozinho ("Brasil") = Moneyline; o MESMO time repetido com barra ("Brasil/Brasil") = Intervalo/Final.
-- "Vencer em qualquer um dos tempos" / "Vencer pelo menos um tempo" / "Vence em algum período" -> mercado "Vencer pelo menos um tempo", selecao = nome do time. DIFERENTE de Intervalo/Final (que exige resultado em AMBOS os tempos com barra). NÃO escreva "Time/Time".
-- "Empate ou devolve" / "Empate devolve" / "DNB" -> mercado "DNB" (Draw No Bet), selecao = nome do time que deve vencer. NÃO é Moneyline. Se vier com período ("no 1º tempo"), use periodo "1º tempo".
+MERCADOS ESPECÍFICOS:
+- Total de Gols: "Mais de 2.5 gols" → over,2.5,alvo"jogo". "Itália - Mais de 2.5 gols" → over,2.5,alvo"Itália" (gols do time ≠ gols do jogo — pernas distintas).
+- "Time - Menos/Mais de X [mercado]" com Escanteios/Cartões/Chutes → alvo = nome do time.
+- INTERVALO/FINAL: seleção com barra ("Brasil/Brasil","Empate/Brasil","X/2") OU rótulo HT/FT → mercado "Intervalo/Final". Um time sozinho ("Brasil") = Moneyline. "Time/Time" = Intervalo/Final.
+- "Vencer pelo menos um tempo"/"vencer em qualquer período" → mercado "Vencer pelo menos um tempo" (≠ Intervalo/Final que exige resultado nos DOIS tempos).
+- DNB / "Empate devolve" → mercado "DNB", selecao = time que deve vencer.
+- Basquete — quartos: periodo "1º/2º/3º/4º quarto" (NUNCA "1º tempo"). "Total do 1º quarto" = alvo"jogo".
+- Gol mais rápido / Primeiro a marcar → mercado "Outro", selecao "Gol mais Rápido". UMA perna só.
+- Qualificação/Outright ("X se classifica","X avança","X campeão") → mercado "Outro", selecao = descrição exata, jogo = "X x ?".
 - "over 2.5 do jogo" e "over 2.5 da Itália" são DUAS pernas separadas.
-- "França Total de Gols no 1º tempo" / "1º tempo: França Total de gols" -> Total de Gols, alvo "França", periodo "1º tempo". A linha é de GOLS DO TIME, não da partida toda.
 
-BASQUETE — QUARTOS: "1º quarto", "2º quarto", "3º quarto", "4º quarto" são períodos válidos. "Total do 1º quarto" = Total de Gols, periodo "1º quarto", alvo "jogo" (pontos totais do quarto de AMBAS as equipes — NÃO alvo de um time). "Moneyline no 1º quarto" = Moneyline, selecao = nome do time, periodo "1º quarto". NUNCA use "1º tempo" para quartos de basquete.
+FORMATO BOT BetPontoBet (emojis-chave): 🏠=casa 🆚=confronto ⚽/🏀=esporte 🚀=seleção ("🚀 Ceará ML"→Moneyline Ceará) 🎰=odd 🍊=stake% 💰=R$ 🔒Limite=ignorar 👤ADM=ignorar. Sempre eh_aposta=true.
+Casa por domínio de link: jogajunto.bet.br → "JogaJunto".
 
-GOL MAIS RÁPIDO / PRIMEIRO A MARCAR: mercado "Outro", selecao "Gol mais Rápido". É UMA ÚNICA perna independente de quantos times aparecem. NÃO crie uma perna por time.
-
-APOSTAS DE QUALIFICAÇÃO / OUTRIGHT (sem confronto direto): quando a mensagem diz "X se classifica no grupo", "X avança", "X vence o torneio", "X vai ser campeão" etc., é uma aposta válida. Use mercado "Outro", selecao = descrição exata (ex: "Escócia se classifica no grupo"), jogo = "Escócia x ?". Se a odd não aparecer no texto, use null. Se a casa vier de um link (ex: jogajunto.bet.br → casa "JogaJunto"), use esse nome.
-
-Ignore rótulos soltos que só repetem o tipo (ex: "Resultado Final", "Total de Gols" sem valor).
-Se for só comentário (ex: "Valendo 0,5%", "aproveitem"), eh_aposta=false.
-
-FORMATO BOT BetPontoBet — quando a mensagem seguir esse padrão de emojis-chave:
-  🏠 = nome da casa de apostas
-  🆚 = confronto (Time A x Time B)
-  ⚽/🏀 = esporte
-  🚀 = seleção da perna (ex: "🚀 Ceará ML" → mercado Moneyline, seleção Ceará)
-  🎰 = odd
-  🍊 = stake em % da banca
-  💰 = valor em R$
-  🔒 Limite da aposta = limite máximo permitido (IGNORAR — não é o valor apostado)
-  👤 ADM: = nome do admin (ignorar)
-Nesses casos, "ML" após o nome do time = Moneyline do time. Sempre eh_aposta=true.
-
-IMAGEM SEMPRE PREVALECE: se houver imagem de bilhete de aposta, retorne eh_aposta=true e extraia os dados DA IMAGEM, independente do texto dizer "não será planilhada", "somente discord", "sobrecarga", etc. Esses são avisos operacionais, não mudam o fato de ser uma aposta."""
+IMAGEM SEMPRE PREVALECE: com imagem de bilhete → eh_aposta=true e extrai da imagem, mesmo que texto diga "não será planilhada"/"somente discord"/"sobrecarga".
+Só comentário (ex: "Valendo 0,5%","aproveitem") → eh_aposta=false."""
 
 # Trechos de "lixo" (links/propaganda) removidos antes de enviar -> menos tokens
 _LIXO_LINHA = ("http", "não tem cadastro", "nao tem cadastro", "nos ajuda", "odd justa",
@@ -235,6 +197,21 @@ def _limpar_msg(texto):
 
 
 _cache_grupo = {}
+_CACHE_GRUPO_MAX = 1000  # entradas máximas salvas no banco
+
+
+def load_grupo_cache(data: dict):
+    """Carrega cache persistido (dados['cache_ia_grupo']) na memória."""
+    if isinstance(data, dict):
+        _cache_grupo.update(data)
+
+
+def dump_grupo_cache() -> dict:
+    """Retorna snapshot do cache (últimas _CACHE_GRUPO_MAX entradas) para persistir."""
+    if len(_cache_grupo) <= _CACHE_GRUPO_MAX:
+        return dict(_cache_grupo)
+    keys = list(_cache_grupo.keys())[-_CACHE_GRUPO_MAX:]
+    return {k: _cache_grupo[k] for k in keys}
 
 
 def interpretar_mensagem_grupo(texto, api_key=None, modelo="claude-haiku-4-5-20251001",
@@ -262,6 +239,7 @@ def interpretar_mensagem_grupo(texto, api_key=None, modelo="claude-haiku-4-5-202
         r = req.post(
             "https://api.anthropic.com/v1/messages",
             headers={"x-api-key": api_key, "anthropic-version": "2023-06-01",
+                     "anthropic-beta": "prompt-caching-2024-07-31",
                      "content-type": "application/json"},
             json={
                 "model": modelo,
