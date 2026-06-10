@@ -16,11 +16,16 @@
   .tip-busca:focus{border-color:#7aa9ff}
   .tips-pref{color:#8a93a6;font-size:13px;white-space:nowrap}
   .tips-pref a{color:#7aa9ff;text-decoration:none}
-  .tb-btn{border:1px solid #2a2f3a;background:#1a1e27;color:#cbd2e0;padding:7px 14px;
-    border-radius:9px;cursor:pointer;font-size:13px;font-weight:600;white-space:nowrap}
-  .tb-btn.todas{border-color:#1f9d55;color:#37d67a}.tb-btn.todas:hover{background:rgba(31,157,85,.12)}
-  .tb-btn.sel{border-color:#7aa9ff;color:#7aa9ff}.tb-btn.sel:hover{background:rgba(122,169,255,.12)}
-  .tb-btn:disabled{opacity:.4;cursor:default}
+  .tb-btn{border:1px solid #2a2f3a;background:#1a1e27;color:#cbd2e0;padding:8px 16px;
+    border-radius:10px;cursor:pointer;font-size:13px;font-weight:700;white-space:nowrap;
+    transition:all .15s;display:inline-flex;align-items:center;gap:6px;letter-spacing:.01em}
+  .tb-btn.todas{border-color:#1f9d55;color:#37d67a;background:rgba(31,157,85,.08)}
+  .tb-btn.todas:hover:not(:disabled){background:rgba(31,157,85,.2);box-shadow:0 0 0 1px #1f9d55}
+  .tb-btn.sel{border-color:#7aa9ff;color:#7aa9ff;background:rgba(122,169,255,.08)}
+  .tb-btn.sel:hover:not(:disabled){background:rgba(122,169,255,.2);box-shadow:0 0 0 1px #7aa9ff}
+  .tb-btn.desc-sel{border-color:#d64545;color:#ff6b6b;background:rgba(214,69,69,.08)}
+  .tb-btn.desc-sel:hover:not(:disabled){background:rgba(214,69,69,.2);box-shadow:0 0 0 1px #d64545}
+  .tb-btn:disabled{opacity:.35;cursor:default}
   .tb-chk{color:#8a93a6;font-size:13px;cursor:pointer;white-space:nowrap;display:flex;align-items:center;gap:5px}
   .tb-chk input{width:16px;height:16px;cursor:pointer}
 
@@ -109,11 +114,15 @@
   /* ações */
   .tip-acoes{display:flex;gap:7px;flex-wrap:wrap}
   .tip-acoes button{border:1px solid #2a2f3a;background:#1a1e27;color:#cbd2e0;
-    padding:8px 16px;border-radius:9px;cursor:pointer;font-size:13px;font-weight:600;
-    transition:background .15s,border-color .15s}
-  .tip-acoes .ap{border-color:#1f9d55;color:#37d67a}.tip-acoes .ap:hover{background:rgba(31,157,85,.15)}
-  .tip-acoes .ed{border-color:#caa23a;color:#caa23a}.tip-acoes .ed:hover{background:rgba(202,162,58,.15)}
-  .tip-acoes .dc{border-color:#d64545;color:#ff6b6b}.tip-acoes .dc:hover{background:rgba(214,69,69,.15)}
+    padding:8px 18px;border-radius:10px;cursor:pointer;font-size:13px;font-weight:700;
+    transition:all .15s;display:inline-flex;align-items:center;gap:5px;letter-spacing:.01em}
+  .tip-acoes .ap{border-color:#1f9d55;color:#37d67a;background:rgba(31,157,85,.07)}
+  .tip-acoes .ap:hover{background:rgba(31,157,85,.18);box-shadow:0 0 0 1px #1f9d55}
+  .tip-acoes .ed{border-color:#caa23a;color:#caa23a;background:rgba(202,162,58,.07)}
+  .tip-acoes .ed:hover{background:rgba(202,162,58,.18);box-shadow:0 0 0 1px #caa23a}
+  .tip-acoes .dc{border-color:#d64545;color:#ff6b6b;background:rgba(214,69,69,.07)}
+  .tip-acoes .dc:hover{background:rgba(214,69,69,.18);box-shadow:0 0 0 1px #d64545}
+  .tip-acoes button:disabled{opacity:.4;cursor:default;box-shadow:none}
   .tip-report{position:absolute;right:12px;bottom:12px;border:1px solid #1c2027;background:transparent;
     color:#5a6172;border-radius:8px;padding:4px 10px;cursor:pointer;font-size:11px;transition:all .15s}
   .tip-report:hover{border-color:#e0843a;color:#e0843a}
@@ -177,6 +186,7 @@
       </div>
       <label class="tb-chk" style="margin-left:auto"><input type="checkbox" id="chkTodos" onchange="marcarTodos(this.checked)"> marcar todas</label>
       <button class="tb-btn sel" id="btnSel" onclick="aprovarSelecionadas()" disabled>✓ Aprovar (<span id="nSel">0</span>)</button>
+      <button class="tb-btn desc-sel" id="btnDescSel" onclick="descartarSelecionadas()" disabled>✕ Descartar (<span id="nSelDesc">0</span>)</button>
       <button class="tb-btn todas" id="btnTodas" onclick="aprovarTodas()" {{ 'disabled' if not tips }}>✓✓ Aprovar todas</button>
     </div>
   </div>
@@ -270,7 +280,9 @@ function selecionados(){ return cards().filter(c => c.style.display!=='none' && 
 function atualizarSel(){
     var n = selecionados().length;
     document.getElementById('nSel').innerText = n;
+    document.getElementById('nSelDesc').innerText = n;
     document.getElementById('btnSel').disabled = !n;
+    document.getElementById('btnDescSel').disabled = !n;
 }
 function marcarTodos(v){
     cards().filter(c=>c.style.display!=='none').forEach(c=>c.querySelector('.chk').checked=v);
@@ -347,6 +359,18 @@ function aprovarLote(ids){
     });
 }
 function aprovarSelecionadas(){var ids=selecionados().map(c=>c.dataset.id);if(ids.length)aprovarLote(ids);}
+function descartarSelecionadas(){
+    var ids=selecionados().map(c=>c.dataset.id);
+    if(!ids.length) return;
+    if(!confirm('Descartar '+ids.length+' tip(s) selecionada(s)?')) return;
+    document.querySelectorAll('.tb-btn').forEach(b=>b.disabled=true);
+    Promise.all(ids.map(id=>
+        fetch('/admin/tips/descartar/'+id,{method:'POST',headers:{'X-Requested-With':'fetch'}}).then(r=>r.json())
+    )).then(()=>{
+        ids.forEach(id=>{var c=document.querySelector('.tip-card[data-id="'+id+'"]');if(c)c.remove();});
+        setContador();
+    }).catch(()=>{document.querySelectorAll('.tb-btn').forEach(b=>b.disabled=false);});
+}
 function aprovarTodas(){
     var ids=cards().filter(c=>c.style.display!=='none').map(c=>c.dataset.id);
     if(ids.length&&confirm('Aprovar as '+ids.length+' tips visíveis?'))aprovarLote(ids);
