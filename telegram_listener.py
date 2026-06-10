@@ -101,6 +101,11 @@ def _marcar_discord(dados, msg_id):
         del lst[:len(lst) - 3000]
 
 
+def ja_na_fila(dados, msg_id):
+    """True se já existe uma tip com esse msg_id em tips_pendentes (evita duplicata no recapturar)."""
+    return any(str(t.get("id")) == str(msg_id) for t in dados.get("tips_pendentes", []))
+
+
 def processar_texto(texto, msg_id, dados, anthropic_key, interpretar_fn, data_iso=None):
     """Decide e (se for aposta nova) adiciona a` fila `tips_pendentes`.
     Retorna a tip adicionada ou None. NAO salva (quem chama agrupa o save).
@@ -250,6 +255,109 @@ def _discord_enviar(webhook, content, img_bytes=None, quote=None, titulo=None):
 
 # ============================================================
 # Parte de REDE (Telethon) — isolada; so' roda quando `iniciar` e' chamado
+# ============================================================
+
+def catchup_historico(api_id, api_hash, session_str, grupo, anthropic_key,
+                      dados, salvar_fn, interpretar_fn,
+                      horas=72, interpretar_img_fn=None, salvar_img_fn=None):
+    """Conexão Telethon standalone para recuperar apostas antigas não capturadas.
+    Remove o msg_id de tips_processadas_ids antes de reprocessar, garantindo
+    que mensagens rejeitadas anteriormente (AI falhou ou pré-filtro) sejam
+    reavaliadas com o prompt/lógica atual. Nunca reenvia pro Discord."""
+    import asyncio, base64
+    try:
+        from telethon import TelegramClient
+        from telethon.sessions import StringSession
+    except Exception as e:
+        print("[catchup] Telethon indisponivel:", e); return
+
+    async def _run():
+        client = TelegramClient(StringSession(session_str), api_id, api_hash)
+        await client.connect()
+        if not await client.is_user_authorized():
+            print("[catchup] sessao nao autorizada"); return
+
+        alvo = (grupo or "").lower()
+        ent = None
+        async for d in client.iter_dialogs():
+            if alvo and alvo in (d.name or "").lower():
+                ent = d.entity; break
+        if not ent:
+            print(f"[catchup] grupo {grupo!r} nao encontrado")
+            await client.disconnect(); return
+
+        from datetime import datetime, timezone, timedelta
+        limite = datetime.now(timezone.utc) - timedelta(hours=horas)
+
+        msgs = []
+        async for m in client.iter_messages(ent, limit=500):
+            if m.date and m.date < limite:
+                break
+            msgs.append(m)
+        msgs.reverse()
+        print(f"[catchup] {len(msgs)} msgs na janela de {horas}h")
+
+        novas = 0
+        for m in msgs:
+            texto = m.message or ""
+            tem_foto = bool(getattr(m, "photo", None))
+            if not parece_aposta_ampla(texto, tem_foto):
+                continue
+            if ja_na_fila(dados, m.id):
+                continue
+            # Remove do dedup para forçar reavaliação
+            ids = dados.get("tips_processadas_ids", [])
+            if any(str(x) == str(m.id) for x in ids):
+                dados["tips_processadas_ids"] = [x for x in ids if str(x) != str(m.id)]
+
+            d_iso = m.date.isoformat() if m.date else None
+            tip = None
+
+            if parece_aposta(texto):
+                tip = processar_texto(texto, m.id, dados, anthropic_key, interpretar_fn, d_iso)
+            elif tem_foto and interpretar_img_fn:
+                _marcar_processada(dados, m.id)
+                try:
+                    b = await client.download_media(m, file=bytes)
+                    if b:
+                        interp = interpretar_img_fn(texto, base64.b64encode(b).decode())
+                        if interp and interp.get("eh_aposta"):
+                            tip = dict(interp)
+                            tip["id"] = m.id
+                            if d_iso: tip["data_envio"] = d_iso
+                            dados.setdefault("tips_pendentes", []).append(tip)
+                except Exception as e:
+                    print(f"[catchup] img msg {m.id} falhou:", e)
+
+            if tip:
+                if salvar_img_fn and getattr(m, "photo", None) and not tip.get("img"):
+                    try:
+                        b = await client.download_media(m, file=bytes)
+                        if b:
+                            salvar_img_fn(m.id, b)
+                            tip["img"] = f"/tips/img/{m.id}"
+                    except Exception:
+                        pass
+                novas += 1
+                print(f"[catchup] tip: {tip.get('confronto','?')} @ {tip.get('casa','?')}")
+
+        _prune_tips(dados)
+        if novas:
+            salvar_fn()
+        print(f"[catchup] concluido: {novas} tip(s) recuperada(s) em {horas}h")
+        await client.disconnect()
+
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    try:
+        loop.run_until_complete(_run())
+    except Exception as e:
+        print(f"[catchup] erro:", e)
+    finally:
+        try: loop.close()
+        except Exception: pass
+
+
 # ============================================================
 
 def iniciar(api_id, api_hash, session_str, grupo, anthropic_key,

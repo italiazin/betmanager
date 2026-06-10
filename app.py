@@ -7013,6 +7013,38 @@ def api_tips_poll():
     return jsonify({"novas": len(novas), "tips": novas, "max_id": max_id})
 
 
+@app.route("/admin/tips/recapturar", methods=["POST"])
+@admin_required
+def admin_tips_recapturar():
+    """Reconecta ao Telegram e reprocessa apostas não capturadas das últimas N horas."""
+    try:
+        horas = min(int((request.get_json(silent=True) or {}).get("horas", 72)), 168)
+    except Exception:
+        horas = 72
+    api_id = os.environ.get("TELEGRAM_API_ID")
+    api_hash = os.environ.get("TELEGRAM_API_HASH")
+    session_str = os.environ.get("TELEGRAM_SESSION")
+    grupo = os.environ.get("TELEGRAM_GRUPO", "")
+    key = os.environ.get("ANTHROPIC_API_KEY", "")
+    if not all([api_id, api_hash, session_str, grupo, key]):
+        return jsonify({"ok": False, "erro": "credenciais Telegram não configuradas"}), 400
+    import interpretacao as _Itp
+    import telegram_listener as _TL
+    def _interp(texto, k):
+        return _Itp.interpretar_mensagem_grupo(texto, api_key=k)
+    def _interp_img(texto, b64):
+        return _Itp.interpretar_mensagem_grupo(texto, api_key=key, imagem_b64=b64)
+    threading.Thread(
+        target=_TL.catchup_historico,
+        kwargs=dict(api_id=int(api_id), api_hash=api_hash, session_str=session_str,
+                    grupo=grupo, anthropic_key=key, dados=dados, salvar_fn=salvar,
+                    interpretar_fn=_interp, interpretar_img_fn=_interp_img,
+                    salvar_img_fn=salvar_img_tip, horas=horas),
+        daemon=True,
+    ).start()
+    return jsonify({"ok": True, "msg": f"catch-up de {horas}h iniciado"})
+
+
 @app.route("/admin/tips/aprovar/<tid>", methods=["POST"])
 @admin_required
 def admin_tips_aprovar(tid):
