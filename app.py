@@ -7020,6 +7020,8 @@ def admin_tips_recapturar():
     Só chama a IA para mensagens que passarem parece_aposta() — sem desperdício."""
     body = request.get_json(silent=True) or {}
     busca = str(body.get("busca", "")).strip()
+    if not busca:
+        return jsonify({"ok": False, "erro": "busca obrigatoria — informe parte do texto da mensagem ancora"}), 400
     try:
         horas_max = min(int(body.get("horas_max", 168)), 336)
     except Exception:
