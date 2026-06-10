@@ -7016,11 +7016,14 @@ def api_tips_poll():
 @app.route("/admin/tips/recapturar", methods=["POST"])
 @admin_required
 def admin_tips_recapturar():
-    """Reconecta ao Telegram e reprocessa apostas não capturadas das últimas N horas."""
+    """Busca a mensagem âncora pelo texto e processa tudo a partir dela.
+    Só chama a IA para mensagens que passarem parece_aposta() — sem desperdício."""
+    body = request.get_json(silent=True) or {}
+    busca = str(body.get("busca", "")).strip()
     try:
-        horas = min(int((request.get_json(silent=True) or {}).get("horas", 72)), 168)
+        horas_max = min(int(body.get("horas_max", 168)), 336)
     except Exception:
-        horas = 72
+        horas_max = 168
     api_id = os.environ.get("TELEGRAM_API_ID")
     api_hash = os.environ.get("TELEGRAM_API_HASH")
     session_str = os.environ.get("TELEGRAM_SESSION")
@@ -7035,14 +7038,14 @@ def admin_tips_recapturar():
     def _interp_img(texto, b64):
         return _Itp.interpretar_mensagem_grupo(texto, api_key=key, imagem_b64=b64)
     threading.Thread(
-        target=_TL.catchup_historico,
+        target=_TL.catchup_desde_busca,
         kwargs=dict(api_id=int(api_id), api_hash=api_hash, session_str=session_str,
                     grupo=grupo, anthropic_key=key, dados=dados, salvar_fn=salvar,
                     interpretar_fn=_interp, interpretar_img_fn=_interp_img,
-                    salvar_img_fn=salvar_img_tip, horas=horas),
+                    salvar_img_fn=salvar_img_tip, busca=busca, horas_max=horas_max),
         daemon=True,
     ).start()
-    return jsonify({"ok": True, "msg": f"catch-up de {horas}h iniciado"})
+    return jsonify({"ok": True, "msg": f"catch-up iniciado — buscando '{busca}' em {horas_max}h"})
 
 
 @app.route("/admin/tips/aprovar/<tid>", methods=["POST"])

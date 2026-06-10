@@ -257,13 +257,12 @@ def _discord_enviar(webhook, content, img_bytes=None, quote=None, titulo=None):
 # Parte de REDE (Telethon) — isolada; so' roda quando `iniciar` e' chamado
 # ============================================================
 
-def catchup_historico(api_id, api_hash, session_str, grupo, anthropic_key,
-                      dados, salvar_fn, interpretar_fn,
-                      horas=72, interpretar_img_fn=None, salvar_img_fn=None):
-    """Conexão Telethon standalone para recuperar apostas antigas não capturadas.
-    Remove o msg_id de tips_processadas_ids antes de reprocessar, garantindo
-    que mensagens rejeitadas anteriormente (AI falhou ou pré-filtro) sejam
-    reavaliadas com o prompt/lógica atual. Nunca reenvia pro Discord."""
+def catchup_desde_busca(api_id, api_hash, session_str, grupo, anthropic_key,
+                        dados, salvar_fn, interpretar_fn,
+                        busca="", horas_max=168, interpretar_img_fn=None, salvar_img_fn=None):
+    """Busca a mensagem que contém `busca` (sem chamar IA), depois processa
+    todas as mensagens a partir dela usando os filtros normais.
+    IA só é chamada para mensagens que passarem parece_aposta() ou tiverem foto."""
     import asyncio, base64
     try:
         from telethon import TelegramClient
@@ -287,35 +286,48 @@ def catchup_historico(api_id, api_hash, session_str, grupo, anthropic_key,
             await client.disconnect(); return
 
         from datetime import datetime, timezone, timedelta
-        limite = datetime.now(timezone.utc) - timedelta(hours=horas)
+        limite = datetime.now(timezone.utc) - timedelta(hours=horas_max)
+        termos = [t.strip().lower() for t in busca.split() if t.strip()]
 
+        # 1ª passagem: buscar a msg âncora (sem chamar IA)
         msgs = []
-        async for m in client.iter_messages(ent, limit=500):
+        async for m in client.iter_messages(ent, limit=1000):
             if m.date and m.date < limite:
                 break
             msgs.append(m)
-        msgs.reverse()
-        print(f"[catchup] {len(msgs)} msgs na janela de {horas}h")
+        msgs.reverse()  # mais antigas primeiro
+        print(f"[catchup] {len(msgs)} msgs na janela de {horas_max}h")
 
+        ancora_idx = 0
+        if termos:
+            for i, m in enumerate(msgs):
+                t = (m.message or "").lower()
+                if all(termo in t for termo in termos):
+                    ancora_idx = i
+                    print(f"[catchup] ancora encontrada: msg {m.id} idx={i} — {(m.message or '')[:80]}")
+                    break
+            else:
+                print(f"[catchup] ancora '{busca}' nao encontrada — processando tudo")
+
+        # 2ª passagem: processar a partir da âncora usando filtros normais
         novas = 0
-        for m in msgs:
+        for m in msgs[ancora_idx:]:
             texto = m.message or ""
             tem_foto = bool(getattr(m, "photo", None))
-            if not parece_aposta_ampla(texto, tem_foto):
-                continue
             if ja_na_fila(dados, m.id):
                 continue
-            # Remove do dedup para forçar reavaliação
-            ids = dados.get("tips_processadas_ids", [])
-            if any(str(x) == str(m.id) for x in ids):
-                dados["tips_processadas_ids"] = [x for x in ids if str(x) != str(m.id)]
+            # Remove do dedup só se vai reprocessar
+            if parece_aposta(texto) or (tem_foto and parece_aposta_ampla(texto, True)):
+                ids = dados.get("tips_processadas_ids", [])
+                if any(str(x) == str(m.id) for x in ids):
+                    dados["tips_processadas_ids"] = [x for x in ids if str(x) != str(m.id)]
 
             d_iso = m.date.isoformat() if m.date else None
             tip = None
 
             if parece_aposta(texto):
                 tip = processar_texto(texto, m.id, dados, anthropic_key, interpretar_fn, d_iso)
-            elif tem_foto and interpretar_img_fn:
+            elif tem_foto and interpretar_img_fn and parece_aposta_ampla(texto, True):
                 _marcar_processada(dados, m.id)
                 try:
                     b = await client.download_media(m, file=bytes)
@@ -344,7 +356,7 @@ def catchup_historico(api_id, api_hash, session_str, grupo, anthropic_key,
         _prune_tips(dados)
         if novas:
             salvar_fn()
-        print(f"[catchup] concluido: {novas} tip(s) recuperada(s) em {horas}h")
+        print(f"[catchup] concluido: {novas} tip(s) recuperada(s)")
         await client.disconnect()
 
     loop = asyncio.new_event_loop()
