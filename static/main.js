@@ -455,13 +455,16 @@ document.querySelectorAll("tbody tr.bet-row").forEach(linha=>{
         if(busca && !texto.includes(busca)) mostrar = false
         if(casasChecked.length > 0 && !casasChecked.includes(casaTexto)) mostrar = false
         if(esporteFiltro && esporteFiltro !== "todos" && esporteTexto !== esporteFiltro) mostrar = false
-        // Filtro de data. Apostas PENDENTES (em aberto) NUNCA são escondidas por data —
-        // o usuário precisa ver todas, mesmo de jogos futuros. A janela ±1 dia só vale
-        // pras resolvidas (histórico). Date picker específico continua valendo pra todas.
+        // Filtro de data: default mostra hoje, amanhã e pendentes passadas (jogo aconteceu
+        // mas sem resultado). Oculta resolvidas fora da janela e futuras além de amanhã.
+        // Olhinho aberto ou busca/status específico libera tudo.
         if(datePicker){
             if(dataAposta){ const p=n=>String(n).padStart(2,"0");const ds=`${dataAposta.getFullYear()}-${p(dataAposta.getMonth()+1)}-${p(dataAposta.getDate())}`;if(ds!==datePicker) mostrar=false }
-        } else if(!deveVerHistorico && isFinished){
-            if(dataAposta && (dataAposta.getTime()<ontem.getTime()||dataAposta.getTime()>amanha.getTime())) mostrar=false
+        } else if(!deveVerHistorico && dataAposta){
+            const isHoje    = dataAposta.getTime()===hoje.getTime()
+            const isAmanha  = dataAposta.getTime()===amanha.getTime()
+            const isPastPend = dataAposta.getTime()<=hoje.getTime() && !isFinished
+            if(!isHoje && !isAmanha && !isPastPend) mostrar=false
         }
         if(mostrarFinalizadas){ if(!isFinished) mostrar = false }
         else { if(status !== "todos" && !statusTexto.includes(status)) mostrar = false }
@@ -649,6 +652,7 @@ function abrirEditar(btn){
     if(typeof window.gameAutocompleteAttach==="function") window.gameAutocompleteAttach()
 }
 function fecharModal(){ document.getElementById("editModal").style.display="none" }
+function _estaEditando(){ const m=document.getElementById("editModal");return !!(m&&m.style.display==="flex") }
 function salvarEdicao(){
     const payload = {
         id: editId,
@@ -1061,7 +1065,7 @@ function fecharModalBancaInicial(){ const modal=document.getElementById("bancaIn
     }
     function preserve(fn){ const y=window.scrollY;fn();requestAnimationFrame(()=>window.scrollTo({top:y,behavior:"auto"})) }
     document.addEventListener("DOMContentLoaded",()=>{ apply(true);setInterval(()=>preserve(()=>apply(false)),300000) })
-    document.addEventListener("click",e=>{ const t=String(e.target?.innerText||"").toLowerCase();if(t.includes("salvar apostas")||t.includes("adicionar")||t.includes("salvar")||t.includes("excluir")||t.includes("editar")){setTimeout(()=>preserve(()=>apply(true)),700);setTimeout(()=>preserve(()=>apply(true)),1600)} })
+    document.addEventListener("click",e=>{ const t=String(e.target?.innerText||"").toLowerCase();if(t.includes("salvar apostas")||t.includes("adicionar")||t.includes("salvar")||t.includes("excluir")||t.includes("editar")){setTimeout(()=>{ if(typeof _estaEditando==="function"&&_estaEditando()) return; preserve(()=>apply(true)) },700);setTimeout(()=>{ if(typeof _estaEditando==="function"&&_estaEditando()) return; preserve(()=>apply(true)) },1600)} })
     window.v136SmartTableApply=apply
     // Run filtrarApostas after v147's 0ms timer has fired
     document.addEventListener("DOMContentLoaded",()=>{ setTimeout(()=>{ if(typeof filtrarApostas==="function") filtrarApostas() },50) })
@@ -1142,7 +1146,7 @@ function fecharModalBancaInicial(){ const modal=document.getElementById("bancaIn
     async function checarVersaoApostas(){ try{const r=await fetch("/api/apostas_versao",{cache:"no-store"});const data=await r.json();if(!data||!data.ok) return;if(ultimaVersaoApostas===null){ultimaVersaoApostas=data.versao;return};if(data.versao!==ultimaVersaoApostas){ultimaVersaoApostas=data.versao;if(feedVisivel){try{if(typeof carregarFeedApostas==="function") carregarFeedApostas(false)}catch(e){}};setTimeout(()=>{try{if(typeof v147ApplyFilters==="function") v147ApplyFilters()}catch(e){}; aplicarHistorico()},500)}}catch(e){} }
     function patchStatusButtons(){ document.querySelectorAll("tr.bet-row button,tr.bet-row a").forEach(btn=>{if(btn.dataset.v149StatusReady==="1") return;const t=norm(btn.innerText||btn.title||btn.getAttribute("aria-label")||"");const icon=(btn.innerText||"").trim();const looksStatus=t.includes("green")||t.includes("ganha")||t.includes("red")||t.includes("perdida")||t.includes("anular")||t.includes("anulada")||["✓","✔","x","✕","-"].includes(icon);if(!looksStatus) return;btn.dataset.v149StatusReady="1";btn.addEventListener("click",()=>{const row=btn.closest("tr.bet-row");if(row){row.classList.add("v149-status-changing");setTimeout(()=>row.classList.remove("v149-status-changing"),2200)};setTimeout(()=>{try{if(typeof v147ApplyFilters==="function") v147ApplyFilters()}catch(e){}; try{if(typeof v141AtualizarLucroPorBanca==="function") v141AtualizarLucroPorBanca()}catch(e){}; aplicarHistorico()},900)},{capture:true})}) }
     function boot(){ patchStatusButtons();aplicarHistorico();checarVersaoApostas() }
-    document.addEventListener("DOMContentLoaded",()=>{ setTimeout(boot,0);setTimeout(boot,200);setInterval(checarVersaoApostas,30000) })
+    document.addEventListener("DOMContentLoaded",()=>{ setTimeout(boot,0);setTimeout(boot,200);setInterval(()=>{ if(typeof _estaEditando==="function"&&_estaEditando()) return; checarVersaoApostas() },30000) })
     document.addEventListener("click",e=>{ const t=norm(e.target?.innerText||"");if(t.includes("ultimas apostas")||t.includes("últimas apostas")) feedVisivel=true;if(t.includes("evolucao")||t.includes("evolução")) feedVisivel=false;if(t.includes("salvar")||t.includes("editar")||t.includes("excluir")||t.includes("agrupar")||t.includes("expandir")){setTimeout(()=>{ensureHistoricoButton();patchStatusButtons();aplicarHistorico()},800)} })
     window.v149AplicarHistorico=aplicarHistorico
     window.v149SetMostrarHistorico=function(v){ mostrarHistoricoAntigo=Boolean(v); aplicarHistorico() }
@@ -1160,7 +1164,7 @@ function fecharModalBancaInicial(){ const modal=document.getElementById("bancaIn
     document.addEventListener("DOMContentLoaded",()=>{ setTimeout(refresh,900);setTimeout(refresh,2000) })
     // Antes rodava a CADA clique (causava a tabela inteira piscar ao abrir o editar).
     // Agora roda periodicamente — finaliza jogos antigos sem re-renderizar a cada clique.
-    setInterval(refresh, 60000)
+    setInterval(()=>{ if(typeof _estaEditando==="function"&&_estaEditando()) return; refresh() }, 60000)
     window.v150ForceFinalizeOldLiveGames=refresh
 })();
 
