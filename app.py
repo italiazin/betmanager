@@ -13,6 +13,9 @@ import time
 import threading
 from zoneinfo import ZoneInfo
 import requests
+
+_BRT = ZoneInfo('America/Sao_Paulo')
+def _agora_brt(): return datetime.now(tz=_BRT)
 from functools import wraps
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from werkzeug.security import generate_password_hash, check_password_hash
@@ -889,7 +892,7 @@ def registrar_movimentacao_casa(casa, tipo, valor, descricao=""):
 
     movimentacoes_usuario().append({
         "id": str(uuid.uuid4()),
-        "data": datetime.now().strftime("%d/%m/%Y %H:%M"),
+        "data": _agora_brt().strftime("%d/%m/%Y %H:%M"),
         "casa": casa_limpa,
         "tipo": tipo,
         "valor": round(float(valor or 0), 2),
@@ -1725,7 +1728,7 @@ def parse_data(data_str):
 
 
 def calendario_historico(ano=None, mes=None):
-    hoje = datetime.now()
+    hoje = _agora_brt()
     ano = int(ano or hoje.year)
     mes = int(mes or hoje.month)
 
@@ -3120,7 +3123,7 @@ def criar_aposta_manual_payload(form):
     bet = {
         "id": str(uuid.uuid4()),
         "user_id": usuario_id_atual(),
-        "data": datetime.now().strftime("%d/%m/%Y %H:%M"),
+        "data": _agora_brt().strftime("%d/%m/%Y %H:%M"),
         "aposta": aposta_texto,
         "casa": limpar_casa(form.get("casa", "")),
         "esporte": limpar_linha(form.get("esporte", "")),
@@ -3181,7 +3184,7 @@ def _usuarios_default():
                 "assinatura_ativa": True,
                 "plano": "admin",
                 "apostas_publicas_padrao": False,
-                "criado_em": datetime.now().strftime("%d/%m/%Y %H:%M")
+                "criado_em": _agora_brt().strftime("%d/%m/%Y %H:%M")
             }
         ]
     }
@@ -3497,7 +3500,7 @@ def criar_conta():
                 "assinatura_ativa": False,
                 "plano": "free",
                 "apostas_publicas_padrao": False,
-                "criado_em": datetime.now().strftime("%d/%m/%Y %H:%M")
+                "criado_em": _agora_brt().strftime("%d/%m/%Y %H:%M")
             })
             salvar_usuarios(usuarios)
 
@@ -3852,7 +3855,7 @@ def salvar_preview():
         bet_preview = {
             "id": str(uuid.uuid4()),
             "user_id": usuario_id_atual(),
-            "data": datetime.now().strftime("%d/%m/%Y %H:%M"),
+            "data": _agora_brt().strftime("%d/%m/%Y %H:%M"),
             "aposta": aposta_texto,
             "casa": limpar_casa(a.get("casa", "")),
             "esporte": limpar_linha(a.get("esporte", "")),
@@ -6687,7 +6690,7 @@ def _tip_para_bet(tip, uid):
     base = {
         "id": str(uuid.uuid4()),
         "user_id": uid,
-        "data": datetime.now().strftime("%d/%m/%Y %H:%M"),
+        "data": _agora_brt().strftime("%d/%m/%Y %H:%M"),
         "aposta": _aposta_str_da_tip(tip),
         "casa": tip.get("casa", "") or "",
         "esporte": tip.get("esporte", "Futebol") or "Futebol",
@@ -7207,7 +7210,7 @@ def admin_tips_reportar(tid):
     tip["reportada"] = True
     tip["report_motivo"] = str(body.get("motivo", "")).strip()[:300]
     tip["report_por"] = session.get("user_id", "")
-    tip["report_em"] = datetime.now().strftime("%d/%m/%Y %H:%M")
+    tip["report_em"] = _agora_brt().strftime("%d/%m/%Y %H:%M")
     salvar()
     return jsonify({"ok": True})
 
@@ -7457,7 +7460,7 @@ def calculadora_planilhar():
             bet = {
                 "id": str(uuid.uuid4()),
                 "user_id": usuario_id_atual(),
-                "data": datetime.now().strftime("%d/%m/%Y %H:%M"),
+                "data": _agora_brt().strftime("%d/%m/%Y %H:%M"),
                 "aposta": aposta_texto,
                 "casa": casa,
                 "esporte": limpar_linha(a.get("esporte", "Arbitragem")),
