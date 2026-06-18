@@ -6535,6 +6535,13 @@ def admin_backup_restaurar(backup_id):
         return jsonify({"status": "erro", "msg": str(e)}), 500
 
 
+@app.route("/admin/exportar-dados")
+@admin_required
+def admin_exportar_dados():
+    """Exporta dados + usuarios como JSON (uso único para migração local)."""
+    return jsonify({"dados": dados, "usuarios": carregar_usuarios()})
+
+
 # ============================================================
 # RECUPERACAO VIA LEDGER (Camada 1) - desfaz perda de apostas de um usuario
 # ============================================================
