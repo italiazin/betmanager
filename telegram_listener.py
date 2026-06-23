@@ -374,7 +374,7 @@ def catchup_desde_busca(api_id, api_hash, session_str, grupo, anthropic_key,
 
 def iniciar(api_id, api_hash, session_str, grupo, anthropic_key,
             dados, salvar_fn, interpretar_fn, horas_catchup=8, interpretar_img_fn=None,
-            discord_webhook=None, salvar_img_fn=None):
+            discord_webhook=None, salvar_img_fn=None, post_discord_fn=None):
     """Loop do listener — BLOQUEIA, entao chame numa thread daemon.
     Reconecta sozinho com backoff. Telethon e' importado AQUI (lazy).
     `interpretar_img_fn(texto, b64) -> dict` (opcional): visao hibrida — quando a
@@ -496,6 +496,11 @@ def iniciar(api_id, api_hash, session_str, grupo, anthropic_key,
             _discord_enviar(discord_webhook, txt, img_bytes,
                             quote=quote, titulo=_casa_do_texto(txt))
             print(f"[discord] aposta {m.id} encaminhada (foto={bool(img_bytes)})")
+            if post_discord_fn:
+                try:
+                    post_discord_fn(m.id, txt, img_bytes)
+                except Exception:
+                    pass
             return True
         except Exception as e:
             print("[discord] falha:", e)
