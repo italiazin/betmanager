@@ -7620,24 +7620,66 @@ def admin_tips_reportar(tid):
 @app.route("/admin/dev/rodar-migracao-ellen")
 @admin_required
 def rodar_migracao_ellen():
-    _migrar_ellen_se_necessario()
-    conn = get_pg_conn()
-    resultado = {}
-    if conn:
-        try:
-            cur = conn.cursor()
-            cur.execute("SELECT valor FROM app_store WHERE chave = 'usuarios'")
-            row = cur.fetchone()
-            if row:
-                val = row[0] if isinstance(row[0], dict) else json.loads(row[0])
-                users = val.get("users", [])
-                resultado["total_usuarios"] = len(users)
-                resultado["ellen"] = next((u.get("email") for u in users if "ellen" in u.get("email","").lower()), None)
-            cur.close()
-            release_pg_conn(conn)
-        except Exception as e:
-            resultado["erro"] = str(e)
-    return jsonify(resultado)
+    import os as _dos
+    log = []
+    try:
+        _arq = _dos.path.join(_dos.path.dirname(__file__), "_ellen_migration.json")
+        log.append(f"arquivo: {_arq}")
+        log.append(f"existe: {_dos.path.exists(_arq)}")
+        if not _dos.path.exists(_arq):
+            return jsonify({"log": log, "erro": "arquivo nao encontrado"})
+        with open(_arq, encoding="utf-8") as f:
+            _raw = json.load(f)
+        _ellen_user = _raw.get("user")
+        _ellen_bets_src = _raw.get("bets", [])
+        log.append(f"ellen_user: {_ellen_user.get('email') if _ellen_user else None}")
+        log.append(f"bets_src: {len(_ellen_bets_src)}")
+        _uid = _ellen_user.get("id","") if _ellen_user else ""
+        _email = _ellen_user.get("email","").lower() if _ellen_user else ""
+        conn = get_pg_conn()
+        log.append(f"conn: {conn is not None}")
+        if not conn:
+            return jsonify({"log": log, "erro": "sem conexao"})
+        cur = conn.cursor()
+        cur.execute("SELECT valor FROM app_store WHERE chave = 'usuarios'")
+        row = cur.fetchone()
+        log.append(f"row_usuarios: {row is not None}")
+        _usuarios = (row[0] if isinstance(row[0], dict) else json.loads(row[0])) if row else {"users": []}
+        _users = _usuarios.get("users", [])
+        log.append(f"total_users_atual: {len(_users)}")
+        ja_existe = any(u.get("email","").lower() == _email for u in _users)
+        log.append(f"ja_existe: {ja_existe}")
+        if not ja_existe:
+            _users.append(_ellen_user)
+            _usuarios["users"] = _users
+            cur.execute(
+                "INSERT INTO app_store (chave, valor, atualizado_em) VALUES ('usuarios', %s::jsonb, NOW()) "
+                "ON CONFLICT (chave) DO UPDATE SET valor = EXCLUDED.valor, atualizado_em = NOW()",
+                (json.dumps(_usuarios, ensure_ascii=False),)
+            )
+            log.append("usuarios: INSERT executado")
+            cur.execute("SELECT valor FROM app_store WHERE chave = 'dados'")
+            row2 = cur.fetchone()
+            _dados_pg = (row2[0] if isinstance(row2[0], dict) else json.loads(row2[0])) if row2 else {"bets": []}
+            _bets = _dados_pg.get("bets", [])
+            _ids_existentes = {b.get("id") for b in _bets}
+            _novas = [b for b in _ellen_bets_src if b.get("user_id") == _uid and b.get("id") not in _ids_existentes]
+            log.append(f"novas_apostas: {len(_novas)}")
+            _bets.extend(_novas)
+            _dados_pg["bets"] = _bets
+            cur.execute(
+                "INSERT INTO app_store (chave, valor, atualizado_em) VALUES ('dados', %s::jsonb, NOW()) "
+                "ON CONFLICT (chave) DO UPDATE SET valor = EXCLUDED.valor, atualizado_em = NOW()",
+                (json.dumps(_dados_pg, ensure_ascii=False),)
+            )
+            log.append("dados: INSERT executado")
+            conn.commit()
+            log.append("COMMIT OK")
+        cur.close()
+        release_pg_conn(conn)
+    except Exception as e:
+        log.append(f"EXCECAO: {e}")
+    return jsonify({"log": log})
 
 
 @app.route("/admin/dev/patch-saldos-italiazin")
