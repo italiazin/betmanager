@@ -49,6 +49,31 @@ ARQUIVO = os.path.join(BASE_DIR, "dados.json")
 CACHE_API = os.path.join(BASE_DIR, "api_cache.json")
 USUARIOS_PATH = os.path.join(BASE_DIR, "usuarios.json")
 
+# ── Planilhas ──────────────────────────────────────────────────────────────────
+def _arquivo_para_planilha(pid):
+    pid = int(pid)
+    return os.path.join(BASE_DIR, "dados.json") if pid <= 1 else os.path.join(BASE_DIR, f"dados_p{pid}.json")
+
+def _ler_config_planilhas():
+    try:
+        with open(CONFIG_PATH, "r", encoding="utf-8") as _f:
+            _cfg = json.load(_f)
+    except Exception:
+        _cfg = {}
+    _ps = _cfg.get("planilhas") or [{"id": 1, "nome": "Grupo 1"}]
+    return _cfg, _ps, int(_cfg.get("planilha_ativa", 1))
+
+def _gravar_config_planilhas(cfg):
+    try:
+        with open(CONFIG_PATH, "w", encoding="utf-8") as _f:
+            json.dump(cfg, _f, indent=2, ensure_ascii=False)
+    except Exception as _e:
+        print(f"[planilha] erro ao gravar config: {_e}")
+
+_cfg_init, _planilhas_list_init, _planilha_ativa_id = _ler_config_planilhas()
+ARQUIVO = _arquivo_para_planilha(_planilha_ativa_id)
+# ──────────────────────────────────────────────────────────────────────────────
+
 DATABASE_URL = os.environ.get("DATABASE_URL", "")
 
 # ============================================================
@@ -69,11 +94,34 @@ if not _RODANDO_NO_RENDER and _ID_BANCO_PRODUCAO in (DATABASE_URL or ""):
     DATABASE_URL = ""
 
 
-def get_pg_conn():
-    if not PSYCOPG2_OK:
+_pg_pool = None
+
+def _get_pg_pool():
+    global _pg_pool
+    if _pg_pool is not None:
+        return _pg_pool
+    if not PSYCOPG2_OK or not DATABASE_URL:
         return None
     try:
-        return psycopg2.connect(DATABASE_URL, sslmode='require')
+        from psycopg2 import pool as pg_pool_mod
+        _pg_pool = pg_pool_mod.ThreadedConnectionPool(1, 5, DATABASE_URL)
+        print("PostgreSQL: connection pool criado (1-5 conexoes)")
+        return _pg_pool
+    except Exception as e:
+        print("ERRO ao criar connection pool:", e)
+        return None
+
+def get_pg_conn():
+    p = _get_pg_pool()
+    if p:
+        try:
+            return p.getconn()
+        except Exception as e:
+            print("ERRO ao obter conexao do pool:", e)
+    if not PSYCOPG2_OK or not DATABASE_URL:
+        return None
+    try:
+        return psycopg2.connect(DATABASE_URL)
     except Exception as e:
         print("ERRO AO CONECTAR AO POSTGRES:", e)
         return None
@@ -81,10 +129,19 @@ def get_pg_conn():
 def release_pg_conn(conn):
     if not conn:
         return
+    p = _get_pg_pool()
+    if p:
+        try:
+            p.putconn(conn)
+            return
+        except Exception:
+            pass
     try:
-        conn.close()
+        release_pg_conn(conn)
     except Exception:
         pass
+
+_tip_imgs_local: dict = {}  # cache em memória para imagens vindas do Supabase
 
 def salvar_img_tip(msg_id, img_bytes):
     """Salva imagem de tip no PostgreSQL (sobrevive a restarts/deploys)."""
@@ -191,12 +248,12 @@ def init_pg_db():
             print("Durabilidade: tabelas apostas_ledger e backups_v2 OK")
         except Exception as e:
             print("ERRO init durabilidade (app segue):", e)
-        conn.close()
+        release_pg_conn(conn)
         print("PostgreSQL: tabelas storage, backups, app_store e tip_images OK")
     except Exception as e:
         print("ERRO AO INICIALIZAR POSTGRES:", e)
         try:
-            conn.close()
+            release_pg_conn(conn)
         except Exception:
             pass
 
@@ -388,7 +445,7 @@ def carregar():
             cur.execute("SELECT valor FROM app_store WHERE chave = 'dados'")
             row = cur.fetchone()
             cur.close()
-            conn.close()
+            release_pg_conn(conn)
             if row:
                 val = row[0] if isinstance(row[0], dict) else json.loads(row[0])
                 print("PostgreSQL: dados carregados com sucesso.")
@@ -411,7 +468,7 @@ def carregar():
         except Exception as e:
             print("ERRO AO CARREGAR DO POSTGRES:", e)
             try:
-                conn.close()
+                release_pg_conn(conn)
             except Exception:
                 pass
 
@@ -444,7 +501,7 @@ def _pg_obter_conn_save():
                 return _pg_save_conn
         except Exception:
             pass
-    _pg_save_conn = psycopg2.connect(DATABASE_URL, sslmode="require") if PSYCOPG2_OK else None
+    _pg_save_conn = psycopg2.connect(DATABASE_URL) if (PSYCOPG2_OK and DATABASE_URL) else None
     return _pg_save_conn
 
 # Baseline em memoria do ultimo save bem-sucedido, para o diff do ledger.
@@ -475,6 +532,15 @@ def _pg_executar_save(d):
         return False
     cur = conn.cursor()
     bets_novos = d.get("bets", []) or []
+
+    # --- Trava anti-wipe: bloqueia save se apostas cairem de N para 0 ---
+    if _estado_bets_anterior is not None:
+        qtd_antes = len(_estado_bets_anterior)
+        qtd_depois = len(bets_novos)
+        if qtd_antes > 5 and qtd_depois == 0:
+            print(f"BLOQUEADO _pg_executar_save: tentativa de salvar 0 apostas quando existem {qtd_antes} — operacao cancelada")
+            cur.close()
+            return False
 
     # --- Ledger (Camada 1): calcula o diff vs baseline e detecta quedas ---
     eventos = []
@@ -528,7 +594,7 @@ def _pg_salvar_dados(d):
             global _pg_save_conn
             try:
                 if _pg_save_conn:
-                    _pg_save_conn.close()
+                    _pg_save_release_pg_conn(conn)
             except Exception:
                 pass
             _pg_save_conn = None
@@ -564,6 +630,45 @@ try:
 except Exception:
     pass
 
+def _migrar_ellen_se_necessario():
+    """Importa conta e apostas da Ellen do backup do Fly.io se ela não existir."""
+    try:
+        import os as _os
+        _arq = _os.path.join(_os.path.dirname(__file__), "_ellen_migration.json")
+        if not _os.path.exists(_arq):
+            return
+        with open(_arq, encoding="utf-8") as _f:
+            _raw = json.load(_f)
+        _ellen_user = _raw.get("user") or (_raw.get("usuarios", {}).get("users") or [None])[0]
+        _ellen_bets_src = _raw.get("bets") or _raw.get("dados", {}).get("bets", [])
+        if not _ellen_user:
+            return
+        _email = _ellen_user.get("email", "").lower()
+        _uid = _ellen_user.get("id", "")
+        # Verifica usuários
+        _usuarios = db_get_json("usuarios", {"users": []})
+        _users = _usuarios.get("users", [])
+        if any(u.get("email","").lower() == _email for u in _users):
+            print(f"Migração Ellen: já existe, pulando.")
+            return
+        # Adiciona usuária
+        _users.append(_ellen_user)
+        _usuarios["users"] = _users
+        db_set_json("usuarios", _usuarios)
+        # Adiciona apostas (só as dela)
+        _dados = db_get_json("dados", {"bets": []})
+        _bets = _dados.get("bets", [])
+        _ids_existentes = {b.get("id") for b in _bets}
+        _novas = [b for b in _ellen_bets_src if b.get("user_id") == _uid and b.get("id") not in _ids_existentes]
+        _bets.extend(_novas)
+        _dados["bets"] = _bets
+        db_set_json("dados", _dados)
+        print(f"Migração Ellen: {len(_novas)} apostas importadas com sucesso.")
+    except Exception as _e:
+        print(f"Migração Ellen ERRO: {_e}")
+
+_migrar_ellen_se_necessario()
+
 
 def _bootstrap_ledger():
     """Define o baseline em memoria para o diff e, se o ledger estiver vazio,
@@ -587,7 +692,7 @@ def _bootstrap_ledger():
             conn.commit()
             print(f"Ledger bootstrap: {len(eventos)} apostas registradas.")
         cur.close()
-        conn.close()
+        release_pg_conn(conn)
     except Exception as e:
         print("AVISO bootstrap ledger (app segue):", e)
 
@@ -639,11 +744,16 @@ def total_saldos_casas_v61():
 
 @app.context_processor
 def inject_usuario():
+    _, _pls, _ = _ler_config_planilhas()
+    _ativa_nome = next((p["nome"] for p in _pls if p["id"] == _planilha_ativa_id), _pls[0]["nome"] if _pls else "Grupo 1")
     return {
         "usuario": usuario_logado(),
         "usuario_inicial": ((usuario_logado() or {}).get("nome", "U")[:1].upper()),
         "assinatura_ativa_usuario": assinatura_ativa_usuario if "assinatura_ativa_usuario" in globals() else (lambda: False),
-        "aposta_publica_padrao_usuario": aposta_publica_padrao_usuario if "aposta_publica_padrao_usuario" in globals() else (lambda: False)
+        "aposta_publica_padrao_usuario": aposta_publica_padrao_usuario if "aposta_publica_padrao_usuario" in globals() else (lambda: False),
+        "planilhas": _pls,
+        "planilha_ativa_id": _planilha_ativa_id,
+        "planilha_ativa_nome": _ativa_nome,
     }
 
 
@@ -661,6 +771,27 @@ def usuario_id_atual():
 
 
 def usuario_logado():
+    # Modo local: auto-login como admin (sem sessão)
+    if not _IS_PROD:
+        try:
+            usuarios = carregar_usuarios()
+            for u in usuarios.get("users", []):
+                if u.get("is_admin"):
+                    u.setdefault("ativo", True)
+                    u.setdefault("assinatura_ativa", True)
+                    u.setdefault("plano", "admin")
+                    u.setdefault("apostas_publicas_padrao", False)
+                    u.setdefault("tips_com_imagem", False)
+                    return u
+        except Exception:
+            pass
+        # Nenhum admin encontrado — retorna admin padrão em memória
+        return {"id": "local-admin", "nome": "Admin", "email": "admin@local",
+                "is_admin": True, "ativo": True, "assinatura_ativa": True,
+                "plano": "admin", "apostas_publicas_padrao": False,
+                "tips_com_imagem": False, "notif_som": True,
+                "notif_card": True, "notif_som_tipo": "beep"}
+
     try:
         uid = session.get("user_id")
     except Exception:
@@ -1679,21 +1810,28 @@ def metricas():
 
 
 def grafico():
-    labels, valores = [], []
+    labels, valores, rows = [], [], []
     lucro_acum = 0.0
     for b in bets_do_usuario():
         lucro = float(b.get("lucro", 0) or 0)
-        if lucro == 0 and not b.get("estado"):
-            continue  # ignora pendentes (sem lucro real ainda)
-        lucro_acum += lucro
-        labels.append(b.get("data", ""))
-        valores.append(round(lucro_acum, 2))
+        estado = b.get("estado", "")
+        if lucro != 0 or estado:
+            lucro_acum += lucro
+            labels.append(b.get("data", ""))
+            valores.append(round(lucro_acum, 2))
+        rows.append({
+            "data": b.get("data", "")[:10],
+            "jogo": b.get("jogo", "") or b.get("aposta", ""),
+            "casa": b.get("casa", ""),
+            "odd": b.get("odd", ""),
+            "valor": float(b.get("valor", 0) or 0),
+            "lucro": round(lucro, 2) if estado else None,
+            "acumulado": round(lucro_acum, 2) if estado else None,
+            "estado": estado,
+        })
 
-    if not labels:
-        labels = ["Início"]
-        valores = [0]
-
-    return labels, valores
+    rows.reverse()
+    return labels, valores, rows
 
 
 
@@ -2616,8 +2754,22 @@ def linha_parece_lixo_ocr_v19(linha):
     return False
 
 
+_PREFIXO_LIXO_OCR_ALLOWLIST = {
+    "de", "da", "do", "em", "no", "na", "ou", "se", "ao", "vs"
+}
+
+
+def remover_prefixo_lixo_ocr_v20(linha):
+    """Remove prefixo curto e solto (ex: 'wf ', 'sf ', 'o ', '3 sf ') que o
+    Tesseract gera ao ler icones/checkboxes da bet slip como letras."""
+    m = re.match(r"^(\d\s+)?([A-Za-z]{1,2})\s+(?=[A-ZÀ-Ú0-9])", linha)
+    if m and m.group(2).lower() not in _PREFIXO_LIXO_OCR_ALLOWLIST:
+        return linha[m.end():]
+    return linha
+
+
 def limpar_linha_ocr_v19(linha):
-    l = limpar_linha(linha)
+    l = remover_prefixo_lixo_ocr_v20(limpar_linha(linha))
 
     for termo in [
         "golden boost", "boost", "ganhos aumentados", "ganho aumentado",
@@ -3218,19 +3370,22 @@ def carregar_usuarios():
             cur.execute("SELECT valor FROM app_store WHERE chave = 'usuarios'")
             row = cur.fetchone()
             cur.close()
-            conn.close()
+            release_pg_conn(conn)
             if row:
                 val = row[0] if isinstance(row[0], dict) else json.loads(row[0])
                 resultado = _usuarios_aplicar_defaults(val)
+                _usuarios_cache = {"data": resultado, "ts": agora}
+                return resultado
             else:
-                resultado = _usuarios_default()
-                salvar_usuarios(resultado)
-            _usuarios_cache = {"data": resultado, "ts": agora}
-            return resultado
+                # Chave ausente: retorna default SEM salvar e SEM atualizar cache.
+                # Nao salvar evita apagar contas reais se a chave sumir por bug/acidente.
+                # Nao cachear força re-checar o banco na proxima requisicao (recupera automatico).
+                print("AVISO: chave 'usuarios' nao encontrada no app_store — retornando default SEM salvar")
+                return _usuarios_default()
         except Exception as e:
             print("ERRO AO CARREGAR USUARIOS DO POSTGRES:", e)
             try:
-                conn.close()
+                release_pg_conn(conn)
             except Exception:
                 pass
             if _usuarios_cache["data"] is not None:
@@ -3257,9 +3412,18 @@ def carregar_usuarios():
 def salvar_usuarios(data):
     global _usuarios_cache, _estado_usuarios_anterior
     import time
+    users_novos = data.get("users", []) or []
+
+    # Trava anti-wipe: nunca salva lista menor que a que está no banco.
+    # Protege contra _usuarios_default() sendo salvo acidentalmente.
+    if _usuarios_cache["data"] is not None:
+        qtd_atual = len(_usuarios_cache["data"].get("users", []))
+        if len(users_novos) < qtd_atual:
+            print(f"BLOQUEADO salvar_usuarios: tentativa de salvar {len(users_novos)} usuarios quando existem {qtd_atual} no cache — operacao cancelada")
+            return
+
     # Atualiza cache imediatamente (não espera TTL)
     _usuarios_cache = {"data": data, "ts": time.monotonic()}
-    users_novos = data.get("users", []) or []
 
     # Salva em app_store (fonte principal)
     conn = get_pg_conn()
@@ -3288,13 +3452,13 @@ def salvar_usuarios(data):
             )
             conn.commit()
             cur.close()
-            conn.close()
+            release_pg_conn(conn)
             _estado_usuarios_anterior = copy.deepcopy(users_novos)
             return
         except Exception as e:
             print("ERRO AO SALVAR USUARIOS NO POSTGRES:", e)
             try:
-                conn.close()
+                release_pg_conn(conn)
             except Exception:
                 pass
 
@@ -3324,7 +3488,7 @@ def _bootstrap_ledger_usuarios():
             conn.commit()
             print(f"Ledger usuarios bootstrap: {len(eventos)} usuarios registrados.")
         cur.close()
-        conn.close()
+        release_pg_conn(conn)
     except Exception as e:
         print("AVISO bootstrap ledger usuarios (app segue):", e)
 
@@ -3446,8 +3610,32 @@ def _gate_assinatura():
 def bloqueado():
     return render_template("bloqueado.html")
 
+@app.route("/auto-login/<token>")
+def auto_login(token):
+    """Login automático local via token gerado pelo launcher (uso único)."""
+    esperado = os.environ.get("BM_AUTO_LOGIN_TOKEN", "")
+    if not esperado or token != esperado:
+        return redirect("/login")
+    usuarios = carregar_usuarios()
+    admin = next((u for u in usuarios.get("users", []) if u.get("is_admin")), None)
+    if not admin:
+        # Cria admin padrão se não existir
+        admin = {"id": "local-admin", "nome": "Admin", "email": "admin@local",
+                 "is_admin": True, "ativo": True}
+        usuarios.setdefault("users", []).append(admin)
+        salvar_usuarios(usuarios)
+    session["user_id"] = admin["id"]
+    session.permanent = True
+    # Invalida o token após uso
+    os.environ["BM_AUTO_LOGIN_TOKEN"] = ""
+    return redirect("/")
+
+
 @app.route("/login", methods=["GET", "POST"])
 def login():
+    if not _IS_PROD:
+        return redirect("/")
+
     erro = ""
 
     if request.method == "POST":
@@ -3605,7 +3793,7 @@ def index():
         salvar()
         return redirect("/")
 
-    labels, valores = grafico()
+    labels, valores, lucro_rows = grafico()
 
     jogos_usuario = sorted(set(
         b.get("jogo", "").strip()
@@ -3613,16 +3801,82 @@ def index():
         if b.get("jogo", "").strip()
     ))
 
+    _cfg_idx, _pls_idx, _ = _ler_config_planilhas()
     return render_template(
         "index.html",
         bets=bets_display_v39(),
         m=metricas(),
         labels=labels,
         valores=valores,
+        lucro_rows=lucro_rows,
         casas=CASAS_DISPONIVEIS,
         esportes=ESPORTES_DISPONIVEIS,
-        jogos_usuario=jogos_usuario
+        jogos_usuario=jogos_usuario,
+        planilhas=_pls_idx,
+        planilha_ativa_id=_planilha_ativa_id,
     )
+
+
+@app.route("/trocar_planilha", methods=["POST"])
+@login_required
+def trocar_planilha():
+    global dados, _planilha_ativa_id, ARQUIVO
+    try:
+        pid = int(request.form.get("pid", 1))
+    except (ValueError, TypeError):
+        pid = 1
+    if pid == _planilha_ativa_id:
+        return redirect("/")
+    salvar()
+    cfg, planilhas, _ = _ler_config_planilhas()
+    if not any(p["id"] == pid for p in planilhas):
+        planilhas.append({"id": pid, "nome": f"Grupo {pid}"})
+    cfg["planilhas"] = planilhas
+    cfg["planilha_ativa"] = pid
+    _gravar_config_planilhas(cfg)
+    _planilha_ativa_id = pid
+    ARQUIVO = _arquivo_para_planilha(pid)
+    dados = carregar()
+    return redirect("/")
+
+
+@app.route("/nova_planilha", methods=["POST"])
+@login_required
+def nova_planilha():
+    global dados, _planilha_ativa_id, ARQUIVO
+    cfg, planilhas, _ = _ler_config_planilhas()
+    new_id = max((p["id"] for p in planilhas), default=1) + 1
+    planilhas.append({"id": new_id, "nome": f"Grupo {new_id}"})
+    cfg["planilhas"] = planilhas
+    cfg["planilha_ativa"] = new_id
+    _gravar_config_planilhas(cfg)
+    salvar()
+    _planilha_ativa_id = new_id
+    ARQUIVO = _arquivo_para_planilha(new_id)
+    dados = carregar()
+    return redirect("/")
+
+
+@app.route("/renomear_planilha", methods=["POST"])
+@login_required
+def renomear_planilha():
+    try:
+        pid = int(request.form.get("pid", 1))
+        nome = str(request.form.get("nome", "")).strip()[:40]
+    except Exception:
+        return redirect("/")
+    if not nome:
+        return redirect("/")
+    cfg, planilhas, _ = _ler_config_planilhas()
+    for p in planilhas:
+        if p["id"] == pid:
+            p["nome"] = nome
+            break
+    else:
+        planilhas.append({"id": pid, "nome": nome})
+    cfg["planilhas"] = planilhas
+    _gravar_config_planilhas(cfg)
+    return redirect("/")
 
 
 @app.route("/estatisticas")
@@ -3742,6 +3996,50 @@ def editar_ajax():
     return jsonify({"status": "ok"})
 
 
+_ocr_jobs = {}
+
+def _ocr_processar_job(job_id, imagens):
+    try:
+        resultados = []
+        os.makedirs(os.path.join(BASE_DIR, "uploads"), exist_ok=True)
+        for img in imagens:
+            try:
+                caminho = os.path.join(BASE_DIR, "uploads", f"{uuid.uuid4()}.png")
+                img_base64 = img.split(",", 1)[1] if "," in img else img
+                with open(caminho, "wb") as f:
+                    f.write(base64.b64decode(img_base64))
+
+                texto = ler_imagem(caminho)
+                aposta_extraida = extrair(texto)
+                if not isinstance(aposta_extraida, dict):
+                    aposta_extraida = {"aposta": str(aposta_extraida or "")}
+
+                _aposta = aposta_extraida.get("aposta", "")
+                if _aposta and " - " in _aposta:
+                    _prefix, _, _resto = _aposta.partition(" - ")
+                    if re.search(r"\s(x|vs\.?)\s", _prefix, re.I) and _resto.strip():
+                        aposta_extraida["aposta"] = _resto.strip()
+
+                for k in ("aposta", "casa", "esporte", "jogo", "mercado", "selecao", "linha", "periodo", "odd", "valor"):
+                    aposta_extraida.setdefault(k, "")
+                aposta_extraida.setdefault("texto_bruto", texto)
+                aposta_extraida.setdefault("texto_interpretado", aposta_extraida.get("aposta", ""))
+                for _c in ("aposta", "jogo", "casa", "esporte", "selecao", "linha", "periodo"):
+                    if isinstance(aposta_extraida.get(_c), str):
+                        aposta_extraida[_c] = _display_sem_barra(aposta_extraida[_c])
+                resultados.append(aposta_extraida)
+            except Exception as e:
+                print("ERRO EM UMA IMAGEM OCR job:", repr(e))
+                resultados.append({"aposta": "", "casa": "", "esporte": "", "jogo": "", "mercado": "",
+                                   "selecao": "", "linha": "", "periodo": "", "odd": "", "valor": "",
+                                   "texto_bruto": "", "texto_interpretado": "", "erro": str(e)})
+
+        _ocr_jobs[job_id] = {"status": "done", "ok": True, "resultados": resultados, "ts": time.time()}
+    except Exception as e:
+        print("ERRO GERAL OCR job:", repr(e))
+        _ocr_jobs[job_id] = {"status": "error", "ok": False, "erro": str(e), "resultados": [], "ts": time.time()}
+
+
 @app.route("/colar", methods=["POST"])
 @login_required
 @assinatura_required
@@ -3749,87 +4047,26 @@ def colar():
     try:
         payload = request.get_json(silent=True) or {}
         imagens = payload.get("images", [])
-        resultados = []
-
-        os.makedirs(os.path.join(BASE_DIR, "uploads"), exist_ok=True)
-
-        for img in imagens:
-            try:
-                caminho = os.path.join(BASE_DIR, "uploads", f"{uuid.uuid4()}.png")
-
-                if "," in img:
-                    img_base64 = img.split(",", 1)[1]
-                else:
-                    img_base64 = img
-
-                with open(caminho, "wb") as f:
-                    f.write(base64.b64decode(img_base64))
-
-                texto = ler_imagem(caminho)
-                print("===== OCR DEBUG /colar =====")
-                print(texto)
-                print("===== FIM OCR DEBUG /colar =====")
-
-                aposta_extraida = extrair(texto)
-
-                if not isinstance(aposta_extraida, dict):
-                    aposta_extraida = {"aposta": str(aposta_extraida or "")}
-
-                # Obs: a "/" é mantida no DADO (necessária pra detectar múltiplas e
-                # separar os jogos). A remoção da "/" acontece só na EXIBIÇÃO
-                # (ver display_sem_barra / aposta_display), pra nunca aparecer na tela.
-
-                # Remove prefixo "Jogo x Adversário - " do campo aposta quando o OCR o inclui
-                _aposta = aposta_extraida.get("aposta", "")
-                if _aposta and " - " in _aposta:
-                    _prefix, _, _resto = _aposta.partition(" - ")
-                    if re.search(r"\s(x|vs\.?)\s", _prefix, re.I) and _resto.strip():
-                        aposta_extraida["aposta"] = _resto.strip()
-
-                aposta_extraida.setdefault("aposta", "")
-                aposta_extraida.setdefault("casa", "")
-                aposta_extraida.setdefault("esporte", "")
-                aposta_extraida.setdefault("jogo", "")
-                aposta_extraida.setdefault("mercado", "")
-                aposta_extraida.setdefault("selecao", "")
-                aposta_extraida.setdefault("linha", "")
-                aposta_extraida.setdefault("periodo", "")
-                aposta_extraida.setdefault("odd", "")
-                aposta_extraida.setdefault("valor", "")
-                aposta_extraida.setdefault("texto_bruto", texto)
-                aposta_extraida.setdefault("texto_interpretado", aposta_extraida.get("aposta", ""))
-
-                # Remove a "/" dos campos que aparecem no preview do OCR (vira espaço).
-                # mercado/itens_multipla_detalhados ficam intactos (guardam a info da múltipla).
-                for _c in ("aposta", "jogo", "casa", "esporte", "selecao", "linha", "periodo"):
-                    if isinstance(aposta_extraida.get(_c), str):
-                        aposta_extraida[_c] = _display_sem_barra(aposta_extraida[_c])
-
-                resultados.append(aposta_extraida)
-
-            except Exception as e:
-                print("ERRO EM UMA IMAGEM /colar:", repr(e))
-                resultados.append({
-                    "aposta": "",
-                    "casa": "",
-                    "esporte": "",
-                    "jogo": "",
-                    "mercado": "",
-                    "selecao": "",
-                    "linha": "",
-                    "periodo": "",
-                    "odd": "",
-                    "valor": "",
-                    "texto_bruto": "",
-                    "texto_interpretado": "",
-                    "erro": str(e)
-                })
-
-        return jsonify({"ok": True, "resultados": resultados})
-
+        job_id = str(uuid.uuid4())[:16]
+        _ocr_jobs[job_id] = {"status": "processing", "ts": time.time()}
+        # Limpa jobs antigos (>5 min)
+        agora = time.time()
+        for jid in list(_ocr_jobs.keys()):
+            if agora - _ocr_jobs.get(jid, {}).get("ts", 0) > 300:
+                _ocr_jobs.pop(jid, None)
+        threading.Thread(target=_ocr_processar_job, args=(job_id, imagens), daemon=True).start()
+        return jsonify({"job_id": job_id, "status": "processing"})
     except Exception as e:
-        print("ERRO GERAL /colar:", repr(e))
         return jsonify({"ok": False, "erro": str(e), "resultados": []}), 200
+
+
+@app.route("/colar/status/<job_id>")
+@login_required
+def colar_status(job_id):
+    job = _ocr_jobs.get(job_id)
+    if not job:
+        return jsonify({"status": "not_found"}), 404
+    return jsonify(job)
 
 
 @app.route("/salvar_preview", methods=["POST"])
@@ -3882,8 +4119,8 @@ def salvar_preview():
             "publica": aposta_publica_padrao_usuario(),
             "horario_jogo_iso": limpar_linha(a.get("horario_jogo_iso", "")),
             "horario_jogo": limpar_linha(a.get("horario_jogo", "")),
-            "status_jogo": "",
-            "ao_vivo": False,
+            "status_jogo": limpar_linha(a.get("status_jogo", "")),
+            "ao_vivo": bool(a.get("ao_vivo", False)),
         }
 
         # Se vier horario_jogo_iso do autocomplete mas não horario_jogo, formata
@@ -3917,43 +4154,20 @@ def salvar_preview():
 
 def preparar_imagem(caminho):
     img = Image.open(caminho)
-
-    if img.mode in ("RGBA", "LA"):
-        fundo = Image.new("RGB", img.size, "white")
-        fundo.paste(img, mask=img.split()[-1])
-        img = fundo
-
     largura, altura = img.size
-    escala = 3 if max(largura, altura) < 1400 else 2
-    img = img.resize((largura * escala, altura * escala))
+    # Upscale só se a imagem for pequena; screenshots de celular já têm resolução suficiente
+    if max(largura, altura) < 1000:
+        img = img.resize((largura * 2, altura * 2))
     img = img.convert("L")
-    img = img.point(lambda p: 255 if p > 165 else 0)
-
     return img
 
 
 def ler_imagem(caminho):
     img = preparar_imagem(caminho)
-
-    try:
-        texto = pytesseract.image_to_string(img, lang="por+eng", config="--oem 3 --psm 6")
-    except Exception as e:
-        print("ERRO TESSERACT psm6:", e)
-        texto = ""
-
-    # Fallback só se o resultado for insuficiente (imagem com layout diferente)
-    if len(texto.strip()) < 60:
-        try:
-            t2 = pytesseract.image_to_string(img, lang="por+eng", config="--oem 3 --psm 4")
-            if len(t2.strip()) > len(texto.strip()):
-                texto = t2
-        except Exception:
-            pass
-
+    texto = pytesseract.image_to_string(img, lang="por+eng", config="--psm 6")
     print("===== OCR BRUTO V20 =====")
     print(texto)
     print("===== FIM OCR BRUTO V20 =====")
-
     return texto
 
 
@@ -6480,7 +6694,7 @@ def admin_backups():
             cur.execute("SELECT id, created_at, label FROM backups ORDER BY created_at DESC")
             rows = cur.fetchall()
             cur.close()
-            conn.close()
+            release_pg_conn(conn)
             for r in rows:
                 snapshots.append({"id": r[0], "created_at": str(r[1]), "label": r[2]})
         except Exception as e:
@@ -6516,7 +6730,7 @@ def admin_backup_restaurar(backup_id):
         cur.execute("SELECT data, label, created_at FROM backups WHERE id = %s", (backup_id,))
         row = cur.fetchone()
         cur.close()
-        conn.close()
+        release_pg_conn(conn)
         if not row:
             return jsonify({"status": "erro", "msg": "Backup não encontrado"}), 404
         parsed = json.loads(row[0])
@@ -6557,7 +6771,7 @@ def admin_ledger_usuario(uid):
     try:
         hist = Dur.historico_tamanho_usuario(conn, uid)
         pico, pico_ts = Dur.recuperar_estado_pico(conn, uid)
-        conn.close()
+        release_pg_conn(conn)
         atual = sum(1 for b in dados.get("bets", []) if b.get("user_id") == uid)
         return jsonify({
             "status": "ok",
@@ -6569,7 +6783,7 @@ def admin_ledger_usuario(uid):
         })
     except Exception as e:
         try:
-            conn.close()
+            release_pg_conn(conn)
         except Exception:
             pass
         return jsonify({"status": "erro", "msg": str(e)}), 500
@@ -6592,7 +6806,7 @@ def admin_ledger_recuperar(uid):
             recuperadas = Dur.reconstruir_apostas(Dur.ler_eventos_usuario(conn, uid, ate_ts=ate))
         else:
             recuperadas, _ = Dur.recuperar_estado_pico(conn, uid)
-        conn.close()
+        release_pg_conn(conn)
         ids_atuais = {b.get("id") for b in dados.get("bets", []) if b.get("user_id") == uid}
         novas = [b for b in recuperadas
                  if b.get("user_id") == uid and b.get("id") not in ids_atuais]
@@ -6603,7 +6817,7 @@ def admin_ledger_recuperar(uid):
                         "restauradas": len(novas), "ja_tinha": len(ids_atuais)})
     except Exception as e:
         try:
-            conn.close()
+            release_pg_conn(conn)
         except Exception:
             pass
         return jsonify({"status": "erro", "msg": str(e)}), 500
@@ -6908,6 +7122,13 @@ def _aprovar_tips(ids, uid):
     ids = {str(i) for i in ids}
     criadas = []
     for tip in [t for t in fila if str(t.get("id")) in ids]:
+        # Tips do Supabase chegam sem pernas/jogos — faz parse do texto bruto
+        if not tip.get("jogos") and not tip.get("pernas"):
+            parsed = _parse_tip_texto(tip.get("texto_bruto", ""))
+            for k, v in parsed.items():
+                if v:
+                    tip.setdefault(k, v) if not tip.get(k) else None
+            tip.update({k: v for k, v in parsed.items() if not tip.get(k)})
         bet = _tip_para_bet(tip, uid)
         try:
             _conectar_bet_espn(bet, permitir_fallback=False)   # cache-only: instantaneo
@@ -6934,11 +7155,118 @@ def _hora_tip(iso):
         return ""
 
 
+@app.template_filter("sem_links")
+def _sem_links(texto):
+    """Remove linhas de link e info irrelevante (ADM, Odd justa, Odd mudou)."""
+    import re as _r
+    linhas = []
+    for linha in (texto or "").splitlines():
+        l = linha.strip()
+        if not l:
+            continue
+        lc = l.lower()
+        if (l.startswith("http") or "odd justa" in lc or "odd mudou" in lc
+                or "clique aqui" in lc or l.startswith("👤")):
+            continue
+        linhas.append(l)
+    return "\n".join(linhas)
+
+
+def _parse_tip_texto(texto):
+    """Extrai campos estruturados do texto formatado pelo tipster.
+    Retorna dict compatível com _tip_para_bet (jogos, pernas, odd, valor_reais, casa, esporte)."""
+    import re as _r
+    casa = jogo = esporte = mercado = ""
+    odd = valor = 0.0
+
+    linhas = []
+    for linha in (texto or "").splitlines():
+        l = linha.strip()
+        if not l:
+            continue
+        lc = l.lower()
+        if (l.startswith("http") or "odd justa" in lc or "odd mudou" in lc
+                or "clique aqui" in lc or l.startswith("👤")):
+            continue
+        linhas.append(l)
+
+    for l in linhas:
+        limpo = _r.sub(r'^[^\w\d\s]*\s*', '', l).strip()
+        if '🏠' in l or '🏡' in l:
+            casa = limpo
+        elif '⚽' in l or '🏀' in l or '🎾' in l or '🏈' in l or '⛳' in l or '🥊' in l:
+            esporte = limpo or "Futebol"
+        elif '🎯' in l or '📌' in l:
+            mercado = limpo
+        elif '🌍' in l or '🌎' in l or '🌏' in l or '🌐' in l:
+            if not jogo:
+                jogo = limpo
+        elif '💰' in l:
+            m = _r.search(r'R\$\s*([\d.,]+)', l)
+            if m:
+                valor = float(m.group(1).replace('.', '').replace(',', '.'))
+
+    # Odd: linha cujo conteúdo, removendo não-numéricos, é só "X.XX"
+    if odd == 0.0:
+        for l in linhas:
+            if any(c in l for c in ('💰', 'R$', '%', '🔒', '👤', '🔴', '🖥')):
+                continue
+            sem = _r.sub(r'[^\d.,]', '', l).strip()
+            if sem and _r.match(r'^\d+[.,]\d+$', sem):
+                try:
+                    odd = float(sem.replace(',', '.'))
+                    break
+                except Exception:
+                    pass
+
+    # Jogo: se não achou por emoji, tenta segunda linha
+    if not jogo and len(linhas) >= 2:
+        l2 = linhas[1]
+        if not any(e in l2 for e in ('🏠', '⚽', '🏀', '🎯', '💰')):
+            jogo = _r.sub(r'^[^\w\d\s]*\s*', '', l2).strip()
+
+    return {
+        "casa": casa,
+        "jogos": [jogo] if jogo else [],
+        "esporte": esporte or "Futebol",
+        "odd": odd,
+        "valor_reais": valor,
+        "pernas": [{"mercado": mercado or "Outro", "selecao": "",
+                    "linha": None, "direcao": "", "periodo": "jogo", "alvo": "jogo"}],
+        "eh_multipla": False,
+        "data_envio": None,
+        "espn_sel": [],
+    }
+
+
 @app.route("/tips/img/<int:msg_id>")
 @login_required
 def tip_img(msg_id):
-    """Serve imagem de tip armazenada no PostgreSQL."""
+    """Serve imagem de tip — primeiro do cache local (Supabase), depois do PostgreSQL."""
     from flask import Response, abort
+    if msg_id in _tip_imgs_local:
+        return Response(_tip_imgs_local[msg_id], mimetype="image/jpeg",
+                        headers={"Cache-Control": "public, max-age=86400"})
+    # Tenta buscar do Supabase (lazy-load)
+    sup_url = os.environ.get("SUPABASE_URL", "")
+    sup_key = os.environ.get("SUPABASE_KEY", "")
+    if sup_url and sup_key:
+        try:
+            from flask import Response as _Resp
+            r = requests.get(
+                f"{sup_url}/rest/v1/tips?msg_id=eq.{msg_id}&select=img_b64",
+                headers={"apikey": sup_key, "Authorization": f"Bearer {sup_key}"},
+                timeout=10,
+            )
+            if r.ok:
+                rows = r.json()
+                if rows and rows[0].get("img_b64"):
+                    img = base64.b64decode(rows[0]["img_b64"])
+                    _tip_imgs_local[msg_id] = img
+                    return _Resp(img, mimetype="image/jpeg",
+                                 headers={"Cache-Control": "public, max-age=86400"})
+        except Exception:
+            pass
     conn = get_pg_conn()
     if not conn:
         abort(404)
@@ -7063,12 +7391,45 @@ def admin_tips_recapturar():
 @app.route("/admin/tips/aprovar/<tid>", methods=["POST"])
 @admin_required
 def admin_tips_aprovar(tid):
-    """Aprova UMA tip. Via AJAX (fetch) responde JSON sem recarregar a pagina."""
+    """Aprova UMA tip. Aceita JSON {campos:{casa,jogo,mercado,odd,valor,esporte}}
+    para sobrescrever campos antes de criar a aposta (usado pelo modal do card)."""
     uid = session.get("user_id", "")
+    body = request.get_json(silent=True) or {}
+    campos = body.get("campos")
+    if campos:
+        fila = _fila_tips()
+        tip = next((t for t in fila if str(t.get("id")) == str(tid)), None)
+        if tip:
+            if campos.get("casa"):    tip["casa"]        = campos["casa"]
+            if campos.get("esporte"): tip["esporte"]     = campos["esporte"]
+            if campos.get("jogo"):    tip["jogos"]       = [campos["jogo"]]
+            if campos.get("mercado"): tip["pernas"] = [{"mercado": campos["mercado"],
+                "selecao": "", "linha": None, "direcao": "", "periodo": "jogo", "alvo": "jogo"}]
+            if campos.get("odd"):
+                try:    tip["odd"] = float(campos["odd"])
+                except Exception: pass
+            if campos.get("valor"):
+                try:    tip["valor_reais"] = float(str(campos["valor"]).replace(",", "."))
+                except Exception: pass
+    # ESPN game connection
+    espn = body.get("espn_sel")
+    if espn:
+        fila2 = _fila_tips()
+        tip2 = next((t for t in fila2 if str(t.get("id")) == str(tid)), None)
+        if tip2:
+            tip2["espn_sel"] = [{
+                "id": str(espn.get("espn_event_id", "") or ""),
+                "sport": espn.get("esporte", "") or "soccer",
+                "league": espn.get("league", "") or "",
+                "horario_jogo": espn.get("horario_jogo", ""),
+                "horario_jogo_iso": espn.get("horario_jogo_iso", ""),
+                "status_jogo": espn.get("status_jogo", ""),
+                "ao_vivo": bool(espn.get("ao_vivo")),
+            }]
     criadas = _aprovar_tips([tid], uid)
     if criadas:
         salvar()
-        _conectar_bets_async(criadas)   # fallback ESPN p/ quem nao achou no cache
+        _conectar_bets_async(criadas)
     if request.headers.get("X-Requested-With") == "fetch":
         return jsonify({"ok": bool(criadas), "restantes": len(_fila_tips())})
     return redirect("/admin/tips")
@@ -7302,7 +7663,7 @@ def admin_durabilidade_status():
         except Exception as e:
             info["erro_db"] = str(e)
         finally:
-            conn.close()
+            release_pg_conn(conn)
 
     info["baseline_memoria"] = (len(_estado_bets_anterior)
                                 if _estado_bets_anterior is not None else None)
@@ -7366,7 +7727,7 @@ def admin_durabilidade_atividade():
     except Exception as e:
         eventos = [{"erro": str(e)}]
     finally:
-        conn.close()
+        release_pg_conn(conn)
     return jsonify({"eventos": eventos})
 
 
@@ -7511,6 +7872,8 @@ def calculadora_planilhar():
 # ============================================================
 
 def bets_do_usuario():
+    if not _IS_PROD:
+        return dados.get("bets", [])
     return bets_do_usuario_v61()
 
 
@@ -7838,6 +8201,21 @@ ESPN_PAISES_PT = {
     "costa rica": "Costa Rica", "honduras": "Honduras", "jamaica": "Jamaica",
     "qatar": "Catar", "united arab emirates": "Emirados Árabes", "iran": "Irã",
     "iraq": "Iraque", "china": "China", "china pr": "China",
+    "new zealand": "Nova Zelândia", "indonesia": "Indonésia",
+    "jordan": "Jordânia", "cape verde": "Cabo Verde",
+    "congo dr": "Congo (RD)", "dr congo": "Congo (RD)",
+    "portugal": "Portugal", "argentina": "Argentina",
+    "peru": "Peru", "chile": "Chile", "cuba": "Cuba",
+    "nigeria": "Nigéria", "mali": "Mali", "togo": "Togo",
+    "benin": "Benin", "kenya": "Quênia", "tanzania": "Tanzânia",
+    "tunisia": "Tunísia", "libya": "Líbia", "zambia": "Zâmbia",
+    "philippines": "Filipinas", "thailand": "Tailândia",
+    "vietnam": "Vietnã", "india": "Índia", "pakistan": "Paquistão",
+    "uzbekistan": "Uzbequistão", "kazakhstan": "Cazaquistão",
+    "panama": "Panamá", "haiti": "Haiti", "trinidad and tobago": "Trinidad e Tobago",
+    "united states virgin islands": "Ilhas Virgens",
+    "northern ireland": "Irlanda do Norte",
+    "curacao": "Curaçao",
 }
 
 def traduzir_time_pt(nome):
@@ -7893,8 +8271,22 @@ def espn_normalizar_nome(s):
         "chequia": "tchequia",
         "costa do marfim": "costa do marfim",
         "eua": "estados unidos",
+        # Copa do Mundo — EN->PT normalizado
+        "jordan": "jordania",
+        "new zealand": "nova zelandia",
+        "cape verde": "cabo verde",
+        "congo dr": "congo rd",
+        "indonesia": "indonesia",
+        "curacao": "curacao",
+        "uzbekistan": "uzbequistao",
+        "haiti": "haiti",
+        "cote d ivoire": "costa do marfim",
     }
-    return aliases.get(s, s)
+    # Tenta string completa primeiro, depois palavra por palavra
+    if s in aliases:
+        return aliases[s]
+    words = s.split()
+    return " ".join(aliases.get(w, w) for w in words)
 
 
 def espn_extrair_time_unico(jogo, aposta=""):
@@ -8032,6 +8424,9 @@ def espn_ligas_por_esporte(esporte):
         ("soccer", "fifa.worldq.afc"),
         ("soccer", "fifa.worldq.caf"),
 
+        # Copa do Mundo
+        ("soccer", "fifa.world"),
+
         # Competições continentais / Copa América / Gold Cup
         ("soccer", "conmebol.copa_america"),
         ("soccer", "concacaf.gold_cup"),
@@ -8055,7 +8450,7 @@ def espn_ligas_por_esporte(esporte):
 
 def espn_scoreboard_url(sport, league):
     hoje = agora_local().date() if "agora_local" in globals() else datetime.now(ZoneInfo("America/Sao_Paulo")).date()
-    ini, fim = hoje - timedelta(days=4), hoje + timedelta(days=7)
+    ini, fim = hoje - timedelta(days=4), hoje + timedelta(days=30)
     dates = f"{ini.strftime('%Y%m%d')}-{fim.strftime('%Y%m%d')}"
     return f"https://site.api.espn.com/apis/site/v2/sports/{sport}/{league}/scoreboard?dates={dates}&limit=300"
 
@@ -8190,7 +8585,7 @@ def espn_buscar_jogo(jogo, esporte="Futebol", aposta=""):
     melhor = None
     melhor_score = 0
 
-    with ThreadPoolExecutor(max_workers=4) as ex:
+    with ThreadPoolExecutor(max_workers=2) as ex:
         futures = {
             ex.submit(_espn_buscar_em_liga, sport, league, time_a, time_b, time_unico, dois_times): (sport, league)
             for sport, league in ligas
@@ -8437,7 +8832,7 @@ def v94_cache_jogos_espn(forcar=False):
 
     def buscar_liga(esporte, sport, league):
         try:
-            r = requests.get(espn_scoreboard_url(sport, league), timeout=7)
+            r = requests.get(espn_scoreboard_url(sport, league), timeout=4)
             if r.status_code != 200:
                 return []
             resultado = []
@@ -8473,7 +8868,7 @@ def v94_cache_jogos_espn(forcar=False):
             return []
 
     jogos = []
-    with ThreadPoolExecutor(max_workers=min(len(tarefas), 4)) as executor:
+    with ThreadPoolExecutor(max_workers=2) as executor:
         futuros = {executor.submit(buscar_liga, e, s, l): (e, s, l) for e, s, l in tarefas}
         for futuro in as_completed(futuros):
             try:
@@ -8553,28 +8948,118 @@ def v94_score_busca_jogo(query, jogo):
 
 V97_ESPN_CACHE_STARTED = False
 
+_ESPN_LIGAS_PRIORITY = [
+    ("Futebol", "soccer", "bra.1"),
+    ("Futebol", "soccer", "bra.2"),
+    ("Futebol", "soccer", "bra.copa_do_brazil"),
+    ("Futebol", "soccer", "conmebol.libertadores"),
+    ("Futebol", "soccer", "conmebol.sudamericana"),
+    ("Futebol", "soccer", "conmebol.copa_america"),
+    ("Futebol", "soccer", "fifa.world"),
+    ("Futebol", "soccer", "fifa.friendly"),
+    ("Futebol", "soccer", "uefa.champions"),
+    ("Futebol", "soccer", "uefa.europa"),
+    ("Futebol", "soccer", "uefa.nations"),
+    ("Futebol", "soccer", "eng.1"),
+    ("Futebol", "soccer", "esp.1"),
+    ("Futebol", "soccer", "ger.1"),
+    ("Futebol", "soccer", "ita.1"),
+    ("Futebol", "soccer", "fra.1"),
+    ("Futebol", "soccer", "por.1"),
+    ("Futebol", "soccer", "arg.1"),
+    ("Basquete", "basketball", "nba"),
+]
+
+
+def v94_cache_jogos_espn_priority(forcar=False):
+    """Cache de fundo: só ligas prioritárias para não matar o worker."""
+    agora_ts = time.time()
+    ttl = int(os.environ.get("ESPN_GAMES_CACHE_TTL", "900"))
+    if not forcar and JOGOS_ESPN_CACHE.get("items") and (agora_ts - JOGOS_ESPN_CACHE.get("ts", 0) < ttl):
+        return JOGOS_ESPN_CACHE["items"]
+
+    def buscar_liga(esporte, sport, league):
+        try:
+            r = requests.get(espn_scoreboard_url(sport, league), timeout=4)
+            if r.status_code != 200:
+                return []
+            resultado = []
+            for ev in r.json().get("events", []):
+                comp = (ev.get("competitions") or [{}])[0]
+                nomes = []
+                for c in comp.get("competitors", []):
+                    team = c.get("team", {}) or {}
+                    nome = team.get("displayName") or team.get("shortDisplayName") or team.get("name") or ""
+                    if nome:
+                        nomes.append(nome)
+                if len(nomes) < 2:
+                    continue
+                label, dt_br, ao_vivo, ordem = v98_status_espn_seguro(comp)
+                jogo_nome = f"{traduzir_time_pt(nomes[0])} x {traduzir_time_pt(nomes[1])}"
+                resultado.append({
+                    "id": ev.get("id", ""),
+                    "jogo": jogo_nome,
+                    "jogo_norm": espn_normalizar_nome(jogo_nome),
+                    "esporte": esporte,
+                    "sport": sport,
+                    "league": league,
+                    "liga_nome": v96_liga_label(league) if "v96_liga_label" in globals() else league,
+                    "horario_jogo": dt_br.strftime("%d/%m/%Y %H:%M") if dt_br else "",
+                    "horario_jogo_iso": dt_br.isoformat() if dt_br else "",
+                    "status_jogo": label,
+                    "ao_vivo": bool(ao_vivo),
+                    "ordem_jogo": ordem,
+                })
+            return resultado
+        except Exception as e:
+            print("V98 cache ESPN priority ignorada:", sport, league, repr(e))
+            return []
+
+    jogos = []
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        futuros = {executor.submit(buscar_liga, e, s, l): (e, s, l) for e, s, l in _ESPN_LIGAS_PRIORITY}
+        for futuro in as_completed(futuros):
+            try:
+                jogos.extend(futuro.result())
+            except Exception:
+                pass
+
+    seen = set()
+    limpos = []
+    for j in jogos:
+        chave = (j.get("id"), j.get("jogo"), j.get("horario_jogo_iso"))
+        if chave in seen:
+            continue
+        seen.add(chave)
+        limpos.append(j)
+
+    JOGOS_ESPN_CACHE["ts"] = agora_ts
+    JOGOS_ESPN_CACHE["items"] = limpos
+    return limpos
+
+
 def v97_aquecer_cache_espn_loop():
     """
-    Roda em background: carrega jogos assim que o servidor sobe e renova periodicamente.
-    Não depende do usuário abrir dropdown.
+    Roda em background com lista reduzida para não sobrecarregar o worker.
+    Cache completo (63 ligas) só é usado em buscas individuais sob demanda.
     """
     try:
-        print("V97 ESPN cache: carregando lista inicial...")
-        jogos = v94_cache_jogos_espn(forcar=True)
+        print("V97 ESPN cache: carregando lista inicial (priority)...")
+        jogos = v94_cache_jogos_espn_priority(forcar=True)
         print("V97 ESPN cache carregado:", len(jogos), "jogos")
     except Exception as e:
         print("V97 ESPN cache erro inicial:", repr(e))
 
-    intervalo = int(os.environ.get("ESPN_GAMES_REFRESH_SECONDS", "900"))
+    intervalo = int(os.environ.get("ESPN_GAMES_REFRESH_SECONDS", "3600"))
 
     while True:
         try:
             time.sleep(intervalo)
-            jogos = v94_cache_jogos_espn(forcar=True)
+            jogos = v94_cache_jogos_espn_priority(forcar=True)
             print("V97 ESPN cache renovado:", len(jogos), "jogos")
         except Exception as e:
             print("V97 ESPN cache erro renovacao:", repr(e))
-            time.sleep(60)
+            time.sleep(300)
 
 
 def v97_iniciar_cache_espn_servidor():
@@ -8594,16 +9079,9 @@ def v97_iniciar_cache_espn_servidor():
 
 
 def v97_garantir_cache_espn_minimo():
-    """
-    Segurança extra: se o cache ainda estiver vazio em alguma busca, carrega na hora.
-    """
-    try:
-        if not JOGOS_ESPN_CACHE.get("items"):
-            return v94_cache_jogos_espn(forcar=True)
-        return JOGOS_ESPN_CACHE.get("items", [])
-    except Exception as e:
-        print("V97 garantir cache erro:", repr(e))
-        return []
+    # Nunca bloqueia o request: se o cache ainda não foi preenchido, retorna vazio.
+    # O background thread preenche em ~5s após o startup.
+    return JOGOS_ESPN_CACHE.get("items", [])
 
 
 
@@ -8622,6 +9100,22 @@ def v107_normalizar_busca_time(q):
         "cortinas": "corinthians", "curintia": "corinthians",
         "shaktar": "shakhtar donetsk", "atletico de madrid": "atletico madrid",
         "palmeiras sp": "palmeiras", "vasco": "vasco da gama",
+        "nova zelandia": "nova zelandia", "zelandia": "nova zelandia",
+        "jordania": "jordania", "jordânia": "jordania",
+        "cabo verde": "cabo verde",
+        "congo": "congo",
+        "estados unidos": "estados unidos", "eua": "estados unidos", "usa": "estados unidos",
+        "coreia do sul": "coreia do sul", "coreia": "coreia do sul",
+        "arabia saudita": "arabia saudita", "arabia": "arabia saudita",
+        "africa do sul": "africa do sul",
+        "republica tcheca": "tchequia", "tchecia": "tchecia",
+        "macedonia": "north macedonia",
+        "bosnia": "bosnia",
+        "emirados arabes": "emirados arabes", "emirados": "emirados arabes",
+        "indonesia": "indonesia", "indonésia": "indonesia",
+        "tunisia": "tunisia", "tunísia": "tunisia",
+        "turquia": "turquia", "turkiye": "turquia",
+        "curacao": "curacao", "curaçao": "curacao",
     }
     return mapa.get(qn, qn)
 
@@ -8774,8 +9268,14 @@ def v131_valor_em_aberto(lista=None):
 
 def v131_banca_inicial_usuario():
     try:
-        email = session.get("user")
-        u = dados.get("usuarios", {}).get(email, {})
+        key = v140_usuario_key_atual() or session.get("user")
+        usuarios_dict = dados.get("usuarios", {})
+        u = usuarios_dict.get(key, {})
+        if not u:
+            for k, v in usuarios_dict.items():
+                if isinstance(v, dict) and v.get("banca_inicial") is not None:
+                    u = v
+                    break
         return v131_float_seguro(u.get("banca_inicial", 0))
     except Exception:
         return 0.0
@@ -9834,7 +10334,59 @@ def favicon():
     return app.send_static_file("favicon.svg")
 
 
+def _poll_supabase_tips():
+    """Busca tips novas no Supabase a cada 30s. Imagens carregadas sob demanda."""
+    sup_url = os.environ.get("SUPABASE_URL", "")
+    sup_key = os.environ.get("SUPABASE_KEY", "")
+    if not sup_url or not sup_key:
+        return
+    headers = {"apikey": sup_key, "Authorization": f"Bearer {sup_key}"}
+    ultimo_id = 0
+    print("[supabase] polling de tips iniciado")
+    while True:
+        try:
+            # Não busca img_b64 aqui — imagem é lazy-load via /tips/img/<id>
+            r = requests.get(
+                f"{sup_url}/rest/v1/tips?id=gt.{ultimo_id}"
+                f"&select=id,msg_id,texto,criado_em,img_b64&order=id.asc&limit=50",
+                headers=headers, timeout=15,
+            )
+            rows = r.json() if r.ok else []
+            for row in rows:
+                sup_id = row.get("id", 0)
+                msg_id = row.get("msg_id")
+                if not msg_id:
+                    continue
+                if not any(str(t.get("id")) == str(msg_id)
+                           for t in dados.get("tips_pendentes", [])):
+                    tem_img = bool(row.get("img_b64"))
+                    if tem_img:
+                        try:
+                            _tip_imgs_local[int(msg_id)] = base64.b64decode(row["img_b64"])
+                        except Exception:
+                            pass
+                    dados.setdefault("tips_pendentes", []).append({
+                        "id": msg_id,
+                        "texto_bruto": row.get("texto") or "",
+                        "img": f"/tips/img/{msg_id}" if tem_img else None,
+                        "data_envio": row.get("criado_em"),
+                        "pernas": [], "editada": False, "reportada": False,
+                        "fora_escopo": False, "eh_multipla": False, "esporte": "",
+                    })
+                if sup_id > ultimo_id:
+                    ultimo_id = sup_id
+        except Exception as e:
+            print(f"[supabase poll] erro: {e}")
+        time.sleep(30)
+
+
+def _iniciar_poll_supabase():
+    if not _IS_PROD and os.environ.get("SUPABASE_URL"):
+        threading.Thread(target=_poll_supabase_tips, daemon=True).start()
+
+
 _iniciar_backup_thread()
+_iniciar_poll_supabase()
 v97_iniciar_cache_espn_servidor()
 
 # ── Endpoint de seed para testes locais ──────────────────────────────────────
