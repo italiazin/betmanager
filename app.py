@@ -641,9 +641,16 @@ def _migrar_ellen_se_necessario():
             return
         with open(_arq, encoding="utf-8") as _f:
             _raw = json.load(_f)
-        _ellen_user = _raw.get("user") or (_raw.get("usuarios", {}).get("users") or [None])[0]
-        _ellen_bets_src = _raw.get("bets") or _raw.get("dados", {}).get("bets", [])
+        # Suporte a dois formatos: {"user":..,"bets":[]} ou {"usuarios":{"users":[]},"dados":{"bets":[]}}
+        if "user" in _raw:
+            _ellen_user = _raw["user"]
+            _ellen_bets_src = _raw.get("bets", [])
+        else:
+            _all_users = _raw.get("usuarios", {}).get("users", [])
+            _ellen_user = next((u for u in _all_users if u.get("email","").lower() not in ("admin@admin.com",) and not u.get("is_admin")), None)
+            _ellen_bets_src = _raw.get("dados", {}).get("bets", [])
         if not _ellen_user:
+            print("Migração Ellen ERRO: usuária não encontrada no arquivo.")
             return
         _email = _ellen_user.get("email", "").lower()
         _uid = _ellen_user.get("id", "")
@@ -7630,8 +7637,13 @@ def rodar_migracao_ellen():
             return jsonify({"log": log, "erro": "arquivo nao encontrado"})
         with open(_arq, encoding="utf-8") as f:
             _raw = json.load(f)
-        _ellen_user = _raw.get("user")
-        _ellen_bets_src = _raw.get("bets", [])
+        if "user" in _raw:
+            _ellen_user = _raw["user"]
+            _ellen_bets_src = _raw.get("bets", [])
+        else:
+            _all_users = _raw.get("usuarios", {}).get("users", [])
+            _ellen_user = next((u for u in _all_users if u.get("email","").lower() not in ("admin@admin.com",) and not u.get("is_admin")), None)
+            _ellen_bets_src = _raw.get("dados", {}).get("bets", [])
         log.append(f"ellen_user: {_ellen_user.get('email') if _ellen_user else None}")
         log.append(f"bets_src: {len(_ellen_bets_src)}")
         _uid = _ellen_user.get("id","") if _ellen_user else ""
