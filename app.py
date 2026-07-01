@@ -4727,40 +4727,61 @@ def extrair_v20(texto):
 
     casa = v20_nome_casa(bloco[0]) if len(bloco) > 0 else ""
 
+    # Achar a odd primeiro em todo o bloco (a partir do índice 1)
+    # para não deixar o esporte (que em muitas casas vem DEPOIS da odd) distorcer o parse
+    idx_odd_global = None
+    for i in range(1, len(bloco)):
+        if v20_e_odd(bloco[i]):
+            idx_odd_global = i
+            break
+
+    # Buscar esporte apenas antes da odd (ou em todo o bloco se odd não foi encontrada)
     idx_esporte = None
     esporte = "Futebol"
+    limite_esporte = idx_odd_global if idx_odd_global is not None else len(bloco)
 
-    for i in range(1, len(bloco)):
+    for i in range(1, limite_esporte):
         e = v20_esporte(bloco[i])
         if e:
             idx_esporte = i
             esporte = e
             break
 
-    if idx_esporte is None:
-        jogo = limpar_linha(bloco[1]) if len(bloco) > 1 else ""
-        idx_aposta_ini = 3
-        if len(bloco) > 2:
-            e2 = v20_esporte(bloco[2])
-            if e2:
-                esporte = e2
-    else:
-        jogo = " / ".join([v20_limpar_item(x) for x in bloco[1:idx_esporte] if v20_limpar_item(x)])
-        idx_aposta_ini = idx_esporte + 1
+    # Se esporte não estava antes da odd, procurar depois (apenas para preencher o campo)
+    if idx_esporte is None and idx_odd_global is not None:
+        for i in range(idx_odd_global + 1, len(bloco)):
+            e = v20_esporte(bloco[i])
+            if e:
+                esporte = e
+                break
 
-    idx_odd = None
-
-    for i in range(idx_aposta_ini, len(bloco)):
-        if v20_e_odd(bloco[i]):
-            idx_odd = i
-            break
-
-    if idx_odd is None:
+    if idx_odd_global is None:
+        # Sem odd: comportamento legado — determinar jogo e aposta pelo esporte
+        if idx_esporte is None:
+            jogo = limpar_linha(bloco[1]) if len(bloco) > 1 else ""
+            idx_aposta_ini = 3
+            if len(bloco) > 2:
+                e2 = v20_esporte(bloco[2])
+                if e2:
+                    esporte = e2
+        else:
+            jogo = " / ".join([v20_limpar_item(x) for x in bloco[1:idx_esporte] if v20_limpar_item(x)])
+            idx_aposta_ini = idx_esporte + 1
         tipo_aposta = v20_limpar_item(bloco[idx_aposta_ini]) if len(bloco) > idx_aposta_ini else ""
         odd = 1.0
+        idx_odd = None
     else:
+        odd = limpar_odd(bloco[idx_odd_global])
+        idx_odd = idx_odd_global
+        if idx_esporte is not None:
+            # esporte encontrado antes da odd: estrutura normal (Casa > Esporte > Jogo > Tipo > Odd)
+            jogo = " / ".join([v20_limpar_item(x) for x in bloco[1:idx_esporte] if v20_limpar_item(x)])
+            idx_aposta_ini = idx_esporte + 1
+        else:
+            # esporte vem depois da odd (ex: Betano): bloco[1]=jogo, bloco[2..idx_odd-1]=tipo
+            jogo = v20_limpar_item(bloco[1]) if len(bloco) > 1 else ""
+            idx_aposta_ini = 2
         tipo_aposta = " / ".join([v20_limpar_item(x) for x in bloco[idx_aposta_ini:idx_odd] if v20_limpar_item(x)])
-        odd = limpar_odd(bloco[idx_odd])
 
     jogo = re.sub(r"\s*/\s*/+\s*", " / ", jogo).strip(" /-|")
     tipo_aposta = re.sub(r"\s*/\s*/+\s*", " / ", tipo_aposta).strip(" /-|")
