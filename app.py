@@ -353,6 +353,9 @@ if os.name == "nt":
     tess_path = r"C:\Program Files\Tesseract-OCR\tesseract.exe"
     if os.path.exists(tess_path):
         pytesseract.pytesseract.tesseract_cmd = tess_path
+else:
+    _tess_cmd = os.environ.get("TESSERACT_CMD", "/usr/bin/tesseract")
+    pytesseract.pytesseract.tesseract_cmd = _tess_cmd
 
 
 CASAS_DISPONIVEIS = [
@@ -7692,6 +7695,36 @@ def rodar_migracao_ellen():
     except Exception as e:
         log.append(f"EXCECAO: {e}")
     return jsonify({"log": log})
+
+
+@app.route("/admin/dev/teste-ocr")
+@admin_required
+def teste_ocr():
+    import subprocess, shutil
+    info = {}
+    info["tesseract_cmd"] = pytesseract.pytesseract.tesseract_cmd
+    info["tesseract_exists"] = os.path.exists(pytesseract.pytesseract.tesseract_cmd)
+    info["which_tesseract"] = shutil.which("tesseract")
+    try:
+        r = subprocess.run([pytesseract.pytesseract.tesseract_cmd, "--version"],
+                           capture_output=True, text=True, timeout=10)
+        info["version"] = r.stdout.strip() or r.stderr.strip()
+    except Exception as e:
+        info["version_erro"] = str(e)
+    try:
+        from PIL import Image
+        import io
+        img = Image.new("RGB", (200, 50), color=(255, 255, 255))
+        tmp = os.path.join(BASE_DIR, "uploads", "_ocr_test.png")
+        os.makedirs(os.path.dirname(tmp), exist_ok=True)
+        img.save(tmp)
+        resultado = pytesseract.image_to_string(img, lang="por+eng")
+        info["ocr_ok"] = True
+        info["resultado"] = resultado
+        os.remove(tmp)
+    except Exception as e:
+        info["ocr_erro"] = str(e)
+    return jsonify(info)
 
 
 @app.route("/admin/dev/restaurar-backup-emergencia", methods=["POST"])
