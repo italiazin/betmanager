@@ -7694,6 +7694,46 @@ def rodar_migracao_ellen():
     return jsonify({"log": log})
 
 
+@app.route("/admin/dev/restaurar-backup-emergencia", methods=["POST"])
+@admin_required
+def restaurar_backup_emergencia():
+    payload = request.get_json(force=True)
+    if not payload:
+        return jsonify({"erro": "payload vazio"}), 400
+    conn = get_pg_conn()
+    if not conn:
+        return jsonify({"erro": "sem conexao"}), 500
+    try:
+        cur = conn.cursor()
+        usuarios_data = payload.get("usuarios")
+        dados_data = payload.get("dados")
+        if usuarios_data:
+            cur.execute(
+                "INSERT INTO app_store (chave, valor, atualizado_em) VALUES ('usuarios', %s::jsonb, NOW()) "
+                "ON CONFLICT (chave) DO UPDATE SET valor = EXCLUDED.valor, atualizado_em = NOW()",
+                (json.dumps(usuarios_data, ensure_ascii=False),)
+            )
+        if dados_data:
+            cur.execute(
+                "INSERT INTO app_store (chave, valor, atualizado_em) VALUES ('dados', %s::jsonb, NOW()) "
+                "ON CONFLICT (chave) DO UPDATE SET valor = EXCLUDED.valor, atualizado_em = NOW()",
+                (json.dumps(dados_data, ensure_ascii=False),)
+            )
+        conn.commit()
+        cur.close()
+        release_pg_conn(conn)
+        n_users = len((usuarios_data or {}).get("users", []))
+        n_bets = len((dados_data or {}).get("bets", []))
+        return jsonify({"ok": True, "usuarios": n_users, "apostas": n_bets})
+    except Exception as e:
+        try:
+            conn.rollback()
+            release_pg_conn(conn)
+        except Exception:
+            pass
+        return jsonify({"erro": str(e)}), 500
+
+
 @app.route("/admin/dev/patch-saldos-italiazin")
 @admin_required
 def patch_saldos_italiazin():
