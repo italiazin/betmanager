@@ -416,31 +416,21 @@ document.addEventListener("paste", function(e){
     }
 })
 
-document.addEventListener("DOMContentLoaded", function(){
-    const fi = document.getElementById("ocr-file-input")
-    if(!fi) return
-    fi.addEventListener("change", function(){
-        const files = Array.from(fi.files)
-        if(!files.length) return
-        let imagens = [], total = files.length
-        files.forEach(file => {
-            const reader = new FileReader()
-            reader.onload = ev => { imagens.push(ev.target.result); if(imagens.length === total) enviar(imagens) }
-            reader.readAsDataURL(file)
-        })
-        fi.value = ""
-    })
-})
-
 function enviar(imgs){
     const loading = document.getElementById("loading")
     if(loading){ loading.style.display="block"; loading.textContent="Processando OCR..." }
     fetch("/colar", { method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({images:imgs}) })
-    .then(r=>r.json())
+    .then(async r=>{
+        const txt = await r.text()
+        try { return JSON.parse(txt) }
+        catch(e){ console.error("Resposta não JSON do /colar:", txt); return {ok:false, erro:"Resposta inválida do servidor", resultados:[]} }
+    })
     .then(d=>{
+        console.log("RETORNO /colar:", d)
         if(!d.job_id){ // fallback: resposta direta (compatibilidade)
             window.apostasPreview = Array.isArray(d) ? d : (d.resultados || [])
             if(typeof window.renderPreview === "function") window.renderPreview()
+            else console.error("renderPreview não existe")
             if(loading) loading.style.display="none"
             return
         }
@@ -460,6 +450,7 @@ function enviar(imgs){
                 }
             } catch(e){ clearInterval(poll); if(loading) loading.style.display="none" }
         }, 600)
+        if(d.ok === false && d.erro) console.warn("OCR retornou aviso:", d.erro)
     })
     .catch(err=>{ console.error("Erro fetch /colar:", err); if(loading) loading.style.display="none" })
 }

@@ -41,6 +41,7 @@ app.config.update(
     SESSION_COOKIE_SAMESITE="Lax",
     SESSION_COOKIE_SECURE=_IS_PROD,
     PERMANENT_SESSION_LIFETIME=timedelta(days=14),
+    MAX_CONTENT_LENGTH=32 * 1024 * 1024,  # 32 MB — acomoda prints grandes em base64
 )
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -4089,8 +4090,11 @@ def _ocr_processar_job(job_id, imagens):
 @assinatura_required
 def colar():
     try:
-        payload = request.get_json(silent=True) or {}
+        # force=True aceita mesmo sem Content-Type correto; silent=True evita 400 em payload inválido
+        payload = request.get_json(force=True, silent=True) or {}
         imagens = payload.get("images", [])
+        if not isinstance(imagens, list):
+            imagens = []
         job_id = str(uuid.uuid4())[:16]
         _ocr_jobs[job_id] = {"status": "processing", "ts": time.time()}
         # Limpa jobs antigos (>5 min)
@@ -4198,17 +4202,44 @@ def salvar_preview():
 
 def preparar_imagem(caminho):
     img = Image.open(caminho)
+
+    # Flatten RGBA/LA pra fundo branco antes de qualquer processamento
+    if img.mode in ("RGBA", "LA"):
+        fundo = Image.new("RGB", img.size, "white")
+        fundo.paste(img, mask=img.split()[-1])
+        img = fundo
+
     largura, altura = img.size
-    # Upscale só se a imagem for pequena; screenshots de celular já têm resolução suficiente
-    if max(largura, altura) < 1000:
-        img = img.resize((largura * 2, altura * 2))
+    # Escala 3x para imagens pequenas (celular HD), 2x para as demais
+    escala = 3 if max(largura, altura) < 1400 else 2
+    img = img.resize((largura * escala, altura * escala), Image.LANCZOS)
+
+    # Grayscale + binarização: threshold 165 separa texto escuro do fundo claro
     img = img.convert("L")
+    img = img.point(lambda p: 255 if p > 165 else 0)
+
     return img
 
 
 def ler_imagem(caminho):
     img = preparar_imagem(caminho)
-    texto = pytesseract.image_to_string(img, lang="por+eng", config="--psm 6")
+
+    # OEM 1 (LSTM) + PSM 6 — mais rápido e preciso para blocos de texto uniforme
+    try:
+        texto = pytesseract.image_to_string(img, lang="por+eng", config="--oem 1 --psm 6")
+    except Exception as e:
+        print("ERRO TESSERACT psm6:", e)
+        texto = ""
+
+    # Fallback PSM 4 (coluna única) se o resultado for escasso
+    if len(texto.strip()) < 60:
+        try:
+            t2 = pytesseract.image_to_string(img, lang="por+eng", config="--oem 1 --psm 4")
+            if len(t2.strip()) > len(texto.strip()):
+                texto = t2
+        except Exception:
+            pass
+
     print("===== OCR BRUTO V20 =====")
     print(texto)
     print("===== FIM OCR BRUTO V20 =====")
