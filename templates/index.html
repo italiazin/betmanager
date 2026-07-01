@@ -4,13 +4,13 @@
     <meta charset="UTF-8">
     <title>Gestor de Apostas</title>
     <link rel="icon" type="image/svg+xml" href="/static/favicon.svg?v=1">
-    <link rel="stylesheet" href="/static/style.css?v=fix30">
+    <link rel="stylesheet" href="/static/style.css?v=ui2">
     <script src="https://cdn.jsdelivr.net/npm/chart.js" defer></script>
 <script>
 const labels = {{ labels | tojson }};
 const valores = {{ valores | tojson }};
 </script>
-<script src="/static/main.js?v=fix30" defer></script>
+<script src="/static/main.js?v=ui8" defer></script>
 </head>
 
 <body>
@@ -20,16 +20,38 @@ const valores = {{ valores | tojson }};
 <main class="app">
 
 <header class="topbar">
-    <div>
-        <h1>Gestor de Apostas</h1>
-        <p>Controle sua banca, prints, resultados, OCR e API</p>
+    <div class="topbar-bankroll-wrap">
+        <button class="topbar-bankroll-btn" id="topbarBankrollBtn" onclick="toggleTopbarBankroll(event)" type="button">
+            <span class="topbar-bankroll-nome">{{ planilha_ativa_nome }}</span>
+            <svg class="topbar-bankroll-chev" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg>
+        </button>
+        <div class="topbar-bankroll-menu" id="topbarBankrollMenu" style="display:none">
+            {% for p in planilhas %}
+            <div class="topbar-br-row">
+                <form method="POST" action="/trocar_planilha" style="flex:1;min-width:0">
+                    <input type="hidden" name="pid" value="{{ p.id }}">
+                    <button type="submit" class="topbar-br-item{% if p.id == planilha_ativa_id %} topbar-br-active{% endif %}">
+                        <span class="topbar-br-check">{% if p.id == planilha_ativa_id %}✔{% endif %}</span>
+                        {{ p.nome }}
+                    </button>
+                </form>
+                {% if p.id == planilha_ativa_id %}
+                <button type="button" class="topbar-br-edit" onclick="topbarBrRenomear({{ p.id }}, '{{ p.nome|e }}')" title="Renomear">✎</button>
+                {% endif %}
+            </div>
+            {% endfor %}
+            <div class="topbar-br-div"></div>
+            <form method="POST" action="/nova_planilha">
+                <button type="submit" class="topbar-br-item topbar-br-new">＋ Nova planilha</button>
+            </form>
+        </div>
+        <form id="topbarBrRenameForm" method="POST" action="/renomear_planilha" style="display:none">
+            <input type="hidden" name="pid" id="topbarBrRenamePid">
+            <input type="hidden" name="nome" id="topbarBrRenomeNome">
+        </form>
     </div>
 
     <div class="topbar-right">
-        {% if usuario and usuario.is_admin %}
-        <a href="/atualizar_api" class="api-button">Atualizar Resultados API</a>
-        <button class="api-button" type="button" onclick="atualizarHorariosEspn()">🕒 Atualizar horários</button>
-        {% endif %}
         <div class="jogos-live-wrap">
             <button class="jogos-live-btn" id="jogosLiveBtn" onclick="toggleJogosLive()" title="Meus jogos">
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
@@ -122,7 +144,8 @@ const valores = {{ valores | tojson }};
 
 </section>
 
-{% if not assinatura_ativa_usuario() %}
+{% set assinatura_ativa = assinatura_ativa_usuario() %}
+{% if not assinatura_ativa %}
 <section class="panel assinatura-bloqueada">
     <h2>Assinatura pendente</h2>
     <p>Sua conta foi criada, mas as funcionalidades avançadas ainda estão bloqueadas. Aguarde o administrador liberar sua assinatura.</p>
@@ -155,6 +178,12 @@ const valores = {{ valores | tojson }};
             <strong>Clique aqui e cole prints com CTRL + V</strong>
             <span>Casa, jogo, esporte, mercado, odd e valor serão lidos automaticamente</span>
         </div>
+        <div style="margin-top:8px;text-align:center;">
+            <label style="cursor:pointer;font-size:13px;color:var(--color-accent,#7c6af7);text-decoration:underline;">
+                Ou selecione a imagem do arquivo
+                <input type="file" accept="image/*" multiple style="display:none" id="ocr-file-input">
+            </label>
+        </div>
 
         <div id="loading" class="loading" style="display:none;">
             Processando OCR...
@@ -168,24 +197,7 @@ const valores = {{ valores | tojson }};
     </div>
 
     <div class="panel chart-panel">
-        <div class="chart-tabs">
-            <button id="tabBancaBtn" type="button" class="chart-tab active" onclick="mostrarPainelDashboard('banca')">Lucro</button>
-            <button id="tabFeedBtn" type="button" class="chart-tab" onclick="mostrarPainelDashboard('feed')">Últimas Apostas <span id="feedNotifyBadge" class="feed-notify-badge" style="display:none;">NOVO</span></button>
-        </div>
-
-        <div id="aba-banca" class="panel-tab active">
-            <canvas id="grafico"></canvas>
-        </div>
-        <div id="aba-feed" class="panel-tab">
-            <div class="dashboard-switch-title">
-                <h2>Últimas Apostas da Comunidade <span id="feedToastNova" class="feed-toast-nova" style="display:none;">NOVA APOSTA</span></h2>
-                <button type="button" class="copy-bet-btn" onclick="carregarFeedApostas(true)">Atualizar</button>
-            </div>
-            <p class="community-note">Copie uma aposta com 1 clique e use como base para uma nova entrada.</p>
-            <div id="feed-apostas" class="feed-list">
-                <div class="feed-empty">Clique no botão ao lado da banca para carregar.</div>
-            </div>
-        </div>
+        <canvas id="grafico"></canvas>
     </div>
 
 </section>

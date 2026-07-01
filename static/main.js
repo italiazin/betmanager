@@ -33,8 +33,6 @@ function limparApostaDuplicadaVisual(){
         }
     })
 }
-document.addEventListener("DOMContentLoaded", limparApostaDuplicadaVisual)
-
 function formatarLinhaApostaNova(b){
     const apostaVisual = window.semBarra((b.jogo && b.aposta && b.aposta.toLowerCase().startsWith((b.jogo + " - ").toLowerCase()))
         ? b.aposta.slice(b.jogo.length + 3)
@@ -62,30 +60,6 @@ function formatarLinhaApostaNova(b){
         </td>
     </tr>`
 }
-
-document.addEventListener("DOMContentLoaded", function(){
-    const form = document.getElementById("manualForm")
-    if(!form || form.dataset.ajaxReady === "1") return
-    if(form.classList.contains("manual-form")) return
-    form.dataset.ajaxReady = "1"
-    form.addEventListener("submit", function(e){
-        e.preventDefault()
-        e.stopPropagation()
-        const btn = form.querySelector('button[type="submit"]')
-        const oldText = btn ? btn.innerText : "Adicionar"
-        if(btn){ btn.disabled = true; btn.innerText = "Salvando..." }
-        fetch("/adicionar_ajax", { method: "POST", body: new FormData(form) })
-        .then(r=>r.json())
-        .then(d=>{
-            if(!d.ok){ alert(d.erro || "Erro ao salvar aposta"); return }
-            const tbody = document.querySelector("tbody")
-            if(tbody) tbody.insertAdjacentHTML("afterbegin", formatarLinhaApostaNovaV39(d.bet))
-            if(btn){ btn.innerText = "Adicionado ✓"; setTimeout(()=>{ btn.innerText = oldText }, 1000) }
-        })
-        .catch(()=>alert("Erro ao salvar aposta"))
-        .finally(()=>{ if(btn) btn.disabled = false })
-    })
-})
 
 function formatarLinhaApostaNovaV39(b){
     const valor = parseFloat(b.valor || 0).toFixed(2)
@@ -165,103 +139,11 @@ function atualizarLinhaResultadoV43(tr, b){
     if(editBtn) editBtn.dataset.estado = b.estado || ""
 }
 
-document.addEventListener("click", function(e){
-    const action = e.target.closest('a[href^="/resultado/"], a[href^="/remover/"], a[href^="/admin/"], a[href^="/saldos/remover/"]')
-    if(action) sessionStorage.setItem("restoreScrollY", String(window.scrollY || 0))
-}, true)
-
-document.addEventListener("DOMContentLoaded", ()=>{
-    const salvar = document.getElementById("salvar-preview")
-    if(!salvar || salvar.dataset.v51Ready === "1") return
-    salvar.dataset.v51Ready = "1"
-    salvar.onclick = ()=>{
-        let dados = (window.apostasPreview || []).map((a, i)=>({
-            aposta: document.getElementById(`a${i}`)?.value || "",
-            casa: document.getElementById(`c${i}`)?.value || "",
-            esporte: document.getElementById(`e${i}`)?.value || "",
-            jogo: document.getElementById(`j${i}`)?.value || "",
-            mercado: document.getElementById(`m${i}`)?.value || "",
-            selecao: document.getElementById(`s${i}`)?.value || "",
-            linha: document.getElementById(`l${i}`)?.value || "",
-            periodo: document.getElementById(`p${i}`)?.value || "",
-            odd: document.getElementById(`o${i}`)?.value || "",
-            valor: document.getElementById(`v${i}`)?.value || "",
-            texto_bruto: a.texto_bruto || "",
-            texto_interpretado: a.texto_interpretado || "",
-            itens_multipla: a.itens_multipla || {},
-            itens_multipla_detalhados: a.itens_multipla_detalhados || [],
-            horario_jogo: a.horario_jogo || ""
-        }))
-        salvar.disabled = true; salvar.innerText = "Salvando..."
-        fetch("/salvar_preview", { method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({apostas:dados}) })
-        .then(r=>r.json()).then(()=>{ salvar.innerText = "Salvo ✓"; setTimeout(()=>location.reload(), 450) })
-        .catch(()=>{ alert("Erro ao salvar apostas do preview"); salvar.disabled = false; salvar.innerText = "Salvar Apostas do Preview" })
-    }
-})
-
 window.apostasPreview = window.apostasPreview || []
 
 function escapeHtmlPreview(value){
     return String(value ?? "").replaceAll("&","&amp;").replaceAll('"',"&quot;").replaceAll("<","&lt;").replaceAll(">","&gt;")
 }
-
-document.addEventListener("DOMContentLoaded", ()=>{
-    const salvar = document.getElementById("salvar-preview")
-    if(!salvar || salvar.dataset.v58Ready === "1") return
-    salvar.dataset.v58Ready = "1"
-    salvar.onclick = ()=>{
-        const dados = (window.apostasPreview || []).map((a,i)=>({
-            aposta: document.getElementById(`a${i}`)?.value || "",
-            casa: document.getElementById(`c${i}`)?.value || "",
-            esporte: document.getElementById(`e${i}`)?.value || "",
-            jogo: document.getElementById(`j${i}`)?.value || "",
-            mercado: document.getElementById(`m${i}`)?.value || "",
-            selecao: document.getElementById(`s${i}`)?.value || "",
-            linha: document.getElementById(`l${i}`)?.value || "",
-            periodo: document.getElementById(`p${i}`)?.value || "",
-            odd: document.getElementById(`o${i}`)?.value || "",
-            valor: document.getElementById(`v${i}`)?.value || "",
-            texto_bruto: a.texto_bruto || "",
-            texto_interpretado: a.texto_interpretado || "",
-            itens_multipla: a.itens_multipla || {},
-            itens_multipla_detalhados: a.itens_multipla_detalhados || [],
-            horario_jogo: a.horario_jogo || ""
-        }))
-        salvar.disabled = true; salvar.innerText = "Salvando..."
-        fetch("/salvar_preview", { method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({apostas:dados}) })
-        .then(r=>r.json()).then(()=>{ salvar.innerText = "Salvo ✓"; setTimeout(()=>location.reload(), 450) })
-        .catch(()=>{ alert("Erro ao salvar preview"); salvar.disabled = false; salvar.innerText = "Salvar Apostas do Preview" })
-    }
-})
-
-document.addEventListener("DOMContentLoaded", ()=>{
-    const salvar = document.getElementById("salvar-preview")
-    if(!salvar || salvar.dataset.previewReady === "1") return
-    salvar.dataset.previewReady = "1"
-    salvar.onclick = ()=>{
-        const dados = (window.apostasPreview || []).map((a,i)=>({
-            aposta: document.getElementById(`a${i}`)?.value || "",
-            casa: document.getElementById(`c${i}`)?.value || "",
-            esporte: document.getElementById(`e${i}`)?.value || "",
-            jogo: document.getElementById(`j${i}`)?.value || "",
-            mercado: document.getElementById(`m${i}`)?.value || "",
-            selecao: document.getElementById(`s${i}`)?.value || "",
-            linha: document.getElementById(`l${i}`)?.value || "",
-            periodo: document.getElementById(`p${i}`)?.value || "",
-            odd: document.getElementById(`o${i}`)?.value || "",
-            valor: document.getElementById(`v${i}`)?.value || "",
-            texto_bruto: a.texto_bruto || "",
-            texto_interpretado: a.texto_interpretado || "",
-            itens_multipla: a.itens_multipla || {},
-            itens_multipla_detalhados: a.itens_multipla_detalhados || [],
-            horario_jogo: a.horario_jogo || ""
-        }))
-        salvar.disabled = true; salvar.innerText = "Salvando..."
-        fetch("/salvar_preview", { method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({apostas:dados}) })
-        .then(r=>r.json()).then(()=>{ salvar.innerText = "Salvo ✓"; setTimeout(()=>location.reload(), 450) })
-        .catch(()=>{ alert("Erro ao salvar apostas do preview"); salvar.disabled = false; salvar.innerText = "Salvar Apostas do Preview" })
-    }
-})
 
 function toggleSidebar(){
     document.body.classList.toggle("sidebar-collapsed")
@@ -270,15 +152,6 @@ function toggleSidebar(){
     const btn = document.querySelector(".sidebar-toggle")
     if(btn) btn.innerText = collapsed ? "›" : "‹"
 }
-document.addEventListener("DOMContentLoaded", ()=>{
-    const collapsed = localStorage.getItem("sidebarCollapsed") === "1"
-    if(collapsed){
-        document.body.classList.add("sidebar-collapsed")
-        const btn = document.querySelector(".sidebar-toggle")
-        if(btn) btn.innerText = "›"
-    }
-})
-
 let painelAtual = "banca"
 function mostrarPainelDashboard(tipo){
     const banca = document.getElementById("aba-banca")
@@ -354,12 +227,6 @@ function toggleDropdown(dropdownId, inputId){
     dropdown.classList.toggle("open")
     if(dropdown.classList.contains("open")) setTimeout(()=>document.getElementById(inputId).focus(), 80)
 }
-document.addEventListener("click", function(e){
-    document.querySelectorAll(".custom-filter").forEach(box=>{
-        if(!box.contains(e.target)){ const dropdown = box.querySelector(".custom-dropdown"); if(dropdown) dropdown.classList.remove("open") }
-    })
-})
-
 function filtrarLista(selector, inputId){
     const busca = document.getElementById(inputId).value.toLowerCase()
     document.querySelectorAll(selector).forEach(item=>{ item.style.display = item.innerText.toLowerCase().includes(busca) ? "flex" : "none" })
@@ -501,11 +368,6 @@ function clickPill(pill){
     if(typeof window.v160UpdateFinBadge==='function') setTimeout(window.v160UpdateFinBadge, 300)
 }
 // Selects/checkboxes do filtro: aplica via mesmo debounce (evita execução dupla)
-document.addEventListener("DOMContentLoaded",()=>{
-    document.querySelectorAll("#apostas select,#casasDrop input").forEach(el=>{
-        el.addEventListener("change", filtrarApostasDebounced)
-    })
-})
 // Multi-select casas
 function toggleBetFiDrop(id){
     const drop=document.getElementById(id);if(!drop) return
@@ -537,50 +399,7 @@ function atualizarLabelCasas(){
     label.textContent=checked.length===0?"Todas as casas":checked.length===1?checked[0].value:checked.length+" casas"
 }
 // Fechar dropdown ao clicar fora
-document.addEventListener("click",function(e){
-    if(!e.target.closest(".bet-fi-multi")) document.querySelectorAll(".bet-fi-multi-drop.open").forEach(d=>d.classList.remove("open"))
-})
-
 // Chart init — labels/valores defined by inline script in index.html
-document.addEventListener("DOMContentLoaded", ()=>{
-    const canvas = document.getElementById("grafico")
-    if(!canvas || typeof Chart === "undefined") return
-    const ultimo = valores[valores.length - 1] || 0
-    const corLinha = ultimo >= 0 ? "#22c55e" : "#f87171"
-    const corFundo = ultimo >= 0 ? "rgba(34,197,94,0.12)" : "rgba(248,113,113,0.10)"
-    new Chart(canvas, {
-        type: "line",
-        data: { labels: labels, datasets: [{
-            label: "Lucro acumulado",
-            data: valores,
-            borderColor: corLinha,
-            backgroundColor: corFundo,
-            borderWidth: 2.5,
-            tension: 0.4,
-            fill: true,
-            pointRadius: valores.length > 60 ? 0 : 2.5,
-            pointHoverRadius: 5,
-            pointBackgroundColor: corLinha,
-        }]},
-        options: {
-            responsive: true, maintainAspectRatio: false,
-            plugins: {
-                legend: { labels: { color:"#cbd5e1", font:{size:12} } },
-                tooltip: { callbacks: { label: ctx => " R$ " + ctx.parsed.y.toFixed(2) } }
-            },
-            layout: { padding: { top:6, right:8, bottom:0, left:0 } },
-            scales: {
-                x: { ticks: { color:"#94a3b8", maxRotation:45, minRotation:45, autoSkip:true, maxTicksLimit:14, font:{size:10} }, grid: { color:"rgba(30,41,59,0.45)" } },
-                y: {
-                    ticks: { color:"#94a3b8", font:{size:10}, callback: v => "R$ "+v.toFixed(0) },
-                    grid: { color:"rgba(30,41,59,0.55)" },
-                    afterBuildTicks(axis){ if(!axis.ticks.some(t=>t.value===0)) axis.ticks.push({value:0}) },
-                }
-            }
-        }
-    })
-})
-
 window.apostasPreview = window.apostasPreview || []
 
 document.addEventListener("paste", function(e){
@@ -590,25 +409,59 @@ document.addEventListener("paste", function(e){
             total++
             let reader = new FileReader()
             reader.onload = ev => { imagens.push(ev.target.result); if(imagens.length === total) enviar(imagens) }
-            reader.readAsDataURL(item.getAsFile())
+            const file = item.getAsFile()
+            if(file) reader.readAsDataURL(file)
+            else total--
         }
     }
 })
 
+document.addEventListener("DOMContentLoaded", function(){
+    const fi = document.getElementById("ocr-file-input")
+    if(!fi) return
+    fi.addEventListener("change", function(){
+        const files = Array.from(fi.files)
+        if(!files.length) return
+        let imagens = [], total = files.length
+        files.forEach(file => {
+            const reader = new FileReader()
+            reader.onload = ev => { imagens.push(ev.target.result); if(imagens.length === total) enviar(imagens) }
+            reader.readAsDataURL(file)
+        })
+        fi.value = ""
+    })
+})
+
 function enviar(imgs){
     const loading = document.getElementById("loading")
-    if(loading) loading.style.display="block"
+    if(loading){ loading.style.display="block"; loading.textContent="Processando OCR..." }
     fetch("/colar", { method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({images:imgs}) })
-    .then(async r=>{ const txt = await r.text(); try { return JSON.parse(txt) } catch(e) { console.error("Resposta não JSON do /colar:", txt); return {ok:false, erro:"Resposta inválida do servidor", resultados:[]} } })
+    .then(r=>r.json())
     .then(d=>{
-        console.log("RETORNO /colar:", d)
-        window.apostasPreview = Array.isArray(d) ? d : (d.resultados || [])
-        if(typeof window.renderPreview === "function") window.renderPreview()
-        else { console.error("renderPreview não existe"); alert("OCR lido, mas o preview não está carregado.") }
-        if(loading) loading.style.display="none"
-        if(d.ok === false && d.erro) console.warn("OCR retornou aviso:", d.erro)
+        if(!d.job_id){ // fallback: resposta direta (compatibilidade)
+            window.apostasPreview = Array.isArray(d) ? d : (d.resultados || [])
+            if(typeof window.renderPreview === "function") window.renderPreview()
+            if(loading) loading.style.display="none"
+            return
+        }
+        let dots = 0
+        const poll = setInterval(async ()=>{
+            dots = (dots + 1) % 4
+            if(loading) loading.textContent = "Processando OCR" + ".".repeat(dots + 1)
+            try {
+                const r2 = await fetch(`/colar/status/${d.job_id}`, {cache:"no-store"})
+                const job = await r2.json()
+                if(job.status === "done" || job.status === "error"){
+                    clearInterval(poll)
+                    if(loading) loading.style.display="none"
+                    window.apostasPreview = Array.isArray(job.resultados) ? job.resultados : []
+                    if(typeof window.renderPreview === "function") window.renderPreview()
+                    if(job.status === "error") console.warn("OCR erro:", job.erro)
+                }
+            } catch(e){ clearInterval(poll); if(loading) loading.style.display="none" }
+        }, 600)
     })
-    .catch(err=>{ console.error("Erro fetch /colar:", err); if(loading) loading.style.display="none"; alert("Erro ao processar OCR. Veja o console do navegador e o CMD.") })
+    .catch(err=>{ console.error("Erro fetch /colar:", err); if(loading) loading.style.display="none" })
 }
 
 function v106ToDatetimeLocal(value){
@@ -680,12 +533,6 @@ function toggleUserMenu(ev){
     const menu = document.getElementById("sidebarUserMenu")
     if(menu) menu.classList.toggle("open")
 }
-document.addEventListener("click", function(e){
-    const menu = document.getElementById("sidebarUserMenu")
-    const card = document.querySelector(".sidebar-user-card")
-    if(menu && card && !menu.contains(e.target) && !card.contains(e.target)) menu.classList.remove("open")
-})
-
 // v63
 window.v63FeedKnownIds = window.v63FeedKnownIds || new Set()
 window.v63FeedPrimed = window.v63FeedPrimed || false
@@ -723,13 +570,6 @@ window.carregarFeedApostas = function(force=false){
     })
     .catch(()=>{ if(div.dataset.loaded !== "1") div.innerHTML = `<div class="feed-empty">Erro ao carregar últimas apostas.</div>` })
 }
-document.addEventListener("DOMContentLoaded", ()=>{
-    carregarFeedApostas(true)
-    setInterval(()=>carregarFeedApostas(false), 60000)
-    const feedTab = document.getElementById("tabFeedBtn"); if(feedTab) feedTab.addEventListener("click", v63ClearNewBetAlert)
-    const feedPanel = document.getElementById("aba-feed"); if(feedPanel) feedPanel.addEventListener("mouseenter", v63ClearNewBetAlert)
-})
-
 // v72
 window.v72DirtyMetrics = null
 function v72Money(v){ return "R$ " + Number(v||0).toFixed(2) }
@@ -770,30 +610,7 @@ function v72RestoreScroll(){
     const y=sessionStorage.getItem("restoreScrollY")
     if(y!==null){ sessionStorage.removeItem("restoreScrollY"); setTimeout(()=>window.scrollTo(0,Number(y||0)),0) }
 }
-document.addEventListener("DOMContentLoaded", v72RestoreScroll)
 window.addEventListener("beforeunload", v72SaveScroll)
-document.addEventListener("click", function(e){
-    const link=e.target.closest('a[href^="/resultado/"]'); if(!link) return
-    e.preventDefault(); e.stopPropagation()
-    const tr=link.closest("tr"); link.style.pointerEvents="none"; link.style.opacity=".6"
-    fetch(link.getAttribute("href")+"?ajax=1", {cache:"no-store"})
-    .then(r=>r.json()).then(d=>{ if(!d.ok) throw new Error("erro"); v72UpdateRow(tr,d.bet); v72UpdateMetrics(d.metricas); v72Toast("Resultado atualizado") })
-    .catch(()=>v72Toast("Erro ao atualizar","err"))
-    .finally(()=>{ link.style.pointerEvents=""; link.style.opacity="" })
-}, true)
-document.addEventListener("click", function(e){
-    const link=e.target.closest('a[href^="/remover/"]'); if(!link) return
-    e.preventDefault(); e.stopPropagation()
-    if(!confirm("Apagar esta aposta?")) return
-    const tr=link.closest("tr")
-    fetch(link.getAttribute("href")+"?ajax=1", {cache:"no-store"})
-    .then(r=>r.json()).then(d=>{
-        if(!d.ok) throw new Error("erro")
-        if(tr){ tr.style.transition=".18s ease"; tr.style.opacity="0"; tr.style.transform="translateX(10px)"; setTimeout(()=>tr.remove(),180) }
-        v72UpdateMetrics(d.metricas); v72Toast("Aposta apagada")
-    })
-    .catch(()=>v72Toast("Erro ao apagar","err"))
-}, true)
 document.addEventListener("submit", function(e){
     const form=e.target; if(!form||!form.matches(".manual-form")) return
     e.preventDefault()
@@ -802,15 +619,10 @@ document.addEventListener("submit", function(e){
     fetch("/adicionar_ajax", { method:"POST", body:fd, cache:"no-store" })
     .then(r=>r.json()).then(d=>{
         if(!d.ok) throw new Error(d.erro||"erro")
-        v72UpdateMetrics(d.metricas); v72Toast("Aposta adicionada"); form.reset()
-        const copied=document.getElementById("copiadaComunidade"); if(copied) copied.value="0"
-        const src=document.getElementById("sourceOriginalId"); if(src) src.value=""
-        const hj=document.getElementById("horarioJogo"); if(hj) hj.value=""
+        location.reload()
     })
-    .catch(()=>v72Toast("Erro ao adicionar aposta","err"))
-    .finally(()=>{ if(btn){ btn.disabled=false; btn.innerText=btn.dataset.oldText||"Adicionar" } })
+    .catch(e=>{ if(btn){ btn.disabled=false; btn.innerText=btn.dataset.oldText||"Adicionar" }; v72Toast(e.message||"Erro ao adicionar aposta","err") })
 }, true)
-document.addEventListener("click", function(e){ if(e.target.closest("a,button")) v72SaveScroll() }, true)
 document.addEventListener("submit", function(){ v72SaveScroll() }, true)
 
 // v72-copy-private
@@ -846,31 +658,58 @@ window.renderPreview = function(){
     div.scrollIntoView({behavior:"smooth",block:"center"})
     if(typeof window.gameAutocompleteAttach === "function") window.gameAutocompleteAttach()
 }
-document.addEventListener("DOMContentLoaded", ()=>{
-    const salvar=document.getElementById("salvar-preview"); if(!salvar) return
-    salvar.onclick=()=>{
-        const dados=(window.apostasPreview||[]).map((a,i)=>{
-            const odd=document.getElementById(`o${i}`)?.value||""
-            let valor=document.getElementById(`v${i}`)?.value||""
-            if(odd&&valor&&parseFloat(String(odd).replace(",","."))>1&&Math.abs(parseFloat(String(odd).replace(",","."))-parseFloat(String(valor).replace(",",".")))< 0.0001) valor=""
-            const jogoEl=document.getElementById(`j${i}`); const horarioIso=jogoEl?.dataset?.horario||a.horario_jogo_iso||""; return { aposta:document.getElementById(`a${i}`)?.value||"", casa:document.getElementById(`c${i}`)?.value||"", esporte:document.getElementById(`e${i}`)?.value||"", jogo:jogoEl?.value||"", mercado:document.getElementById(`m${i}`)?.value||"", selecao:document.getElementById(`s${i}`)?.value||"", linha:document.getElementById(`l${i}`)?.value||"", periodo:document.getElementById(`p${i}`)?.value||"", odd, valor, texto_bruto:a.texto_bruto||"", texto_interpretado:a.texto_interpretado||"", itens_multipla:a.itens_multipla||{}, itens_multipla_detalhados:a.itens_multipla_detalhados||[], horario_jogo:a.horario_jogo||"", horario_jogo_iso:horarioIso }
+// handler do botao salvar-preview
+document.addEventListener("DOMContentLoaded", function(){
+    const btn = document.getElementById("salvar-preview")
+    if(!btn) return
+    btn.addEventListener("click", function(){
+        if(btn.disabled) return
+        const n = Array.isArray(window.apostasPreview) ? window.apostasPreview.length : 0
+        if(!n){ if(typeof v72Toast==="function") v72Toast("Nenhuma aposta para salvar","err"); return }
+        const apostas = []
+        for(let i=0; i<n; i++){
+            const orig = window.apostasPreview[i] || {}
+            const jogoEl = document.getElementById("j"+i)
+            const horarioIso = jogoEl?.dataset.horario || orig.horario_jogo_iso || ""
+            const statusJogo = jogoEl?.dataset.statusJogo || orig.status_jogo || ""
+            const aoVivo = jogoEl?.dataset.aoVivo === "1" || orig.ao_vivo || false
+            apostas.push({
+                casa: document.getElementById("c"+i)?.value ?? orig.casa ?? "",
+                esporte: document.getElementById("e"+i)?.value ?? orig.esporte ?? "",
+                jogo: jogoEl?.value ?? orig.jogo ?? "",
+                aposta: document.getElementById("a"+i)?.value ?? orig.aposta ?? "",
+                odd: document.getElementById("o"+i)?.value ?? String(orig.odd ?? ""),
+                valor: document.getElementById("v"+i)?.value ?? String(orig.valor ?? ""),
+                mercado: document.getElementById("m"+i)?.value ?? orig.mercado ?? "",
+                selecao: document.getElementById("s"+i)?.value ?? orig.selecao ?? "",
+                linha: document.getElementById("l"+i)?.value ?? orig.linha ?? "",
+                periodo: document.getElementById("p"+i)?.value ?? orig.periodo ?? "",
+                texto_bruto: orig.texto_bruto ?? "",
+                texto_interpretado: orig.texto_interpretado ?? "",
+                itens_multipla: orig.itens_multipla ?? {},
+                itens_multipla_detalhados: orig.itens_multipla_detalhados ?? [],
+                horario_jogo_iso: horarioIso,
+                horario_jogo: statusJogo,
+                status_jogo: statusJogo,
+                ao_vivo: aoVivo
+            })
+        }
+        btn.disabled = true; btn.innerText = "Salvando..."
+        fetch("/salvar_preview", {
+            method: "POST",
+            headers: {"Content-Type": "application/json"},
+            body: JSON.stringify({apostas: apostas})
         })
-        salvar.disabled=true; salvar.innerText="Salvando..."
-        fetch("/salvar_preview", { method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({apostas:dados}) })
-        .then(async r=>{ const txt=await r.text(); let data={}; try{data=JSON.parse(txt)}catch(e){throw new Error(txt||"Resposta inválida")}; if(!r.ok||data.ok===false) throw new Error(data.erro||"Erro ao salvar preview"); return data })
+        .then(r=>r.json())
         .then(d=>{
-            salvar.innerText="Salvo ✓"
-            if(typeof v72UpdateMetrics==="function"&&d.metricas) v72UpdateMetrics(d.metricas)
-            if(typeof v76AddSavedPreviewBets==="function") v76AddSavedPreviewBets(d)
-            if(typeof v72Toast==="function") v72Toast(`${d.salvas||0} aposta(s) salva(s)`)
-            const div=document.getElementById("preview-area")
-            if(div) div.innerHTML=`<div class="preview-empty preview-success">${d.salvas||0} aposta(s) salva(s). A tabela foi atualizada no sistema.</div>`
-            window.apostasPreview=[]
-            setTimeout(()=>{ salvar.style.display="none"; salvar.disabled=false; salvar.innerText="Salvar Apostas do Preview" }, 900)
-            if(typeof carregarFeedApostas==="function") carregarFeedApostas(false)
+            if(!d.ok) throw new Error(d.erro || "Erro ao salvar")
+            location.reload()
         })
-        .catch(err=>{ console.error("ERRO salvar_preview:",err); alert("Erro ao salvar preview: "+(err.message||err)); salvar.disabled=false; salvar.innerText="Salvar Apostas do Preview" })
-    }
+        .catch(e=>{
+            btn.disabled = false; btn.innerText = "Salvar Apostas do Preview"
+            if(typeof v72Toast === "function") v72Toast(e.message || "Erro ao salvar","err")
+        })
+    })
 })
 
 // v76
@@ -1064,11 +903,10 @@ function fecharModalBancaInicial(){ const modal=document.getElementById("bancaIn
         }else{ const daySeen=new Set();for(const r of rows){const dk=dayKey(r);if(!daySeen.has(dk)){daySeen.add(dk);tbody.appendChild(dayRow(dk,rows.filter(x=>dayKey(x)===dk).length))};tbody.appendChild(r) } }
     }
     function preserve(fn){ const y=window.scrollY;fn();requestAnimationFrame(()=>window.scrollTo({top:y,behavior:"auto"})) }
+    document.addEventListener("click",e=>{ const t=String(e.target?.innerText||"").toLowerCase();if(t.includes("salvar apostas")||t.includes("excluir")||t.includes("editar")){setTimeout(()=>{ if(typeof _estaEditando==="function"&&_estaEditando()) return; preserve(()=>apply(true)) },700);setTimeout(()=>{ if(typeof _estaEditando==="function"&&_estaEditando()) return; preserve(()=>apply(true)) },1600)} })
     document.addEventListener("DOMContentLoaded",()=>{ apply(true);setInterval(()=>preserve(()=>apply(false)),300000) })
-    document.addEventListener("click",e=>{ const t=String(e.target?.innerText||"").toLowerCase();if(t.includes("salvar apostas")||t.includes("adicionar")||t.includes("salvar")||t.includes("excluir")||t.includes("editar")){setTimeout(()=>{ if(typeof _estaEditando==="function"&&_estaEditando()) return; preserve(()=>apply(true)) },700);setTimeout(()=>{ if(typeof _estaEditando==="function"&&_estaEditando()) return; preserve(()=>apply(true)) },1600)} })
-    window.v136SmartTableApply=apply
-    // Run filtrarApostas after v147's 0ms timer has fired
     document.addEventListener("DOMContentLoaded",()=>{ setTimeout(()=>{ if(typeof filtrarApostas==="function") filtrarApostas() },50) })
+    window.v136SmartTableApply=apply
 })();
 
 // v141
@@ -1123,8 +961,8 @@ function fecharModalBancaInicial(){ const modal=document.getElementById("bancaIn
         all.forEach((el,i)=>{ if(el.classList.contains("day-separator-row-v136")){let v=false;for(let j=i+1;j<all.length;j++){const n=all[j];if(n.classList.contains("day-separator-row-v136")) break;if((n.classList.contains("bet-row")&&n.dataset.v147Filtered==="1")||((n.className||"").includes("game-group-row")&&n.style.display!=="none")){v=true;break}};el.style.display=v?"":"none"} })
     }
     function bind(){ document.querySelectorAll("input,select").forEach(el=>{if(el.dataset.v147Ready==="1") return;el.dataset.v147Ready="1";el.addEventListener("input",()=>{clearTimeout(window.__v147t);window.__v147t=setTimeout(apply,120)});el.addEventListener("change",()=>{clearTimeout(window.__v147t);window.__v147t=setTimeout(apply,120)})}) }
-    document.addEventListener("DOMContentLoaded",()=>{bind();setTimeout(apply,0)})
     document.addEventListener("click",e=>{const t=norm(e.target?.innerText||"");if(t.includes("agrupar")||t.includes("expandir")||t.includes("salvar")||t.includes("editar")||t.includes("excluir")||t.includes("buscar")){setTimeout(()=>{bind();apply()},350);setTimeout(apply,1300)}})
+    document.addEventListener("DOMContentLoaded",()=>{bind();setTimeout(apply,0)})
     window.v147ApplyFilters=apply
 })();
 // Wrap v147ApplyFilters: whenever something calls it (e.g. v150 at 900ms/2000ms),
@@ -1146,8 +984,8 @@ function fecharModalBancaInicial(){ const modal=document.getElementById("bancaIn
     async function checarVersaoApostas(){ try{const r=await fetch("/api/apostas_versao",{cache:"no-store"});const data=await r.json();if(!data||!data.ok) return;if(ultimaVersaoApostas===null){ultimaVersaoApostas=data.versao;return};if(data.versao!==ultimaVersaoApostas){ultimaVersaoApostas=data.versao;if(feedVisivel){try{if(typeof carregarFeedApostas==="function") carregarFeedApostas(false)}catch(e){}};setTimeout(()=>{try{if(typeof v147ApplyFilters==="function") v147ApplyFilters()}catch(e){}; aplicarHistorico()},500)}}catch(e){} }
     function patchStatusButtons(){ document.querySelectorAll("tr.bet-row button,tr.bet-row a").forEach(btn=>{if(btn.dataset.v149StatusReady==="1") return;const t=norm(btn.innerText||btn.title||btn.getAttribute("aria-label")||"");const icon=(btn.innerText||"").trim();const looksStatus=t.includes("green")||t.includes("ganha")||t.includes("red")||t.includes("perdida")||t.includes("anular")||t.includes("anulada")||["✓","✔","x","✕","-"].includes(icon);if(!looksStatus) return;btn.dataset.v149StatusReady="1";btn.addEventListener("click",()=>{const row=btn.closest("tr.bet-row");if(row){row.classList.add("v149-status-changing");setTimeout(()=>row.classList.remove("v149-status-changing"),2200)};setTimeout(()=>{try{if(typeof v147ApplyFilters==="function") v147ApplyFilters()}catch(e){}; try{if(typeof v141AtualizarLucroPorBanca==="function") v141AtualizarLucroPorBanca()}catch(e){}; aplicarHistorico()},900)},{capture:true})}) }
     function boot(){ patchStatusButtons();aplicarHistorico();checarVersaoApostas() }
+    document.addEventListener("click",e=>{ const t=norm(e.target?.innerText||"");if(t.includes("ultimas apostas")||t.includes("últimas apostas")) feedVisivel=true;if(t.includes("evolucao")||t.includes("evolução")) feedVisivel=false;const isFormSubmit=e.target?.type==="submit"&&e.target?.closest("form#manualForm");if(!isFormSubmit&&(t.includes("salvar")||t.includes("editar")||t.includes("excluir")||t.includes("agrupar")||t.includes("expandir"))){setTimeout(()=>{ensureHistoricoButton();patchStatusButtons();aplicarHistorico()},800)} })
     document.addEventListener("DOMContentLoaded",()=>{ setTimeout(boot,0);setTimeout(boot,200);setInterval(()=>{ if(typeof _estaEditando==="function"&&_estaEditando()) return; checarVersaoApostas() },30000) })
-    document.addEventListener("click",e=>{ const t=norm(e.target?.innerText||"");if(t.includes("ultimas apostas")||t.includes("últimas apostas")) feedVisivel=true;if(t.includes("evolucao")||t.includes("evolução")) feedVisivel=false;if(t.includes("salvar")||t.includes("editar")||t.includes("excluir")||t.includes("agrupar")||t.includes("expandir")){setTimeout(()=>{ensureHistoricoButton();patchStatusButtons();aplicarHistorico()},800)} })
     window.v149AplicarHistorico=aplicarHistorico
     window.v149SetMostrarHistorico=function(v){ mostrarHistoricoAntigo=Boolean(v); aplicarHistorico() }
 })();
@@ -1161,8 +999,8 @@ function fecharModalBancaInicial(){ const modal=document.getElementById("bancaIn
     function shouldFinalize(row){ const d=gameDate(row);if(!d) return false;return(Date.now()-d.getTime())/60000>=LIMITE_MINUTOS }
     function forceFinalizeOldLiveGames(){ document.querySelectorAll("tr.bet-row").forEach(row=>{if(!shouldFinalize(row)) return;if(row.dataset.v150Finalized==="1") return;row.dataset.v150Finalized="1";row.dataset.aoVivo="0";row.dataset.statusJogo="Finalizado";row.dataset.horarioJogo="Finalizado";const first=row.children?.[0];if(first){const main=first.querySelector(".game-date-main")?.innerText||first.innerText.split("\n")[0]||"";first.classList.add("game-date-cell");first.innerHTML=`<span class="game-date-main">${main}</span><span class="game-date-status finished">Finalizado</span>`}}) }
     function refresh(){ forceFinalizeOldLiveGames();try{if(typeof v147ApplyFilters==="function") v147ApplyFilters()}catch(e){};try{if(typeof v149AplicarHistorico==="function") v149AplicarHistorico()}catch(e){} }
+        // Antes rodava a CADA clique (causava a tabela inteira piscar ao abrir o editar).
     document.addEventListener("DOMContentLoaded",()=>{ setTimeout(refresh,900);setTimeout(refresh,2000) })
-    // Antes rodava a CADA clique (causava a tabela inteira piscar ao abrir o editar).
     // Agora roda periodicamente — finaliza jogos antigos sem re-renderizar a cada clique.
     setInterval(()=>{ if(typeof _estaEditando==="function"&&_estaEditando()) return; refresh() }, 60000)
     window.v150ForceFinalizeOldLiveGames=refresh
@@ -1212,7 +1050,7 @@ function fecharModalBancaInicial(){ const modal=document.getElementById("bancaIn
     function badge(estado){ estado=norm(estado);if(estado==="ganha"||estado==="green") return`<span class="status-badge ganha">Ganha</span>`;if(estado==="perdida"||estado==="red") return`<span class="status-badge perdida">Perdida</span>`;if(estado==="anulada"||estado==="void") return`<span class="status-badge anulada">Anulada</span>`;return`<span class="status-badge pendente">Pendente</span>` }
     function lucroLocal(row,estado){ const oddIdx=col("Odd"),valorIdx=col("Valor");const odd=parseMoney(oddIdx>=0?row.children?.[oddIdx]?.innerText:"");const valor=parseMoney(valorIdx>=0?row.children?.[valorIdx]?.innerText:"");estado=norm(estado);if(estado==="ganha"||estado==="green") return(odd*valor)-valor;if(estado==="perdida"||estado==="red") return -valor;return 0 }
     function aplicarLinha(row,estado,lucro){ const statusIdx=col("Status"),lucroIdx=col("Lucro");if(statusIdx>=0&&row.children?.[statusIdx]) row.children[statusIdx].innerHTML=badge(estado);if(lucro===undefined||lucro===null||Number.isNaN(Number(lucro))) lucro=lucroLocal(row,estado);if(lucroIdx>=0&&row.children?.[lucroIdx]){row.children[lucroIdx].textContent=money(Number(lucro||0));row.children[lucroIdx].classList.remove("lucro-pos","lucro-neg","lucro-zero");row.children[lucroIdx].classList.add(lucro>0?"lucro-pos":lucro<0?"lucro-neg":"lucro-zero")};row.classList.add("v154-status-ok");setTimeout(()=>row.classList.remove("v154-status-ok"),900) }
-    function atualizarMetricas(metricas){ if(!metricas) return;function setByTitle(title,value,formatter){const card=Array.from(document.querySelectorAll(".metric-card")).find(c=>norm(c.querySelector("span")?.innerText||"")===norm(title));const strong=card?.querySelector("strong");if(strong) strong.textContent=formatter?formatter(value):value};if(metricas.banca_atual!==undefined) setByTitle("Banca Atual",metricas.banca_atual,money);if(metricas.total!==undefined) setByTitle("Total Apostas",metricas.total,v=>String(v));if(metricas.pendentes!==undefined) setByTitle("Pendentes",metricas.pendentes,v=>String(v)) }
+    function atualizarMetricas(metricas){ if(!metricas) return;function setByTitle(title,value,formatter){const card=Array.from(document.querySelectorAll(".metric-card")).find(c=>norm(c.querySelector("span")?.innerText||"")===norm(title));const strong=card?.querySelector("strong");if(strong) strong.textContent=formatter?formatter(value):value};if(metricas.banca_atual!==undefined) setByTitle("Banca Atual",metricas.banca_atual,money);if(metricas.total!==undefined) setByTitle("Total Apostas",metricas.total,v=>String(v));if(metricas.pendentes!==undefined) setByTitle("Pendentes",metricas.pendentes,v=>String(v));const elLucro=document.getElementById("metric-lucro");if(elLucro&&metricas.lucro_total!==undefined){const l=Number(metricas.lucro_total);elLucro.textContent=money(l);elLucro.classList.toggle("mc-pos",l>=0);elLucro.classList.toggle("mc-neg",l<0)};const elRoi=document.getElementById("metric-roi");if(elRoi&&metricas.roi!==undefined) elRoi.textContent=Number(metricas.roi).toFixed(2)+"%";const elTaxa=document.getElementById("metric-taxa");if(elTaxa&&metricas.taxa!==undefined) elTaxa.textContent=Number(metricas.taxa).toFixed(2)+"%" }
     function recalcularLeve(){ try{if(typeof v141AtualizarLucroPorBanca==="function") v141AtualizarLucroPorBanca()}catch(e){};try{if(typeof v147ApplyFilters==="function") v147ApplyFilters()}catch(e){};try{if(typeof v149AplicarHistorico==="function") v149AplicarHistorico()}catch(e){};try{if(typeof v150ForceFinalizeOldLiveGames==="function") v150ForceFinalizeOldLiveGames()}catch(e){} }
     async function ajaxResultado(anchor,row){
         const href=anchor.getAttribute("href"),estado=estadoFromHref(href);if(!href||!estado) return
@@ -1225,25 +1063,138 @@ function fecharModalBancaInicial(){ const modal=document.getElementById("bancaIn
         aplicarLinha(row,bet.estado||bet.status||estado,lucro);atualizarMetricas(data.metricas);recalcularLeve()
         requestAnimationFrame(()=>window.scrollTo({top:y,behavior:"auto"}))
     }
+    function attachResultadoClicks(){
+        document.querySelectorAll('a[href*="/resultado/"]').forEach(a=>{
+            if(a.dataset.v154) return
+            a.dataset.v154="1"
+            a.addEventListener("click",async function(e){
+                e.preventDefault()
+                const row=a.closest("tr"); if(!row) return location.href=a.href
+                try{ await ajaxResultado(a,row) }catch(err){ location.href=a.href }
+            })
+        })
+    }
+    document.addEventListener("DOMContentLoaded",()=>{ attachResultadoClicks(); const obs=new MutationObserver(()=>attachResultadoClicks()); obs.observe(document.body,{childList:true,subtree:true}) })
     window.v154StatusAjaxOriginal=true
 })();
 
-// vFix — filtrarApostas tem a palavra final; neutraliza v149 quando pills existem
-;(function(){
-    document.addEventListener('DOMContentLoaded', function(){
+
+
+// Planilha sidebar switcher
+function toggleSbPlanilha(ev) {
+    if (ev) ev.stopPropagation();
+    const wrap = document.querySelector('.sb-pl-wrap');
+    const menu = document.getElementById('sbPlMenu');
+    if (!menu) return;
+    const open = menu.style.display !== 'none';
+    menu.style.display = open ? 'none' : 'block';
+    if (wrap) wrap.classList.toggle('open', !open);
+}
+function sbPlRenomear(pid, nomeAtual) {
+    const novo = prompt('Novo nome para a planilha:', nomeAtual);
+    if (!novo || novo.trim() === nomeAtual) return;
+    document.getElementById('sbPlRenamePid').value = pid;
+    document.getElementById('sbPlRenomeNome').value = novo.trim();
+    document.getElementById('sbPlRenameForm').submit();
+}
+// Topbar bankroll dropdown
+function toggleTopbarBankroll(ev) {
+    if (ev) ev.stopPropagation();
+    const wrap = document.querySelector('.topbar-bankroll-wrap');
+    const menu = document.getElementById('topbarBankrollMenu');
+    if (!menu) return;
+    const open = menu.style.display !== 'none';
+    menu.style.display = open ? 'none' : 'block';
+    if (wrap) wrap.classList.toggle('open', !open);
+}
+function topbarBrRenomear(pid, nomeAtual) {
+    const novo = prompt('Novo nome para a planilha:', nomeAtual);
+    if (!novo || novo.trim() === nomeAtual) return;
+    document.getElementById('topbarBrRenamePid').value = pid;
+    document.getElementById('topbarBrRenomeNome').value = novo.trim();
+    document.getElementById('topbarBrRenameForm').submit();
+}
+
+
+// ======= DOMContentLoaded CONSOLIDADO =======
+document.addEventListener("DOMContentLoaded", function(){
+    // 1. Limpar apostas duplicadas visualmente
+    limparApostaDuplicadaVisual()
+
+    // 2. Form manual — handler já em document.addEventListener("submit",...,true) na linha do v72
+
+    // 3. Restaurar estado da sidebar
+    ;(function(){
+        const collapsed = localStorage.getItem("sidebarCollapsed") === "1"
+        if(collapsed){
+            document.body.classList.add("sidebar-collapsed")
+            const btn = document.querySelector(".sidebar-toggle")
+            if(btn) btn.innerText = "›"
+        }
+    })()
+
+    // 4. Bind filtros
+    document.querySelectorAll("#apostas select,#casasDrop input").forEach(el=>{
+        el.addEventListener("change", filtrarApostasDebounced)
+    })
+
+    // 5. Grafico Chart.js
+    ;(function(){
+        const canvas = document.getElementById("grafico")
+        if(!canvas || typeof Chart === "undefined") return
+        const ultimo = valores[valores.length - 1] || 0
+        const corLinha = ultimo >= 0 ? "#22c55e" : "#f87171"
+        const corFundo = ultimo >= 0 ? "rgba(34,197,94,0.12)" : "rgba(248,113,113,0.10)"
+        new Chart(canvas, {
+            type: "line",
+            data: { labels: labels, datasets: [{
+                label: "Lucro acumulado",
+                data: valores,
+                borderColor: corLinha,
+                backgroundColor: corFundo,
+                borderWidth: 2.5,
+                tension: 0.4,
+                fill: true,
+                pointRadius: valores.length > 60 ? 0 : 2.5,
+                pointHoverRadius: 5,
+                pointBackgroundColor: corLinha,
+            }]},
+            options: {
+                responsive: true, maintainAspectRatio: false,
+                plugins: {
+                    legend: { labels: { color:"#cbd5e1", font:{size:12} } },
+                    tooltip: { callbacks: { label: ctx => " R$ " + ctx.parsed.y.toFixed(2) } }
+                },
+                layout: { padding: { top:6, right:8, bottom:0, left:0 } },
+                scales: {
+                    x: { ticks: { color:"#94a3b8", maxRotation:45, minRotation:45, autoSkip:true, maxTicksLimit:14, font:{size:10} }, grid: { color:"rgba(30,41,59,0.45)" } },
+                    y: {
+                        ticks: { color:"#94a3b8", font:{size:10}, callback: v => "R$ "+v.toFixed(0) },
+                        grid: { color:"rgba(30,41,59,0.55)" },
+                        afterBuildTicks(axis){ if(!axis.ticks.some(t=>t.value===0)) axis.ticks.push({value:0}) },
+                    }
+                }
+            }
+        })
+    })()
+
+    // 6. Feed de apostas
+    carregarFeedApostas(true)
+    setInterval(()=>carregarFeedApostas(false), 60000)
+    ;(function(){
+        const feedTab = document.getElementById("tabFeedBtn"); if(feedTab) feedTab.addEventListener("click", v63ClearNewBetAlert)
+        const feedPanel = document.getElementById("aba-feed"); if(feedPanel) feedPanel.addEventListener("mouseenter", v63ClearNewBetAlert)
+    })()
+
+    // 7. Restaurar scroll
+    v72RestoreScroll()
+
+    // 8. vFix: anti-tremida, pills, MutationObserver
+    ;(function(){
         if(document.getElementById('betStatusPills')){
             window.v149AplicarHistorico = function(){}
             window.v149SetMostrarHistorico = function(){}
         }
-        // Anti-tremida: cancela o reflow do v147 durante a digitação na busca.
-        // Este listener é registrado por último (vFix roda após v147), então roda
-        // depois do listener do v147 e cancela o timer __v147t antes de ele executar.
-        // filtrarApostas já faz TODA a filtragem (busca, data, casa, esporte, status, olho).
-        // Sem isto, o v147 roda 120ms depois e re-mostra linhas, quebrando os filtros.
-        // Delegação no document (fase bubble = roda DEPOIS do listener do v147 no input).
-        // Cancela o v147 em QUALQUER input fora da barra de filtros (#apostas): modal de
-        // editar, nova aposta, preview do OCR, etc. — pra digitar neles não re-renderizar
-        // (piscar) a tabela de fundo. Cobre inputs dinâmicos (delegação).
         function _cancelaV147(e){
             const t = e.target
             if(t && t.matches && t.matches('input, select') && !t.closest('#apostas')){
@@ -1252,7 +1203,6 @@ function fecharModalBancaInicial(){ const modal=document.getElementById("bancaIn
         }
         document.addEventListener('input', _cancelaV147)
         document.addEventListener('change', _cancelaV147)
-        // Filtros do #apostas: o v147 também é redundante (filtrarApostas faz tudo)
         document.querySelectorAll('#apostas input, #apostas select').forEach(function(el){
             el.addEventListener('input',  function(){ clearTimeout(window.__v147t) })
             el.addEventListener('change', function(){ clearTimeout(window.__v147t) })
@@ -1260,7 +1210,6 @@ function fecharModalBancaInicial(){ const modal=document.getElementById("bancaIn
         setTimeout(function(){ if(typeof filtrarApostas==='function') filtrarApostas() }, 250)
         setTimeout(function(){ if(typeof filtrarApostas==='function') filtrarApostas() }, 1100)
         setTimeout(function(){ if(typeof filtrarApostas==='function') filtrarApostas() }, 2500)
-        // Patch v136SmartTableApply para sempre limpar separadores depois de re-renderizar
         setTimeout(function(){
             const _origV136 = window.v136SmartTableApply
             if(_origV136){
@@ -1270,11 +1219,6 @@ function fecharModalBancaInicial(){ const modal=document.getElementById("bancaIn
                 }
             }
         }, 500)
-        // Rede de segurança: QUALQUER re-render da tabela (v136/v149/v150 internos,
-        // timers do ESPN, etc.) que adicione/remova linhas dispara uma re-filtragem.
-        // Sem isso, separadores de dias antigos reaparecem "do nada" quando algo
-        // recria a tabela sem chamar filtrarApostas. Observa só childList (não style),
-        // e desconecta durante a própria filtragem para nunca entrar em loop.
         const _tbody = document.querySelector('#betsMainTable tbody')
         if(_tbody && typeof MutationObserver !== 'undefined'){
             let _t = null
@@ -1286,6 +1230,73 @@ function fecharModalBancaInicial(){ const modal=document.getElementById("bancaIn
             })
             _obs.observe(_tbody, { childList: true })
         }
-    })
-})();
+    })()
+})
 
+// ======= click GLOBAL CONSOLIDADO =======
+// Handlers não-capture (bubble): fechamento de menus/dropdowns
+document.addEventListener("click", function(e){
+    // Fechar custom-dropdown ao clicar fora
+    document.querySelectorAll(".custom-filter").forEach(box=>{
+        if(!box.contains(e.target)){ const dropdown = box.querySelector(".custom-dropdown"); if(dropdown) dropdown.classList.remove("open") }
+    })
+
+    // Fechar bet-fi-multi-drop ao clicar fora
+    if(!e.target.closest(".bet-fi-multi")) document.querySelectorAll(".bet-fi-multi-drop.open").forEach(d=>d.classList.remove("open"))
+
+    // Fechar sidebar user menu ao clicar fora
+    const sidebarMenu = document.getElementById("sidebarUserMenu")
+    const sidebarCard = document.querySelector(".sidebar-user-card")
+    if(sidebarMenu && sidebarCard && !sidebarMenu.contains(e.target) && !sidebarCard.contains(e.target)) sidebarMenu.classList.remove("open")
+
+    // Fechar planilha switcher ao clicar fora
+    const sbPlWrap = document.querySelector('.sb-pl-wrap')
+    const sbPlMenu = document.getElementById('sbPlMenu')
+    if(sbPlMenu && sbPlMenu.style.display !== 'none' && sbPlWrap && !sbPlWrap.contains(e.target)){
+        sbPlMenu.style.display = 'none'
+        sbPlWrap.classList.remove('open')
+    }
+
+    // Fechar topbar bankroll dropdown ao clicar fora
+    const topbarBrWrap = document.querySelector('.topbar-bankroll-wrap')
+    const topbarBrMenu = document.getElementById('topbarBankrollMenu')
+    if(topbarBrMenu && topbarBrMenu.style.display !== 'none' && topbarBrWrap && !topbarBrWrap.contains(e.target)){
+        topbarBrMenu.style.display = 'none'
+        topbarBrWrap.classList.remove('open')
+    }
+})
+
+// Handlers capture (interceptam antes dos elementos):
+document.addEventListener("click", function(e){
+    // Salvar scroll antes de navegar
+    const action = e.target.closest('a[href^="/resultado/"], a[href^="/remover/"], a[href^="/admin/"], a[href^="/saldos/remover/"]')
+    if(action) sessionStorage.setItem("restoreScrollY", String(window.scrollY || 0))
+}, true)
+
+document.addEventListener("click", function(e){
+    // AJAX: marcar resultado
+    const link=e.target.closest('a[href^="/resultado/"]'); if(!link) return
+    e.preventDefault(); e.stopPropagation()
+    const tr=link.closest("tr"); link.style.pointerEvents="none"; link.style.opacity=".6"
+    fetch(link.getAttribute("href")+"?ajax=1", {cache:"no-store"})
+    .then(r=>r.json()).then(d=>{ if(!d.ok) throw new Error("erro"); v72UpdateRow(tr,d.bet); v72UpdateMetrics(d.metricas); v72Toast("Resultado atualizado") })
+    .catch(()=>v72Toast("Erro ao atualizar","err"))
+    .finally(()=>{ link.style.pointerEvents=""; link.style.opacity="" })
+}, true)
+
+document.addEventListener("click", function(e){
+    // AJAX: remover aposta
+    const link=e.target.closest('a[href^="/remover/"]'); if(!link) return
+    e.preventDefault(); e.stopPropagation()
+    if(!confirm("Apagar esta aposta?")) return
+    const tr=link.closest("tr")
+    fetch(link.getAttribute("href")+"?ajax=1", {cache:"no-store"})
+    .then(r=>r.json()).then(d=>{
+        if(!d.ok) throw new Error("erro")
+        if(tr){ tr.style.transition=".18s ease"; tr.style.opacity="0"; tr.style.transform="translateX(10px)"; setTimeout(()=>tr.remove(),180) }
+        v72UpdateMetrics(d.metricas); v72Toast("Aposta apagada")
+    })
+    .catch(()=>v72Toast("Erro ao apagar","err"))
+}, true)
+
+document.addEventListener("click", function(e){ if(e.target.closest("a,button")) v72SaveScroll() }, true)
