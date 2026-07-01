@@ -632,10 +632,12 @@ except Exception:
 
 def _migrar_ellen_se_necessario():
     """Importa conta e apostas da Ellen do backup do Fly.io se ela não existir."""
+    global dados
     try:
         import os as _os
         _arq = _os.path.join(_os.path.dirname(__file__), "_ellen_migration.json")
         if not _os.path.exists(_arq):
+            print("Migração Ellen: arquivo _ellen_migration.json não encontrado, pulando.")
             return
         with open(_arq, encoding="utf-8") as _f:
             _raw = json.load(_f)
@@ -645,24 +647,20 @@ def _migrar_ellen_se_necessario():
             return
         _email = _ellen_user.get("email", "").lower()
         _uid = _ellen_user.get("id", "")
-        # Verifica usuários
-        _usuarios = db_get_json("usuarios", {"users": []})
+        # Verifica e salva usuária
+        _usuarios = carregar_usuarios()
         _users = _usuarios.get("users", [])
         if any(u.get("email","").lower() == _email for u in _users):
             print(f"Migração Ellen: já existe, pulando.")
             return
-        # Adiciona usuária
         _users.append(_ellen_user)
         _usuarios["users"] = _users
-        db_set_json("usuarios", _usuarios)
+        salvar_usuarios(_usuarios)
         # Adiciona apostas (só as dela)
-        _dados = db_get_json("dados", {"bets": []})
-        _bets = _dados.get("bets", [])
-        _ids_existentes = {b.get("id") for b in _bets}
+        _ids_existentes = {b.get("id") for b in dados.get("bets", [])}
         _novas = [b for b in _ellen_bets_src if b.get("user_id") == _uid and b.get("id") not in _ids_existentes]
-        _bets.extend(_novas)
-        _dados["bets"] = _bets
-        db_set_json("dados", _dados)
+        dados.setdefault("bets", []).extend(_novas)
+        salvar()
         print(f"Migração Ellen: {len(_novas)} apostas importadas com sucesso.")
     except Exception as _e:
         print(f"Migração Ellen ERRO: {_e}")
