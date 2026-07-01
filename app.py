@@ -359,6 +359,18 @@ else:
     pytesseract.pytesseract.tesseract_cmd = _tess_cmd
 
 
+def _prewarm_tesseract():
+    try:
+        from PIL import Image as _PILImg
+        _img = _PILImg.new("L", (60, 20), 255)
+        pytesseract.image_to_string(_img, config="--oem 1 --psm 6")
+        print("Tesseract pre-warmed OK")
+    except Exception as _e:
+        print(f"Tesseract pre-warm erro: {_e}")
+
+threading.Thread(target=_prewarm_tesseract, daemon=True).start()
+
+
 CASAS_DISPONIVEIS = [
     "1Xbet", "4Win", "4play", "7Games", "7K", "A247", "Ai", "Alfa",
     "Aposta Ganha", "Aposta1", "ApostaTudo", "Apostou", "Aviaobet",

@@ -449,7 +449,7 @@ function enviar(imgs){
                     if(job.status === "error") console.warn("OCR erro:", job.erro)
                 }
             } catch(e){ clearInterval(poll); if(loading) loading.style.display="none" }
-        }, 600)
+        }, 200)
         if(d.ok === false && d.erro) console.warn("OCR retornou aviso:", d.erro)
     })
     .catch(err=>{ console.error("Erro fetch /colar:", err); if(loading) loading.style.display="none" })
