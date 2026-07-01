@@ -631,13 +631,13 @@ except Exception:
     pass
 
 def _migrar_ellen_se_necessario():
-    """Importa conta e apostas da Ellen do backup do Fly.io se ela não existir."""
+    """Importa conta e apostas da Ellen do backup do Fly.io usando SQL direto."""
     global dados
     try:
         import os as _os
         _arq = _os.path.join(_os.path.dirname(__file__), "_ellen_migration.json")
         if not _os.path.exists(_arq):
-            print("Migração Ellen: arquivo _ellen_migration.json não encontrado, pulando.")
+            print("Migração Ellen: arquivo não encontrado, pulando.")
             return
         with open(_arq, encoding="utf-8") as _f:
             _raw = json.load(_f)
@@ -647,21 +647,57 @@ def _migrar_ellen_se_necessario():
             return
         _email = _ellen_user.get("email", "").lower()
         _uid = _ellen_user.get("id", "")
-        # Verifica e salva usuária
-        _usuarios = carregar_usuarios()
-        _users = _usuarios.get("users", [])
-        if any(u.get("email","").lower() == _email for u in _users):
-            print(f"Migração Ellen: já existe, pulando.")
+        _conn = get_pg_conn()
+        if not _conn:
+            print("Migração Ellen ERRO: sem conexão com banco.")
             return
-        _users.append(_ellen_user)
-        _usuarios["users"] = _users
-        salvar_usuarios(_usuarios)
-        # Adiciona apostas (só as dela)
-        _ids_existentes = {b.get("id") for b in dados.get("bets", [])}
-        _novas = [b for b in _ellen_bets_src if b.get("user_id") == _uid and b.get("id") not in _ids_existentes]
-        dados.setdefault("bets", []).extend(_novas)
-        salvar()
-        print(f"Migração Ellen: {len(_novas)} apostas importadas com sucesso.")
+        try:
+            _cur = _conn.cursor()
+            # Carrega usuarios do banco
+            _cur.execute("SELECT valor FROM app_store WHERE chave = 'usuarios'")
+            _row = _cur.fetchone()
+            _usuarios = (json.loads(_row[0]) if isinstance(_row[0], str) else _row[0]) if _row else {"users": []}
+            _users = _usuarios.get("users", [])
+            if any(u.get("email","").lower() == _email for u in _users):
+                print("Migração Ellen: já existe, pulando.")
+                _cur.close()
+                release_pg_conn(_conn)
+                return
+            # Adiciona usuária
+            _users.append(_ellen_user)
+            _usuarios["users"] = _users
+            _cur.execute(
+                "INSERT INTO app_store (chave, valor, atualizado_em) VALUES ('usuarios', %s::jsonb, NOW()) "
+                "ON CONFLICT (chave) DO UPDATE SET valor = EXCLUDED.valor, atualizado_em = NOW()",
+                (json.dumps(_usuarios, ensure_ascii=False),)
+            )
+            # Carrega e atualiza apostas
+            _cur.execute("SELECT valor FROM app_store WHERE chave = 'dados'")
+            _row2 = _cur.fetchone()
+            _dados_pg = (json.loads(_row2[0]) if isinstance(_row2[0], str) else _row2[0]) if _row2 else {"bets": []}
+            _bets = _dados_pg.get("bets", [])
+            _ids_existentes = {b.get("id") for b in _bets}
+            _novas = [b for b in _ellen_bets_src if b.get("user_id") == _uid and b.get("id") not in _ids_existentes]
+            _bets.extend(_novas)
+            _dados_pg["bets"] = _bets
+            _cur.execute(
+                "INSERT INTO app_store (chave, valor, atualizado_em) VALUES ('dados', %s::jsonb, NOW()) "
+                "ON CONFLICT (chave) DO UPDATE SET valor = EXCLUDED.valor, atualizado_em = NOW()",
+                (json.dumps(_dados_pg, ensure_ascii=False),)
+            )
+            _conn.commit()
+            _cur.close()
+            release_pg_conn(_conn)
+            # Atualiza global dados em memória
+            dados["bets"] = _bets
+            print(f"Migração Ellen: {len(_novas)} apostas importadas com sucesso.")
+        except Exception as _e2:
+            try:
+                _conn.rollback()
+                release_pg_conn(_conn)
+            except Exception:
+                pass
+            raise _e2
     except Exception as _e:
         print(f"Migração Ellen ERRO: {_e}")
 
