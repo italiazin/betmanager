@@ -631,6 +631,15 @@ window.apostasPreview = window.apostasPreview || []
 window.escapeHtmlPreview = window.escapeHtmlPreview || function(value){
     return String(value??"").replaceAll("&","&amp;").replaceAll('"',"&quot;").replaceAll("<","&lt;").replaceAll(">","&gt;")
 }
+function _ocrLimparDisplay(txt){
+    return String(txt||"")
+        .replace(/[•·→←↑↓★☆♦♣♠♥©®™°]/g,"")
+        .replace(/\b(odd|data|date|hora|vator|vtr|ref)\s*[:.]?\s*[\d/]*/gi,"")
+        .replace(/\b\d{2}\/\d{2}(\/\d{2,4})?\b/g,"")
+        .replace(/\b\d{2}:\d{2}(:\d{2})?\b/g,"")
+        .replace(/\s{2,}/g," ")
+        .replace(/^[\s\-./|:]+|[\s\-./|:]+$/g,"")
+}
 window.renderPreview = function(){
     const div=document.getElementById("preview-area"), salvar=document.getElementById("salvar-preview")
     if(!div) return
@@ -643,12 +652,48 @@ window.renderPreview = function(){
         const odd=String(a.odd||"").replace(",",".")
         let valor=String(a.valor||"").replace(",",".")
         if(odd&&valor&&parseFloat(odd)>1&&Math.abs(parseFloat(odd)-parseFloat(valor))<0.0001) valor=""
-        div.innerHTML+=`<div class="preview-card preview-card-client"><input id="c${i}" value="${window.escapeHtmlPreview(a.casa||'')}" placeholder="Casa"><input id="e${i}" value="${window.escapeHtmlPreview(a.esporte||'')}" placeholder="Esporte"><input id="j${i}" value="${window.escapeHtmlPreview(window.semBarra(a.jogo||''))}" placeholder="Jogo"><input id="a${i}" value="${window.escapeHtmlPreview(window.semBarra(a.aposta||''))}" placeholder="Aposta"><input id="o${i}" value="${window.escapeHtmlPreview(odd||'')}" placeholder="Odd"><input id="v${i}" value="${window.escapeHtmlPreview(valor||'')}" placeholder="Valor"><input type="hidden" id="m${i}" value="${window.escapeHtmlPreview(a.mercado||'')}"><input type="hidden" id="s${i}" value="${window.escapeHtmlPreview(a.selecao||'')}"><input type="hidden" id="l${i}" value="${window.escapeHtmlPreview(a.linha||'')}"><input type="hidden" id="p${i}" value="${window.escapeHtmlPreview(a.periodo||'')}"></div>`
+        const jogoDisp=_ocrLimparDisplay(window.semBarra(a.jogo||""))
+        const apostaDisp=_ocrLimparDisplay(window.semBarra(a.aposta||""))
+        div.innerHTML+=`<div class="preview-card preview-card-client"><input id="c${i}" value="${window.escapeHtmlPreview(a.casa||'')}" placeholder="Casa"><input id="e${i}" value="${window.escapeHtmlPreview(a.esporte||'')}" placeholder="Esporte"><input id="j${i}" value="${window.escapeHtmlPreview(jogoDisp)}" placeholder="Jogo"><input id="a${i}" value="${window.escapeHtmlPreview(apostaDisp)}" placeholder="Aposta"><input id="o${i}" value="${window.escapeHtmlPreview(odd||'')}" placeholder="Odd"><input id="v${i}" value="${window.escapeHtmlPreview(valor||'')}" placeholder="Valor"><input type="hidden" id="m${i}" value="${window.escapeHtmlPreview(a.mercado||'')}"><input type="hidden" id="s${i}" value="${window.escapeHtmlPreview(a.selecao||'')}"><input type="hidden" id="l${i}" value="${window.escapeHtmlPreview(a.linha||'')}"><input type="hidden" id="p${i}" value="${window.escapeHtmlPreview(a.periodo||'')}"></div>`
     })
     if(salvar){ salvar.style.display="block"; salvar.disabled=false; salvar.innerText="Salvar Apostas do Preview" }
     div.scrollIntoView({behavior:"smooth",block:"center"})
     if(typeof window.gameAutocompleteAttach === "function") window.gameAutocompleteAttach()
 }
+
+function _inserirBetOtimista(apostas){
+    const tbody=document.querySelector("#betsMainTable tbody")
+    if(!tbody) return []
+    const agora=new Date()
+    const pad=n=>String(n).padStart(2,"0")
+    const dataStr=`${pad(agora.getDate())}/${pad(agora.getMonth()+1)}/${agora.getFullYear()} ${pad(agora.getHours())}:${pad(agora.getMinutes())}`
+    const esc=v=>String(v||"").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;")
+    const nCols=(document.querySelectorAll("#betsMainTable thead th")||[]).length||11
+    const inseridos=[]
+    for(const a of apostas){
+        const tr=document.createElement("tr")
+        tr.className="bet-row"
+        tr.dataset.data=dataStr
+        tr.dataset.aoVivo="0"
+        tr.dataset.horario=""
+        tr.innerHTML=`
+            <td class="data-cell"><span class="game-date-main">${dataStr.split(" ")[0]}</span></td>
+            <td class="casa-cell">${esc(a.casa)}</td>
+            <td class="esporte-cell">${esc(a.esporte)}</td>
+            <td class="jogo-cell">${esc(a.jogo)}</td>
+            <td class="aposta-cell">${esc(a.aposta)}</td>
+            <td class="odd-cell">${parseFloat(a.odd)||""}</td>
+            <td class="valor-cell">${(parseFloat(a.valor)||0).toFixed(2)}</td>
+            <td class="status-cell"><span class="badge yellow">Pendente</span></td>
+            <td>R$ 0.00</td>
+            <td class="api-cell"></td>
+            <td class="actions"><span style="opacity:0.4;font-size:0.8em">salvando…</span></td>`
+        tbody.insertBefore(tr,tbody.firstChild)
+        inseridos.push(tr)
+    }
+    return inseridos
+}
+
 // handler do botao salvar-preview
 document.addEventListener("DOMContentLoaded", function(){
     const btn = document.getElementById("salvar-preview")
@@ -686,6 +731,15 @@ document.addEventListener("DOMContentLoaded", function(){
             })
         }
         btn.disabled = true; btn.innerText = "Salvando..."
+
+        // Inserção otimista: bet aparece na tabela imediatamente
+        const previewDiv=document.getElementById("preview-area")
+        const salvarDiv=document.getElementById("salvar-preview")
+        const previaSalva=window.apostasPreview.slice()
+        const inseridos=_inserirBetOtimista(apostas)
+        if(previewDiv) previewDiv.innerHTML=""
+        if(salvarDiv) salvarDiv.style.display="none"
+
         fetch("/salvar_preview", {
             method: "POST",
             headers: {"Content-Type": "application/json"},
@@ -694,11 +748,26 @@ document.addEventListener("DOMContentLoaded", function(){
         .then(r=>r.json())
         .then(d=>{
             if(!d.ok) throw new Error(d.erro || "Erro ao salvar")
-            location.reload()
+            // Atualiza botões de ação com IDs reais
+            const bets=d.bets||[]
+            inseridos.forEach((tr,idx)=>{
+                const b=bets[idx]
+                if(b&&b.id){
+                    tr.dataset.id=b.id
+                    const ac=tr.querySelector(".actions")
+                    if(ac) ac.innerHTML=`<a href="/resultado/${b.id}/ganha"><button class="green">✔</button></a><a href="/resultado/${b.id}/perdida"><button class="red">✖</button></a><a href="/resultado/${b.id}/anulada"><button class="gray">↺</button></a><button class="blue" onclick="abrirEditar(this)" data-estado="" data-status-jogo="" data-horario="">✎</button><a href="/remover/${b.id}"><button class="dark">🗑</button></a>`
+                }
+            })
+            btn.disabled=false; btn.innerText="Salvar Apostas do Preview"
+            if(typeof v72Toast==="function") v72Toast(`${inseridos.length} aposta${inseridos.length!==1?"s":""} salva${inseridos.length!==1?"s":""}!`,"ok")
         })
         .catch(e=>{
-            btn.disabled = false; btn.innerText = "Salvar Apostas do Preview"
-            if(typeof v72Toast === "function") v72Toast(e.message || "Erro ao salvar","err")
+            inseridos.forEach(tr=>tr.remove())
+            window.apostasPreview=previaSalva
+            if(previewDiv) previewDiv.innerHTML=""
+            if(typeof window.renderPreview==="function") window.renderPreview()
+            btn.disabled=false; btn.innerText="Salvar Apostas do Preview"
+            if(typeof v72Toast==="function") v72Toast(e.message||"Erro ao salvar","err")
         })
     })
 })
