@@ -7722,6 +7722,13 @@ def restaurar_backup_emergencia():
         conn.commit()
         cur.close()
         release_pg_conn(conn)
+        # Atualiza memória para evitar que salvar() sobrescreva o banco com dados velhos
+        if dados_data:
+            dados.update(dados_data)
+        if usuarios_data:
+            global _usuarios_cache
+            import time as _time
+            _usuarios_cache = {"data": usuarios_data, "ts": _time.monotonic()}
         n_users = len((usuarios_data or {}).get("users", []))
         n_bets = len((dados_data or {}).get("bets", []))
         return jsonify({"ok": True, "usuarios": n_users, "apostas": n_bets})
