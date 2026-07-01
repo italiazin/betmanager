@@ -7617,6 +7617,29 @@ def admin_tips_reportar(tid):
     return jsonify({"ok": True})
 
 
+@app.route("/admin/dev/rodar-migracao-ellen")
+@admin_required
+def rodar_migracao_ellen():
+    _migrar_ellen_se_necessario()
+    conn = get_pg_conn()
+    resultado = {}
+    if conn:
+        try:
+            cur = conn.cursor()
+            cur.execute("SELECT valor FROM app_store WHERE chave = 'usuarios'")
+            row = cur.fetchone()
+            if row:
+                val = row[0] if isinstance(row[0], dict) else json.loads(row[0])
+                users = val.get("users", [])
+                resultado["total_usuarios"] = len(users)
+                resultado["ellen"] = next((u.get("email") for u in users if "ellen" in u.get("email","").lower()), None)
+            cur.close()
+            release_pg_conn(conn)
+        except Exception as e:
+            resultado["erro"] = str(e)
+    return jsonify(resultado)
+
+
 @app.route("/admin/dev/patch-saldos-italiazin")
 @admin_required
 def patch_saldos_italiazin():
