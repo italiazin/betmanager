@@ -515,17 +515,8 @@ def iniciar(api_id, api_hash, session_str, grupo, anthropic_key,
         d_iso = m.date.isoformat() if m.date else None
         mudou = False
 
-        # Discord: aposta normal OU reply de atualização OU reply/fwd de uma aposta já enviada
-        eh_reply = bool(getattr(m, "reply_to", None))
-        reply_to_id = getattr(getattr(m, "reply_to", None), "reply_to_msg_id", None)
-        fwd_orig_id = getattr(getattr(m, "fwd_from", None), "channel_post", None)
-        eh_reply_a_aposta = bool(reply_to_id and _ja_enviada_discord(dados, reply_to_id))
-        eh_fwd_de_aposta  = bool(fwd_orig_id and _ja_enviada_discord(dados, fwd_orig_id))
-        deve_discord = (parece_aposta_ampla(texto_msg, bool(getattr(m, "photo", None)))
-                        or (eh_reply and _parece_atualizacao(texto_msg))
-                        or eh_reply_a_aposta
-                        or eh_fwd_de_aposta)
-        if permitir_discord and discord_webhook and deve_discord:
+        # Discord: encaminha TODAS as mensagens do grupo
+        if permitir_discord and discord_webhook:
             if await _forward_discord(client, m):
                 mudou = True
 
