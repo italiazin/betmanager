@@ -1885,12 +1885,10 @@ def grafico():
 
     rows.reverse()
 
-    # Grafico DIARIO: um ponto por dia com o lucro acumulado ao fim de cada dia
-    acum = 0.0
+    # Grafico DIARIO: um ponto por dia com o lucro/prejuizo DAQUELE dia (nao acumulado)
     for chave in sorted(por_dia, key=lambda k: por_dia[k]["ordem"]):
-        acum += por_dia[chave]["soma"]
         labels.append(por_dia[chave]["label"])
-        valores.append(round(acum, 2))
+        valores.append(round(por_dia[chave]["soma"], 2))
 
     return labels, valores, rows
 

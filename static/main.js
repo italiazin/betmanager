@@ -351,6 +351,7 @@ document.querySelectorAll("tbody tr.bet-row").forEach(linha=>{
         if(linha.dataset.v147Filtered !== fv) linha.dataset.v147Filtered = fv
     })
     _limparSeparadores()
+    if(window.v155SyncSubtotals) window.v155SyncSubtotals()
 }
 // Debounce único para digitação — evita rodar/reflow a cada tecla (tremida)
 function filtrarApostasDebounced(){
@@ -942,7 +943,10 @@ function fecharModalBancaInicial(){ const modal=document.getElementById("bancaIn
     function groupKey(row){ if(trueMulti(row)) return`__multi__:${row.dataset.id||Math.random()}`;return game(row).toLowerCase()||`__row__:${row.dataset.id||Math.random()}` }
     function rep(rows){ return rows.slice().sort(cmp)[0] }
     function clusterRows(rows){ const groups=new Map();for(const r of rows){const k=groupKey(r);if(!groups.has(k)) groups.set(k,[]);groups.get(k).push(r)}const gl=Array.from(groups.values()).map(rs=>{const r0=rep(rs);return{rs,t:baseTime(r0),day:dayKey(r0)}});gl.sort((a,b)=>sortAsc?(a.t-b.t):(b.t-a.t));gl.forEach(g=>g.rs.sort(cmp));return gl }
-    function gameSubtotalRow(rs){ const s=summary(rs);const cols=document.querySelectorAll("table thead th").length||10;const cor=s.luc>0?"#37d67a":s.luc<0?"#ff6b6b":"#8a93a6";const tr=document.createElement("tr");tr.className="game-subtotal-row-v155";tr.innerHTML=`<td colspan="${cols}" style="padding:3px 14px;background:rgba(255,255,255,.015);border:none;font-size:12px;color:#8a93a6;text-align:right"><span style="opacity:.7">↳ Lucro do jogo:</span> <strong style="color:${cor}">${money(s.luc)}</strong><span style="opacity:.5;margin-left:8px">${rs.length} apostas</span></td>`;return tr }
+    function _subtotalVisivel(r){ return r.style.display!=="none" && !r.classList.contains("v149-historico-hidden") }
+    function renderSubtotal(tr){ const rs=(tr._betRows||[]).filter(_subtotalVisivel);if(rs.length<2){tr.style.display="none";return}tr.style.display="";const s=summary(rs);const cor=s.luc>0?"#37d67a":s.luc<0?"#ff6b6b":"#8a93a6";const cols=document.querySelectorAll("table thead th").length||10;const td=tr.firstElementChild||tr.appendChild(document.createElement("td"));td.colSpan=cols;td.setAttribute("style","padding:3px 14px;background:rgba(255,255,255,.015);border:none;font-size:12px;color:#8a93a6;text-align:right");td.innerHTML=`<span style="opacity:.7">↳ Lucro do jogo:</span> <strong style="color:${cor}">${money(s.luc)}</strong><span style="opacity:.5;margin-left:8px">${rs.length} apostas</span>` }
+    function gameSubtotalRow(rs){ const tr=document.createElement("tr");tr.className="game-subtotal-row-v155";tr._betRows=rs;tr.appendChild(document.createElement("td"));renderSubtotal(tr);return tr }
+    window.v155SyncSubtotals=function(){ document.querySelectorAll("tr.game-subtotal-row-v155").forEach(renderSubtotal) }
     function clear(tbody){ tbody.querySelectorAll("tr.game-group-row-v129,tr.game-group-row-v130,tr.game-group-row-v136,tr.day-separator-row-v136,tr.game-subtotal-row-v155").forEach(r=>r.remove());tbody.querySelectorAll("tr.bet-row").forEach(r=>r.classList.remove("group-child-v129","group-collapsed-v129","group-highlight-v129","group-child-v130","group-collapsed-v130","group-highlight-v130","group-child-v136","group-collapsed-v136","group-highlight-v136")) }
     function summary(rows){ let aberto=0,luc=0,green=0,red=0,pend=0;for(const r of rows){if(!closed(r)) aberto+=valor(r);luc+=lucro(r);const s=statusText(r);if(s.includes("ganha")||s.includes("green")) green++;else if(s.includes("perdida")||s.includes("red")) red++;else pend++}return{aberto,luc,green,red,pend} }
     function dayRow(k,count){ const tr=document.createElement("tr");tr.className="day-separator-row-v136";tr.dataset.dayKey=k;const cols=document.querySelectorAll("table thead th").length||10;tr.innerHTML=`<td colspan="${cols}"><span>${dayLabel(k)}</span><strong>${count} aposta${count!==1?"s":""}</strong></td>`;return tr }
@@ -963,6 +967,7 @@ function fecharModalBancaInicial(){ const modal=document.getElementById("bancaIn
             let currentDay=null
             for(const[k,rs]of entries){ const dk=dayKey(rep(rs));if(dk!==currentDay){currentDay=dk;let count=0;for(const[,xs]of entries) if(dayKey(rep(xs))===dk) count+=xs.length;tbody.appendChild(dayRow(dk,count))};if(rs.length>1&&!k.startsWith("__multi__")){tbody.appendChild(groupHeader(k,rs));const collapsed=collapsedGroups.has(k);rs.forEach(r=>{r.classList.add("group-child-v136");if(collapsed) r.classList.add("group-collapsed-v136");if(rs.length>=3) r.classList.add("group-highlight-v136");tbody.appendChild(r)})}else rs.forEach(r=>tbody.appendChild(r)) }
         }else{ const groups=clusterRows(rows);const counts={};groups.forEach(g=>counts[g.day]=(counts[g.day]||0)+g.rs.length);const daySeen=new Set();for(const g of groups){if(!daySeen.has(g.day)){daySeen.add(g.day);tbody.appendChild(dayRow(g.day,counts[g.day]))};g.rs.forEach(r=>tbody.appendChild(r));if(g.rs.length>1) tbody.appendChild(gameSubtotalRow(g.rs)) } }
+        if(window.v155SyncSubtotals) window.v155SyncSubtotals()
     }
     function preserve(fn){ const y=window.scrollY;fn();requestAnimationFrame(()=>window.scrollTo({top:y,behavior:"auto"})) }
     document.addEventListener("click",e=>{ const t=String(e.target?.innerText||"").toLowerCase();if(t.includes("salvar apostas")||t.includes("excluir")||t.includes("editar")){setTimeout(()=>{ if(typeof _estaEditando==="function"&&_estaEditando()) return; preserve(()=>apply(true)) },700);setTimeout(()=>{ if(typeof _estaEditando==="function"&&_estaEditando()) return; preserve(()=>apply(true)) },1600)} })
@@ -1050,6 +1055,13 @@ function fecharModalBancaInicial(){ const modal=document.getElementById("bancaIn
     document.addEventListener("DOMContentLoaded",()=>{ setTimeout(boot,0);setTimeout(boot,200);setInterval(()=>{ if(typeof _estaEditando==="function"&&_estaEditando()) return; checarVersaoApostas() },30000) })
     window.v149AplicarHistorico=aplicarHistorico
     window.v149SetMostrarHistorico=function(v){ mostrarHistoricoAntigo=Boolean(v); aplicarHistorico() }
+})();
+
+// v155: subtotais de lucro-por-jogo respeitam os filtros (v147) e o esconder-antigas (v149)
+;(function(){
+    function wrap(name){ const o=window[name];if(typeof o==="function"&&!o.__v155Wrapped){ const w=function(){ const r=o.apply(this,arguments);if(window.v155SyncSubtotals) window.v155SyncSubtotals();return r };w.__v155Wrapped=true;window[name]=w } }
+    function armar(){ wrap("v147ApplyFilters");wrap("v149AplicarHistorico");wrap("v149SetMostrarHistorico");if(window.v155SyncSubtotals) window.v155SyncSubtotals() }
+    document.addEventListener("DOMContentLoaded",()=>{ armar();setTimeout(armar,300);setTimeout(armar,1200) })
 })();
 
 // v150
@@ -1204,34 +1216,38 @@ document.addEventListener("DOMContentLoaded", function(){
     ;(function(){
         const canvas = document.getElementById("grafico")
         if(!canvas || typeof Chart === "undefined") return
-        const ultimo = valores[valores.length - 1] || 0
-        const corLinha = ultimo >= 0 ? "#22c55e" : "#f87171"
-        const corFundo = ultimo >= 0 ? "rgba(34,197,94,0.12)" : "rgba(248,113,113,0.10)"
+        const corBarra = v => v >= 0 ? "rgba(34,197,94,0.70)" : "rgba(248,113,113,0.70)"
+        const corBorda = v => v >= 0 ? "#22c55e" : "#f87171"
         new Chart(canvas, {
-            type: "line",
+            type: "bar",
             data: { labels: labels, datasets: [{
-                label: "Lucro acumulado",
+                label: "Lucro do dia",
                 data: valores,
-                borderColor: corLinha,
-                backgroundColor: corFundo,
-                borderWidth: 2.5,
-                tension: 0.4,
-                fill: true,
-                pointRadius: valores.length > 60 ? 0 : 2.5,
-                pointHoverRadius: 5,
-                pointBackgroundColor: corLinha,
+                backgroundColor: valores.map(corBarra),
+                borderColor: valores.map(corBorda),
+                borderWidth: 1.5,
+                borderRadius: 4,
+                maxBarThickness: 48,
             }]},
             options: {
                 responsive: true, maintainAspectRatio: false,
                 plugins: {
-                    legend: { labels: { color:"#cbd5e1", font:{size:12} } },
-                    tooltip: { callbacks: { label: ctx => " R$ " + ctx.parsed.y.toFixed(2) } }
+                    legend: { display: false },
+                    tooltip: {
+                        backgroundColor:"rgba(15,23,42,0.96)", titleColor:"#f1f5f9", bodyColor:"#f1f5f9",
+                        titleFont:{size:13, weight:"bold"}, bodyFont:{size:15, weight:"bold"},
+                        padding:11, displayColors:false, borderColor:"rgba(148,163,184,0.3)", borderWidth:1,
+                        callbacks: {
+                            title: items => "Dia " + (items[0]?.label || ""),
+                            label: ctx => (ctx.parsed.y >= 0 ? "Lucro: R$ " : "Prejuízo: R$ ") + Math.abs(ctx.parsed.y).toFixed(2)
+                        }
+                    }
                 },
                 layout: { padding: { top:6, right:8, bottom:0, left:0 } },
                 scales: {
-                    x: { ticks: { color:"#94a3b8", maxRotation:45, minRotation:45, autoSkip:true, maxTicksLimit:14, font:{size:10} }, grid: { color:"rgba(30,41,59,0.45)" } },
+                    x: { ticks: { color:"#e2e8f0", maxRotation:45, minRotation:45, autoSkip:true, maxTicksLimit:20, font:{size:12, weight:"600"} }, grid: { color:"rgba(30,41,59,0.35)" } },
                     y: {
-                        ticks: { color:"#94a3b8", font:{size:10}, callback: v => "R$ "+v.toFixed(0) },
+                        ticks: { color:"#e2e8f0", font:{size:12, weight:"600"}, callback: v => "R$ "+v.toFixed(0) },
                         grid: { color:"rgba(30,41,59,0.55)" },
                         afterBuildTicks(axis){ if(!axis.ticks.some(t=>t.value===0)) axis.ticks.push({value:0}) },
                     }
