@@ -1863,7 +1863,9 @@ def grafico():
         estado = b.get("estado", "")
         if lucro != 0 or estado:
             lucro_acum += lucro
-            dt = parse_data(b.get("data", ""))
+            # Agrupa pela data do JOGO (nao a de criacao): aposta feita dia 20 pra
+            # jogo dia 22 -> lucro conta no dia 22. Fallback: data de criacao.
+            dt = v154_parse_data_jogo_aposta(b) or parse_data(b.get("data", ""))
             if dt:
                 chave, label, ordem = dt.strftime("%Y-%m-%d"), dt.strftime("%d/%m"), dt
             else:
