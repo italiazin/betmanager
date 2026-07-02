@@ -1857,13 +1857,21 @@ def metricas():
 def grafico():
     labels, valores, rows = [], [], []
     lucro_acum = 0.0
+    por_dia = {}   # chave AAAA-MM-DD -> {"soma": lucro do dia, "ordem": datetime, "label": "dd/mm"}
     for b in bets_do_usuario():
         lucro = float(b.get("lucro", 0) or 0)
         estado = b.get("estado", "")
         if lucro != 0 or estado:
             lucro_acum += lucro
-            labels.append(b.get("data", ""))
-            valores.append(round(lucro_acum, 2))
+            dt = parse_data(b.get("data", ""))
+            if dt:
+                chave, label, ordem = dt.strftime("%Y-%m-%d"), dt.strftime("%d/%m"), dt
+            else:
+                chave = label = (b.get("data", "")[:10] or "sem-data")
+                ordem = datetime.max
+            if chave not in por_dia:
+                por_dia[chave] = {"soma": 0.0, "ordem": ordem, "label": label}
+            por_dia[chave]["soma"] += lucro
         rows.append({
             "data": b.get("data", "")[:10],
             "jogo": b.get("jogo", "") or b.get("aposta", ""),
@@ -1876,6 +1884,14 @@ def grafico():
         })
 
     rows.reverse()
+
+    # Grafico DIARIO: um ponto por dia com o lucro acumulado ao fim de cada dia
+    acum = 0.0
+    for chave in sorted(por_dia, key=lambda k: por_dia[k]["ordem"]):
+        acum += por_dia[chave]["soma"]
+        labels.append(por_dia[chave]["label"])
+        valores.append(round(acum, 2))
+
     return labels, valores, rows
 
 
