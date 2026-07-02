@@ -30,7 +30,7 @@ import durabilidade as Dur
 import resultados as Res
 
 import pytesseract
-from PIL import Image
+from PIL import Image, ImageOps
 
 app = Flask(__name__)
 app.secret_key = os.environ.get("SECRET_KEY", "troque-essa-chave-em-producao")
@@ -4216,6 +4216,34 @@ def salvar_preview():
 # V20 - OCR/PARSER ROBUSTO SEM IA
 # ============================================================
 
+def _otsu_threshold(img_l):
+    """Threshold otimo de Otsu a partir do histograma (sem numpy/opencv)."""
+    hist = img_l.histogram()
+    total = sum(hist)
+    if total == 0:
+        return 127
+    soma_total = sum(i * hist[i] for i in range(256))
+    soma_b = 0.0
+    peso_b = 0
+    maximo = 0.0
+    limiar = 127
+    for t in range(256):
+        peso_b += hist[t]
+        if peso_b == 0:
+            continue
+        peso_f = total - peso_b
+        if peso_f == 0:
+            break
+        soma_b += t * hist[t]
+        media_b = soma_b / peso_b
+        media_f = (soma_total - soma_b) / peso_f
+        entre = peso_b * peso_f * (media_b - media_f) ** 2
+        if entre > maximo:
+            maximo = entre
+            limiar = t
+    return limiar
+
+
 def preparar_imagem(caminho):
     img = Image.open(caminho)
 
@@ -4225,14 +4253,29 @@ def preparar_imagem(caminho):
         fundo.paste(img, mask=img.split()[-1])
         img = fundo
 
-    largura, altura = img.size
-    # Escala 3x para imagens pequenas (celular HD), 2x para as demais
-    escala = 3 if max(largura, altura) < 1400 else 2
-    img = img.resize((largura * escala, altura * escala), Image.LANCZOS)
-
-    # Grayscale + binarização: threshold 165 separa texto escuro do fundo claro
     img = img.convert("L")
-    img = img.point(lambda p: 255 if p > 165 else 0)
+
+    # Auto-inverte prints dark-mode (texto claro em fundo escuro, ex: Betano/Vaidebet)
+    # pra virar texto escuro em fundo claro — que e' o que o Tesseract espera.
+    media = sum(i * c for i, c in enumerate(img.histogram())) / max(img.size[0] * img.size[1], 1)
+    if media < 110:
+        img = ImageOps.invert(img)
+
+    # Redimensiona pra uma ALTURA alvo boa pro Tesseract (~1700px), sem exagerar:
+    # upscale moderado se pequena, downscale se gigante. Evita o 3x que deixava lento.
+    largura, altura = img.size
+    if altura < 1400:
+        escala = min(2.2, 1700 / altura)
+        img = img.resize((int(largura * escala), int(altura * escala)), Image.LANCZOS)
+    elif altura > 2600:
+        escala = 2200 / altura
+        img = img.resize((int(largura * escala), int(altura * escala)), Image.LANCZOS)
+
+    # Realca contraste e binariza com Otsu adaptativo (mantem texto fraco/cinza,
+    # ao contrario do threshold fixo 165 que sumia com linhas de continuacao).
+    img = ImageOps.autocontrast(img, cutoff=1)
+    limiar = _otsu_threshold(img)
+    img = img.point(lambda p, l=limiar: 255 if p > l else 0)
 
     return img
 
@@ -4240,15 +4283,16 @@ def preparar_imagem(caminho):
 def ler_imagem(caminho):
     img = preparar_imagem(caminho)
 
-    # OEM 1 (LSTM) + PSM 6 — mais rápido e preciso para blocos de texto uniforme
+    # OEM 1 (LSTM) + PSM 6 — rápido e preciso para blocos de texto uniforme.
+    # Passe unico na maioria dos casos (~1s); fallback so' se vier quase vazio.
     try:
         texto = pytesseract.image_to_string(img, lang="por+eng", config="--oem 1 --psm 6")
     except Exception as e:
         print("ERRO TESSERACT psm6:", e)
         texto = ""
 
-    # Fallback PSM 4 (coluna única) se o resultado for escasso
-    if len(texto.strip()) < 60:
+    # Fallback PSM 4 (coluna única) só se o resultado for muito escasso (raro)
+    if len(texto.strip()) < 40:
         try:
             t2 = pytesseract.image_to_string(img, lang="por+eng", config="--oem 1 --psm 4")
             if len(t2.strip()) > len(texto.strip()):
