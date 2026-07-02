@@ -10550,7 +10550,7 @@ def _iniciar_listener_telegram():
                         grupo=grupo, anthropic_key=key, dados=dados, salvar_fn=salvar,
                         interpretar_fn=_interpretar, interpretar_img_fn=_interpretar_img,
                         discord_webhook=os.environ.get("DISCORD_WEBHOOK", ""),
-                        salvar_img_fn=salvar_img_tip),
+                        salvar_img_fn=salvar_img_tip, horas_catchup=2),
             daemon=True,
         ).start()
         print("[telegram] listener iniciado (thread)")

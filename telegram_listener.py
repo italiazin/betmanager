@@ -373,7 +373,7 @@ def catchup_desde_busca(api_id, api_hash, session_str, grupo, anthropic_key,
 # ============================================================
 
 def iniciar(api_id, api_hash, session_str, grupo, anthropic_key,
-            dados, salvar_fn, interpretar_fn, horas_catchup=8, interpretar_img_fn=None,
+            dados, salvar_fn, interpretar_fn, horas_catchup=2, interpretar_img_fn=None,
             discord_webhook=None, salvar_img_fn=None, post_discord_fn=None):
     """Loop do listener — BLOQUEIA, entao chame numa thread daemon.
     Reconecta sozinho com backoff. Telethon e' importado AQUI (lazy).
