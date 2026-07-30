@@ -181,9 +181,17 @@ def limpar_imgs_antigas():
 
 
 _ultima_limpeza_imgs = 0.0
+# Sobe True se o load do Postgres falhar no boot: nesse estado o app NAO salva
+# (protege o banco bom de ser sobrescrito por uma memoria vazia/ruim).
+_boot_load_falhou = False
 
 def salvar():
     global _ultima_limpeza_imgs
+    # Se o boot nao conseguiu carregar do Postgres, a memoria pode estar vazia/ruim
+    # — NUNCA salvar nesse estado (evita sobrescrever o banco bom). Ver carregar().
+    if _boot_load_falhou:
+        print("BLOQUEADO salvar(): boot com load falho — save desabilitado pra proteger o banco.")
+        return
     # Sincroniza cache da IA no dados antes de salvar
     try:
         import interpretacao as _itp_mod
@@ -441,9 +449,14 @@ def _aplicar_defaults_bets(dados):
 def carregar():
     dados_padrao = {"banca_inicial": 1000, "bets": [], "saldo_casas": {}, "saldo_casas_por_usuario": {}, "movimentacoes_casas_por_usuario": {}}
 
-    # Tenta carregar do PostgreSQL (app_store)
-    conn = get_pg_conn()
-    if conn:
+    # Tenta carregar do PostgreSQL (app_store) — com RETRY, porque uma falha
+    # transitoria de leitura no boot NAO pode virar "banco vazio" (isso ja causou
+    # um wipe: load falhou -> memoria vazia -> salvar() gravou vazio por cima).
+    _pg_configurado = bool(os.environ.get("DATABASE_URL"))
+    for _tentativa in range(4):
+        conn = get_pg_conn()
+        if not conn:
+            break
         try:
             cur = conn.cursor()
             cur.execute("SELECT valor FROM app_store WHERE chave = 'dados'")
@@ -470,11 +483,21 @@ def carregar():
                 print("PostgreSQL: nenhum dado encontrado. Usando estrutura inicial.")
                 return _aplicar_defaults_bets(dados_padrao)
         except Exception as e:
-            print("ERRO AO CARREGAR DO POSTGRES:", e)
+            print(f"ERRO AO CARREGAR DO POSTGRES (tentativa {_tentativa+1}/4):", e)
             try:
                 release_pg_conn(conn)
             except Exception:
                 pass
+            time.sleep(1.5)
+
+    # Se o Postgres esta' configurado mas TODAS as tentativas de leitura falharam,
+    # NAO devolve estrutura vazia (o save tem trava, mas aqui evitamos ate' criar o
+    # estado vazio). Sinaliza pra nunca sobrescrever o banco com esse boot ruim.
+    if _pg_configurado:
+        global _boot_load_falhou
+        _boot_load_falhou = True
+        print("CRITICO: Postgres configurado mas leitura falhou em todas as tentativas — subindo em modo protegido (sem salvar).")
+        return _aplicar_defaults_bets(dados_padrao)
 
     # Fallback: arquivo local
     if not os.path.exists(ARQUIVO):
@@ -543,6 +566,22 @@ def _pg_executar_save(d):
         qtd_depois = len(bets_novos)
         if qtd_antes > 5 and qtd_depois == 0:
             print(f"BLOQUEADO _pg_executar_save: tentativa de salvar 0 apostas quando existem {qtd_antes} — operacao cancelada")
+            cur.close()
+            return False
+
+    # --- Trava anti-wipe REFORCADA: consulta o BANCO, nao so' o baseline em memoria ---
+    # Protege o caso em que a memoria subiu VAZIA por falha de load no boot: ali o
+    # _estado_bets_anterior tambem seria [] e a trava acima nao pegaria. Aqui olhamos
+    # o que REALMENTE esta no banco antes de sobrescrever com vazio.
+    if len(bets_novos) == 0:
+        try:
+            cur.execute("SELECT jsonb_array_length(valor->'bets') FROM app_store WHERE chave='dados'")
+            _row = cur.fetchone()
+            qtd_db = _row[0] if _row and _row[0] is not None else 0
+        except Exception:
+            qtd_db = 0
+        if qtd_db > 5:
+            print(f"BLOQUEADO _pg_executar_save: memoria tem 0 apostas mas o BANCO tem {qtd_db} — save cancelado (anti-wipe reforcado)")
             cur.close()
             return False
 
