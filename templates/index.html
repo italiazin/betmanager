@@ -443,6 +443,13 @@ const valores = {{ valores | tojson }};
                 {% endfor %}
             </tbody>
         </table></div>
+        {% if historico_tem_mais %}
+        <div style="text-align:center;padding:12px">
+            <a href="/historico" style="color:#7aa9ff;font-size:13px">
+                Mostrando as 500 mais recentes de {{ historico_total }} — ver histórico completo →
+            </a>
+        </div>
+        {% endif %}
     </details>
 </section>
 {% endif %}

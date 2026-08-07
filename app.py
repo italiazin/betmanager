@@ -3883,6 +3883,19 @@ def adicionar_ajax():
         return jsonify({"ok": False, "erro": str(e)}), 400
 
 
+def _bet_e_historico_display(b, hoje):
+    """True se a aposta e' finalizada de um dia ANTERIOR (vai pro painel de
+    historico colapsado). Mesma regra do 'esconder finalizadas antigas' do front —
+    tira 90%+ das linhas da tabela principal (perf), sem perder nada (segue visivel
+    no historico, com todos os botoes)."""
+    if b.get("estado", "") not in ("ganha", "perdida", "anulada"):
+        return False  # pendente sempre no ativo
+    dt = v154_parse_data_jogo_aposta(b)
+    if not dt:
+        return False  # sem data -> nao arrisca esconder
+    return dt.date() < hoje
+
+
 @app.route("/", methods=["GET", "POST"])
 @login_required
 def index():
@@ -3901,10 +3914,29 @@ def index():
         if b.get("jogo", "").strip()
     ))
 
+    # Split: tabela principal so' com o ativo (hoje/pendentes); finalizadas de dias
+    # anteriores vao pro painel de historico colapsado (que o JS pesado ignora).
+    # Isso derruba a tabela principal de ~1863 pra dezenas de linhas em contas grandes.
+    _hoje = _agora_brt().date()
+    _todas = bets_display_v39()
+    _ativas, _historico = [], []
+    for _b in _todas:
+        (_historico if _bet_e_historico_display(_b, _hoje) else _ativas).append(_b)
+
+    # Leveza: painel de historico so' com as 500 mais recentes (ja' vem newest-first);
+    # o arquivo completo fica no /historico paginado.
+    _HIST_MAX = 500
+    _historico_total = len(_historico)
+    _historico_mais = _historico_total > _HIST_MAX
+    _historico = _historico[:_HIST_MAX]
+
     _cfg_idx, _pls_idx, _ = _ler_config_planilhas()
     return render_template(
         "index.html",
-        bets=bets_display_v39(),
+        bets=_ativas,
+        bets_historico=_historico,
+        historico_tem_mais=_historico_mais,
+        historico_total=_historico_total,
         m=metricas(),
         labels=labels,
         valores=valores,
@@ -9301,6 +9333,7 @@ _ESPN_LIGAS_PRIORITY = [
     ("Futebol", "soccer", "fifa.friendly"),
     ("Futebol", "soccer", "uefa.champions"),
     ("Futebol", "soccer", "uefa.europa"),
+    ("Futebol", "soccer", "uefa.europa.conf"),
     ("Futebol", "soccer", "uefa.nations"),
     ("Futebol", "soccer", "eng.1"),
     ("Futebol", "soccer", "esp.1"),
@@ -9309,6 +9342,7 @@ _ESPN_LIGAS_PRIORITY = [
     ("Futebol", "soccer", "fra.1"),
     ("Futebol", "soccer", "por.1"),
     ("Futebol", "soccer", "arg.1"),
+    ("Futebol", "soccer", "usa.1"),
     ("Basquete", "basketball", "nba"),
 ]
 
