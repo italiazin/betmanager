@@ -1849,14 +1849,56 @@ def classificar_aposta(texto_aposta, jogo=""):
 
 
 
-def metricas():
+_MESES_PT = ["Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho",
+             "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"]
+
+
+def _mes_selecionado(arg):
+    """Le ?mes=YYYY-MM da querystring; default = mes atual (BRT)."""
+    hoje = _agora_brt()
+    m = re.match(r"^(\d{4})-(\d{1,2})$", str(arg or "").strip())
+    if m:
+        a, me = int(m.group(1)), int(m.group(2))
+        if 1 <= me <= 12:
+            return a, me
+    return hoje.year, hoje.month
+
+
+def _mes_nav(ano, mes):
+    """Dados de navegacao do seletor de mes (anterior/proximo/nome)."""
+    p_a, p_m = (ano - 1, 12) if mes == 1 else (ano, mes - 1)
+    n_a, n_m = (ano + 1, 1) if mes == 12 else (ano, mes + 1)
+    hoje = _agora_brt()
+    return {
+        "atual": f"{ano:04d}-{mes:02d}",
+        "nome": f"{_MESES_PT[mes - 1]} {ano}",
+        "prev": f"{p_a:04d}-{p_m:02d}",
+        "next": f"{n_a:04d}-{n_m:02d}",
+        "e_mes_atual": (ano == hoje.year and mes == hoje.month),
+    }
+
+
+def _bet_no_mes(b, ano, mes):
+    """True se a aposta pertence ao mes (ano,mes) pela data do JOGO (fallback criacao)."""
+    dt = v154_parse_data_jogo_aposta(b) or parse_data(b.get("data", ""))
+    return bool(dt) and dt.year == ano and dt.month == mes
+
+
+def metricas(ano=None, mes=None):
     recalcular()
 
-    bets_user = bets_do_usuario()
-    lucro_total = round(sum(float(b.get("lucro", 0)) for b in bets_user), 2)
-    saldo_total_casas = total_saldos_casas()
+    bets_all = bets_do_usuario()
 
-    banca_atual = round(saldo_total_casas, 2) if saldo_total_casas > 0 else round(float(dados.get("banca_inicial", 0)) + lucro_total, 2)
+    # Banca e lucro GLOBAIS: banca e' o saldo real das casas (snapshot), nao se
+    # recorta por mes; lucro_global mantem o comportamento antigo da banca.
+    lucro_global = round(sum(float(b.get("lucro", 0) or 0) for b in bets_all), 2)
+    saldo_total_casas = total_saldos_casas()
+    banca_atual = round(saldo_total_casas, 2) if saldo_total_casas > 0 else round(float(dados.get("banca_inicial", 0)) + lucro_global, 2)
+
+    # Demais cards: recorte do mes (data do JOGO). Sem mes => tudo (retrocompat).
+    bets_user = [b for b in bets_all if _bet_no_mes(b, ano, mes)] if (ano and mes) else bets_all
+
+    lucro_total = round(sum(float(b.get("lucro", 0) or 0) for b in bets_user), 2)
 
     greens = len([b for b in bets_user if b.get("estado") == "ganha"])
     reds = len([b for b in bets_user if b.get("estado") == "perdida"])
@@ -1881,6 +1923,7 @@ def metricas():
         "banca_atual": banca_atual,
         "banca_inicial": saldo_total_casas,
         "lucro_total": lucro_total,
+        "lucro_global": lucro_global,
         "roi": roi,
         "taxa": taxa,
         "total": len(bets_user),
@@ -1893,26 +1936,28 @@ def metricas():
 
 
 
-def grafico():
+def grafico(ano=None, mes=None):
     labels, valores, rows = [], [], []
     lucro_acum = 0.0
     por_dia = {}   # chave AAAA-MM-DD -> {"soma": lucro do dia, "ordem": datetime, "label": "dd/mm"}
     for b in bets_do_usuario():
         lucro = float(b.get("lucro", 0) or 0)
         estado = b.get("estado", "")
+        # Agrupa pela data do JOGO (nao a de criacao): aposta feita dia 20 pra
+        # jogo dia 22 -> lucro conta no dia 22. Fallback: data de criacao.
+        dt = v154_parse_data_jogo_aposta(b) or parse_data(b.get("data", ""))
+        no_mes = (not (ano and mes)) or (dt is not None and dt.year == ano and dt.month == mes)
         if lucro != 0 or estado:
             lucro_acum += lucro
-            # Agrupa pela data do JOGO (nao a de criacao): aposta feita dia 20 pra
-            # jogo dia 22 -> lucro conta no dia 22. Fallback: data de criacao.
-            dt = v154_parse_data_jogo_aposta(b) or parse_data(b.get("data", ""))
-            if dt:
-                chave, label, ordem = dt.strftime("%Y-%m-%d"), dt.strftime("%d/%m"), dt
-            else:
-                chave = label = (b.get("data", "")[:10] or "sem-data")
-                ordem = datetime.max
-            if chave not in por_dia:
-                por_dia[chave] = {"soma": 0.0, "ordem": ordem, "label": label}
-            por_dia[chave]["soma"] += lucro
+            if no_mes:
+                if dt:
+                    chave, label, ordem = dt.strftime("%Y-%m-%d"), dt.strftime("%d/%m"), dt
+                else:
+                    chave = label = (b.get("data", "")[:10] or "sem-data")
+                    ordem = datetime.max
+                if chave not in por_dia:
+                    por_dia[chave] = {"soma": 0.0, "ordem": ordem, "label": label}
+                por_dia[chave]["soma"] += lucro
         rows.append({
             "data": b.get("data", "")[:10],
             "jogo": b.get("jogo", "") or b.get("aposta", ""),
@@ -3876,7 +3921,7 @@ def adicionar_ajax():
         salvar()
         recalcular()
 
-        return jsonify({"ok": True, "bet": limpar_aposta_display_v39(bet), "metricas": metricas()})
+        return jsonify({"ok": True, "bet": limpar_aposta_display_v39(bet), "metricas": metricas(*_mes_selecionado(request.args.get("mes")))})
 
     except Exception as e:
         print("ERRO /adicionar_ajax:", e)
@@ -3906,7 +3951,9 @@ def index():
         salvar()
         return redirect("/")
 
-    labels, valores, lucro_rows = grafico()
+    _ano, _mes = _mes_selecionado(request.args.get("mes"))
+    _nav = _mes_nav(_ano, _mes)
+    labels, valores, lucro_rows = grafico(_ano, _mes)
 
     jogos_usuario = sorted(set(
         b.get("jogo", "").strip()
@@ -3937,7 +3984,8 @@ def index():
         bets_historico=_historico,
         historico_tem_mais=_historico_mais,
         historico_total=_historico_total,
-        m=metricas(),
+        m=metricas(_ano, _mes),
+        mes_nav=_nav,
         labels=labels,
         valores=valores,
         lucro_rows=lucro_rows,
@@ -4057,7 +4105,7 @@ def resultado(bet_id, estado):
             return jsonify({
                 "ok": True,
                 "bet": limpar_aposta_display_v39(b) if "limpar_aposta_display_v39" in globals() else b,
-                "metricas": metricas()
+                "metricas": metricas(*_mes_selecionado(request.args.get("mes")))
             })
 
     if request.args.get("ajax") == "1":
@@ -4278,7 +4326,7 @@ def salvar_preview():
         "ok": True,
         "salvas": len(apostas),
         "bets": bets_salvas,
-        "metricas": metricas()
+        "metricas": metricas(*_mes_selecionado(request.args.get("mes")))
     })
 
 
@@ -8272,9 +8320,17 @@ def historico():
     casa_filtro   = request.args.get("casa", "").strip()
     data_inicio   = request.args.get("data_inicio", "")
     data_fim      = request.args.get("data_fim", "")
+    q             = request.args.get("q", "").strip()
     pagina        = max(1, int(request.args.get("p", 1) or 1))
 
     meus = list(reversed(bets_do_usuario()))
+
+    if q:
+        ql = q.lower()
+        meus = [b for b in meus if ql in (
+            (b.get("jogo") or "") + " " + (b.get("aposta") or "") + " " +
+            (b.get("casa") or "") + " " + (b.get("esporte") or "")
+        ).lower()]
 
     if estado_filtro == "pendente":
         meus = [b for b in meus if not b.get("estado")]
@@ -8326,6 +8382,7 @@ def historico():
         casa_filtro=casa_filtro,
         data_inicio=data_inicio,
         data_fim=data_fim,
+        q=q,
         casas_usuario=casas_usuario,
     )
 
@@ -8449,7 +8506,10 @@ def v154_parse_data_jogo_aposta(b):
             dt = datetime.fromisoformat(iso)
             if dt.tzinfo is not None:
                 try:
-                    dt = dt.astimezone(ZoneInfo("America/Bahia")).replace(tzinfo=None)
+                    # America/Sao_Paulo = _BRT (mesmo fuso do resto do app); unifica a
+                    # atribuicao de dia entre grafico, split e front. -03 identico ao
+                    # America/Bahia hoje, mas evita divergencia latente.
+                    dt = dt.astimezone(_BRT).replace(tzinfo=None)
                 except Exception:
                     dt = dt.replace(tzinfo=None)
             return dt

@@ -1,4 +1,9 @@
 ﻿
+// Mes ativo do dashboard (?mes=YYYY-MM). Threaded nos AJAX pra os cards repintarem
+// com os numeros DO mes exibido (nao do total).
+window.__mesAtivo = new URLSearchParams(location.search).get("mes") || ""
+window._mesQS = function(sep){ return window.__mesAtivo ? sep + "mes=" + encodeURIComponent(window.__mesAtivo) : "" }
+
 // Remove a "/" da EXIBIÇÃO (vira espaço). O dado original mantém a "/" pra detecção interna.
 window.semBarra = function(txt){ return String(txt||"").replace(/\s*\/\s*/g, " ").replace(/\s+/g, " ").trim() }
 
@@ -330,8 +335,10 @@ document.querySelectorAll("tbody tr.bet-row").forEach(linha=>{
         } else if(!deveVerHistorico && dataAposta){
             const isHoje    = dataAposta.getTime()===hoje.getTime()
             const isAmanha  = dataAposta.getTime()===amanha.getTime()
-            const isPastPend = dataAposta.getTime()<=hoje.getTime() && !isFinished
-            if(!isHoje && !isAmanha && !isPastPend) mostrar=false
+            // Pendente de QUALQUER data (passada ou futura) fica visivel — agrupada no
+            // dia do JOGO. Assim aposta feita hoje pra jogo de sexta aparece em sexta.
+            const isPend    = !isFinished
+            if(!isHoje && !isAmanha && !isPend) mostrar=false
         }
         if(mostrarFinalizadas){ if(!isFinished) mostrar = false }
         else { if(status !== "todos" && !statusTexto.includes(status)) mostrar = false }
@@ -350,8 +357,47 @@ document.querySelectorAll("tbody tr.bet-row").forEach(linha=>{
         const fv = mostrar ? "1" : "0"
         if(linha.dataset.v147Filtered !== fv) linha.dataset.v147Filtered = fv
     })
+    filtrarHistoricoPanel(busca, casasChecked, esporteFiltro, datePicker)
     _limparSeparadores()
     if(window.v155SyncSubtotals) window.v155SyncSubtotals()
+}
+
+// v161: a busca/filtros tambem varrem o painel de HISTORICO (finalizadas de dias
+// anteriores, classe .bet-row-historico). Sem isso, pesquisar um jogo ja' encerrado
+// nao achava nada (regressao do split). So' roda quando ha' filtro ativo — no view
+// padrao faz early-return (preserva a performance de nao processar as antigas).
+function filtrarHistoricoPanel(busca, casasChecked, esporteFiltro, datePicker){
+    const det = document.getElementById("historicoSection")
+    if(!det) return
+    const rows = det.querySelectorAll("tr.bet-row-historico")
+    if(!rows.length) return
+    const filtroAtivo = !!busca || (casasChecked && casasChecked.length > 0) || (esporteFiltro && esporteFiltro !== "todos") || !!datePicker
+    if(!filtroAtivo){
+        // Sem filtro: restaura o que mexemos e, se fomos NOS que abrimos, fecha de volta.
+        if(window.__histTouched){ rows.forEach(r=>{ if(r.style.display!=="") r.style.display="" }); window.__histTouched=false }
+        if(window.__histForcedOpen){ det.open=false; window.__histForcedOpen=false }
+        const bdg=det.querySelector(".historico-count-badge")
+        if(bdg && bdg.dataset.orig!==undefined){ bdg.textContent=bdg.dataset.orig; delete bdg.dataset.orig }
+        return
+    }
+    window.__histTouched=true
+    let matches=0
+    rows.forEach(linha=>{
+        const texto=linha.innerText.toLowerCase()
+        const casaTexto=(linha.querySelector(".casa-cell")?.innerText||"").toLowerCase().trim()
+        const esporteTexto=(linha.querySelector(".esporte-cell")?.innerText||"").toLowerCase().trim()
+        let mostrar=true
+        if(busca && !texto.includes(busca)) mostrar=false
+        if(casasChecked && casasChecked.length>0 && !casasChecked.includes(casaTexto)) mostrar=false
+        if(esporteFiltro && esporteFiltro!=="todos" && esporteTexto!==esporteFiltro) mostrar=false
+        if(datePicker){ const iso=linha.dataset.horario||""; if(iso){ const d=new Date(iso); if(!isNaN(d.getTime())){ const p=n=>String(n).padStart(2,"0"); const ds=`${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())}`; if(ds!==datePicker) mostrar=false } } }
+        const novo=mostrar?"":"none"
+        if(linha.style.display!==novo) linha.style.display=novo
+        if(mostrar) matches++
+    })
+    if(matches>0 && !det.open){ det.open=true; window.__histForcedOpen=true }
+    const bdg=det.querySelector(".historico-count-badge")
+    if(bdg){ if(bdg.dataset.orig===undefined) bdg.dataset.orig=bdg.textContent; bdg.textContent=matches }
 }
 // Debounce único para digitação — evita rodar/reflow a cada tecla (tremida)
 function filtrarApostasDebounced(){
@@ -608,7 +654,7 @@ document.addEventListener("submit", function(e){
     e.preventDefault()
     const fd=new FormData(form), btn=form.querySelector('button[type="submit"]')
     if(btn){ btn.disabled=true; btn.dataset.oldText=btn.innerText; btn.innerText="Salvando..." }
-    fetch("/adicionar_ajax", { method:"POST", body:fd, cache:"no-store" })
+    fetch("/adicionar_ajax"+window._mesQS("?"), { method:"POST", body:fd, cache:"no-store" })
     .then(r=>r.json()).then(d=>{
         if(!d.ok) throw new Error(d.erro||"erro")
         location.reload()
@@ -741,7 +787,7 @@ document.addEventListener("DOMContentLoaded", function(){
         if(previewDiv) previewDiv.innerHTML=""
         if(salvarDiv) salvarDiv.style.display="none"
 
-        fetch("/salvar_preview", {
+        fetch("/salvar_preview"+window._mesQS("?"), {
             method: "POST",
             headers: {"Content-Type": "application/json"},
             body: JSON.stringify({apostas: apostas})
@@ -1124,12 +1170,12 @@ function fecharModalBancaInicial(){ const modal=document.getElementById("bancaIn
     function badge(estado){ estado=norm(estado);if(estado==="ganha"||estado==="green") return`<span class="status-badge ganha">Ganha</span>`;if(estado==="perdida"||estado==="red") return`<span class="status-badge perdida">Perdida</span>`;if(estado==="anulada"||estado==="void") return`<span class="status-badge anulada">Anulada</span>`;return`<span class="status-badge pendente">Pendente</span>` }
     function lucroLocal(row,estado){ const oddIdx=col("Odd"),valorIdx=col("Valor");const odd=parseMoney(oddIdx>=0?row.children?.[oddIdx]?.innerText:"");const valor=parseMoney(valorIdx>=0?row.children?.[valorIdx]?.innerText:"");estado=norm(estado);if(estado==="ganha"||estado==="green") return(odd*valor)-valor;if(estado==="perdida"||estado==="red") return -valor;return 0 }
     function aplicarLinha(row,estado,lucro){ const statusIdx=col("Status"),lucroIdx=col("Lucro");if(statusIdx>=0&&row.children?.[statusIdx]) row.children[statusIdx].innerHTML=badge(estado);if(lucro===undefined||lucro===null||Number.isNaN(Number(lucro))) lucro=lucroLocal(row,estado);if(lucroIdx>=0&&row.children?.[lucroIdx]){row.children[lucroIdx].textContent=money(Number(lucro||0));row.children[lucroIdx].classList.remove("lucro-pos","lucro-neg","lucro-zero");row.children[lucroIdx].classList.add(lucro>0?"lucro-pos":lucro<0?"lucro-neg":"lucro-zero")};row.classList.add("v154-status-ok");setTimeout(()=>row.classList.remove("v154-status-ok"),900) }
-    function atualizarMetricas(metricas){ if(!metricas) return;function setByTitle(title,value,formatter){const card=Array.from(document.querySelectorAll(".metric-card")).find(c=>norm(c.querySelector("span")?.innerText||"")===norm(title));const strong=card?.querySelector("strong");if(strong) strong.textContent=formatter?formatter(value):value};if(metricas.banca_atual!==undefined) setByTitle("Banca Atual",metricas.banca_atual,money);if(metricas.total!==undefined) setByTitle("Total Apostas",metricas.total,v=>String(v));if(metricas.pendentes!==undefined) setByTitle("Pendentes",metricas.pendentes,v=>String(v));const elLucro=document.getElementById("metric-lucro");if(elLucro&&metricas.lucro_total!==undefined){const l=Number(metricas.lucro_total);elLucro.textContent=money(l);elLucro.classList.toggle("mc-pos",l>=0);elLucro.classList.toggle("mc-neg",l<0)};const elRoi=document.getElementById("metric-roi");if(elRoi&&metricas.roi!==undefined) elRoi.textContent=Number(metricas.roi).toFixed(2)+"%";const elTaxa=document.getElementById("metric-taxa");if(elTaxa&&metricas.taxa!==undefined) elTaxa.textContent=Number(metricas.taxa).toFixed(2)+"%" }
+    function atualizarMetricas(metricas){ if(!metricas) return;function setByTitle(title,value,formatter){const card=Array.from(document.querySelectorAll(".metric-card")).find(c=>norm(c.querySelector("span")?.innerText||"")===norm(title));const strong=card?.querySelector("strong");if(strong) strong.textContent=formatter?formatter(value):value};if(metricas.banca_atual!==undefined) setByTitle("Banca Atual",metricas.banca_atual,money);const _elTot=document.getElementById("metric-total");if(_elTot&&metricas.total!==undefined) _elTot.textContent=String(metricas.total);if(metricas.pendentes!==undefined) setByTitle("Pendentes",metricas.pendentes,v=>String(v));const elLucro=document.getElementById("metric-lucro");if(elLucro&&metricas.lucro_total!==undefined){const l=Number(metricas.lucro_total);elLucro.textContent=money(l);elLucro.classList.toggle("mc-pos",l>=0);elLucro.classList.toggle("mc-neg",l<0)};const elRoi=document.getElementById("metric-roi");if(elRoi&&metricas.roi!==undefined) elRoi.textContent=Number(metricas.roi).toFixed(2)+"%";const elTaxa=document.getElementById("metric-taxa");if(elTaxa&&metricas.taxa!==undefined) elTaxa.textContent=Number(metricas.taxa).toFixed(2)+"%" }
     function recalcularLeve(){ try{if(typeof v141AtualizarLucroPorBanca==="function") v141AtualizarLucroPorBanca()}catch(e){};try{if(typeof v147ApplyFilters==="function") v147ApplyFilters()}catch(e){};try{if(typeof v149AplicarHistorico==="function") v149AplicarHistorico()}catch(e){};try{if(typeof v150ForceFinalizeOldLiveGames==="function") v150ForceFinalizeOldLiveGames()}catch(e){} }
     async function ajaxResultado(anchor,row){
         const href=anchor.getAttribute("href"),estado=estadoFromHref(href);if(!href||!estado) return
         const y=window.scrollY;row.classList.add("v154-status-loading")
-        const url=href.includes("?")?href+"&ajax=1":href+"?ajax=1"
+        const url=(href.includes("?")?href+"&ajax=1":href+"?ajax=1")+window._mesQS("&")
         const r=await fetch(url,{method:"GET",headers:{"X-Requested-With":"XMLHttpRequest"},cache:"no-store"})
         let data={};try{data=await r.json()}catch(e){}
         if(!r.ok||!data.ok) throw new Error(data.erro||"erro_status")
@@ -1356,7 +1402,7 @@ document.addEventListener("click", function(e){
     const link=e.target.closest('a[href^="/resultado/"]'); if(!link) return
     e.preventDefault(); e.stopPropagation()
     const tr=link.closest("tr"); link.style.pointerEvents="none"; link.style.opacity=".6"
-    fetch(link.getAttribute("href")+"?ajax=1", {cache:"no-store"})
+    fetch(link.getAttribute("href")+"?ajax=1"+window._mesQS("&"), {cache:"no-store"})
     .then(r=>r.json()).then(d=>{ if(!d.ok) throw new Error("erro"); v72UpdateRow(tr,d.bet); v72UpdateMetrics(d.metricas); v72Toast("Resultado atualizado") })
     .catch(()=>v72Toast("Erro ao atualizar","err"))
     .finally(()=>{ link.style.pointerEvents=""; link.style.opacity="" })
@@ -1368,7 +1414,7 @@ document.addEventListener("click", function(e){
     e.preventDefault(); e.stopPropagation()
     if(!confirm("Apagar esta aposta?")) return
     const tr=link.closest("tr")
-    fetch(link.getAttribute("href")+"?ajax=1", {cache:"no-store"})
+    fetch(link.getAttribute("href")+"?ajax=1"+window._mesQS("&"), {cache:"no-store"})
     .then(r=>r.json()).then(d=>{
         if(!d.ok) throw new Error("erro")
         if(tr){ tr.style.transition=".18s ease"; tr.style.opacity="0"; tr.style.transform="translateX(10px)"; setTimeout(()=>tr.remove(),180) }

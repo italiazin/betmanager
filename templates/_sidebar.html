@@ -1,4 +1,5 @@
 {# Sidebar unica, incluida em todas as paginas. Item ativo via request.path. #}
+<script>if(localStorage.getItem("sidebarCollapsed")==="1")document.body.classList.add("sidebar-collapsed");</script>
 <aside class="sidebar">
     <div class="sidebar-top">
         <div class="logo">
@@ -7,15 +8,44 @@
         </div>
         <button type="button" class="sidebar-toggle" onclick="toggleSidebar()" title="Recolher menu">‹</button>
     </div>
+
+    <div class="sb-pl-wrap">
+        <button class="sb-pl-btn" id="sbPlBtn" onclick="toggleSbPlanilha(event)" type="button">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
+            <span class="sb-pl-nome nav-text">{{ planilha_ativa_nome }}</span>
+            <svg class="sb-pl-chev nav-text" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg>
+        </button>
+        <div class="sb-pl-menu" id="sbPlMenu" style="display:none">
+            {% for p in planilhas %}
+            <div class="sb-pl-row">
+                <form method="POST" action="/trocar_planilha" style="flex:1;min-width:0">
+                    <input type="hidden" name="pid" value="{{ p.id }}">
+                    <button type="submit" class="sb-pl-item{% if p.id == planilha_ativa_id %} sb-pl-active{% endif %}">
+                        <span class="sb-pl-check">{% if p.id == planilha_ativa_id %}✔{% endif %}</span>
+                        {{ p.nome }}
+                    </button>
+                </form>
+                {% if p.id == planilha_ativa_id %}
+                <button type="button" class="sb-pl-edit" onclick="sbPlRenomear({{ p.id }}, '{{ p.nome|e }}')" title="Renomear">✎</button>
+                {% endif %}
+            </div>
+            {% endfor %}
+            <div class="sb-pl-div"></div>
+            <form method="POST" action="/nova_planilha">
+                <button type="submit" class="sb-pl-item sb-pl-new">＋ Nova planilha</button>
+            </form>
+        </div>
+    </div>
+    <form id="sbPlRenameForm" method="POST" action="/renomear_planilha" style="display:none">
+        <input type="hidden" name="pid" id="sbPlRenamePid">
+        <input type="hidden" name="nome" id="sbPlRenomeNome">
+    </form>
+
     <nav>
         <div class="sidebar-nav-label">Menu</div>
         <a class="{{ 'active' if request.path == '/' else '' }}" href="/" data-title="Dashboard">
             <span class="nav-icon"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg></span>
             <span class="nav-text">Dashboard</span>
-        </a>
-        <a class="{{ 'active' if request.path.startswith('/calculadora') else '' }}" href="/calculadora" data-title="Calculadora">
-            <span class="nav-icon"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="2" width="16" height="20" rx="2"/><line x1="8" y1="6" x2="16" y2="6"/><line x1="8" y1="10" x2="10" y2="10"/><line x1="14" y1="10" x2="16" y2="10"/><line x1="8" y1="14" x2="10" y2="14"/><line x1="14" y1="14" x2="16" y2="14"/><line x1="8" y1="18" x2="10" y2="18"/><line x1="14" y1="18" x2="16" y2="18"/></svg></span>
-            <span class="nav-text">Calculadora</span>
         </a>
         <a class="{{ 'active' if request.path.startswith('/estatisticas') else '' }}" href="/estatisticas" data-title="Estatísticas">
             <span class="nav-icon"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/><line x1="2" y1="20" x2="22" y2="20"/></svg></span>
@@ -108,6 +138,24 @@ document.addEventListener("DOMContentLoaded", function(){
         document.body.classList.add("sidebar-collapsed");
         const b = document.querySelector(".sidebar-toggle"); if(b) b.innerText = "›";
     }
+});
+
+// ── Planilha switcher (sidebar) ──
+function toggleSbPlanilha(ev){
+    if(ev) ev.stopPropagation();
+    var m = document.getElementById('sbPlMenu');
+    if(m) m.style.display = m.style.display === 'none' ? 'block' : 'none';
+}
+function sbPlRenomear(pid, nomeAtual){
+    var novo = prompt('Novo nome:', nomeAtual);
+    if(!novo || !novo.trim()) return;
+    document.getElementById('sbPlRenamePid').value = pid;
+    document.getElementById('sbPlRenomeNome').value = novo.trim();
+    document.getElementById('sbPlRenameForm').submit();
+}
+document.addEventListener('click', function(e){
+    var m = document.getElementById('sbPlMenu'), b = document.getElementById('sbPlBtn');
+    if(m && b && !m.contains(e.target) && !b.contains(e.target)) m.style.display = 'none';
 });
 
 // ── Notificações de novas tips ──

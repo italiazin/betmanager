@@ -144,6 +144,10 @@
 
     <form method="get" action="/historico" class="hist-filters">
         <label>
+            Buscar
+            <input type="search" name="q" value="{{ q }}" placeholder="Jogo / time / casa...">
+        </label>
+        <label>
             Data início
             <input type="date" name="data_inicio" value="{{ data_inicio }}">
         </label>
@@ -171,7 +175,7 @@
             </select>
         </label>
         <button type="submit">Filtrar</button>
-        {% if estado_filtro or casa_filtro or data_inicio or data_fim %}
+        {% if estado_filtro or casa_filtro or data_inicio or data_fim or q %}
         <a class="limpar" href="/historico">Limpar filtros</a>
         {% endif %}
     </form>
