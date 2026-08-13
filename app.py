@@ -2024,7 +2024,9 @@ def calendario_historico(ano=None, mes=None):
     por_dia = {}
 
     for b in bets_do_usuario():
-        dt = parse_data(b.get("data", ""))
+        # Data do JOGO (fallback criacao) — MESMO criterio do dashboard/grafico,
+        # senao o calendario diverge do card "Lucro do Mes".
+        dt = v154_parse_data_jogo_aposta(b) or parse_data(b.get("data", ""))
         if not dt or dt.year != ano or dt.month != mes:
             continue
 
